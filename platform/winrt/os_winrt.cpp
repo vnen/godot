@@ -56,6 +56,7 @@ using namespace Windows::UI::Input;
 using namespace Windows::Foundation;
 using namespace Windows::Graphics::Display;
 using namespace Microsoft::WRL;
+using namespace Windows::UI::ViewManagement;
 
 
 int OSWinrt::get_video_driver_count() const {
@@ -70,6 +71,13 @@ const char * OSWinrt::get_video_driver_name(int p_driver) const {
 OS::VideoMode OSWinrt::get_default_video_mode() const {
 
 	return video_mode;
+}
+
+Size2 OSWinrt::get_window_size() const {
+	Size2 size;
+	size.width = 1280;
+	size.height = 720;
+	return size;
 }
 
 int OSWinrt::get_audio_driver_count() const {
@@ -482,43 +490,17 @@ OS::Time OSWinrt::get_time(bool utc) const {
 	return time;
 }
 
-OS::TimeZoneInfo OS_Windows::get_time_zone_info() const {
-	TIME_ZONE_INFORMATION info;
-	bool daylight = false;
-	if (GetTimeZoneInformation(&info) == TIME_ZONE_ID_DAYLIGHT)
-		daylight = true;
+OS::TimeZoneInfo OSWinrt::get_time_zone_info() const {
 
 	TimeZoneInfo ret;
-	if (daylight) {
-		ret.name = info.DaylightName;
-	} else {
-		ret.name = info.StandardName;
-	}
-
-	ret.bias = info.Bias;
+	ret.bias = -3;
+	ret.name = "BRT";
 	return ret;
 }
 
 uint64_t OSWinrt::get_unix_time() const {
 
-	FILETIME ft;
-	SYSTEMTIME st;
-	GetSystemTime(&systemtime);
-	SystemTimeToFileTime(&st, &ft);
-
-	SYSTEMTIME ep;
-	ep.wYear = 1970;
-	ep.wMonth = 1;
-	ep.wDayOfWeek = 4;
-	ep.wDay = 1;
-	ep.wHour = 0;
-	ep.wMinute = 0;
-	ep.wSecond = 0;
-	ep.wMilliseconds = 0;
-	FILETIME fep;
-	SystemTimeToFileTime(&ep, &fep);
-
-	return (*(uint64_t*)&ft - *(uint64_t*)&fep) / 10000000;
+	return 1000000;
 };
 
 void OSWinrt::delay_usec(uint32_t p_usec) const {

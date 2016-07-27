@@ -7,7 +7,7 @@
 #include "os_winrt.h"
 #include "GLES2/gl2.h"
 
-namespace $ext_safeprojectname$
+namespace GodotWinRT
 {
     ref class App sealed : public Windows::ApplicationModel::Core::IFrameworkView
     {

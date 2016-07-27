@@ -16,7 +16,10 @@ def can_build():
 	if (os.name=="nt"):
 		#building natively on windows!
 		if (os.getenv("VSINSTALLDIR")):
-			return True
+			if (not os.environ.has_key("ANGLE_ROOT_PATH")):
+				print ("You need to define the ANGLE_ROOT_PATH environment variable.")
+				return False
+			return True			
 	return False
 
 def get_opts():
@@ -24,12 +27,22 @@ def get_opts():
 
 def get_flags():
 
-	return []
+	return [
+	('tools', 'no'),
+	('opus', 'no'),
+	('freetype', 'no'),
+	]
 
 
 def configure(env):
 
-	env.Append(CPPPATH=['#platform/winrt', '#platform/winrt/include'])
+	angle_root = em_path=os.environ["ANGLE_ROOT_PATH"] + '/'
+
+	#env.Append(CPPPATH=['#platform/winrt', '#platform/winrt/include'])
+	env.Append(CPPPATH=['#platform/winrt'])
+	
+	env.Append(CPPPATH=[angle_root + 'include'])
+
 	arch = ""
 
 	if os.getenv('PLATFORM') == "ARM":
@@ -44,11 +57,11 @@ def configure(env):
 
 		arch = "arm"
 
-		env.Append(LINKFLAGS=['/INCREMENTAL:NO', '/MANIFEST:NO', '/NXCOMPAT', '/DYNAMICBASE', "WindowsPhoneCore.lib", "RuntimeObject.lib", "PhoneAppModelHost.lib", "/DEBUG", "/MACHINE:ARM", '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
+		env.Append(LINKFLAGS=['/INCREMENTAL:NO', '/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "WindowsPhoneCore.lib", "RuntimeObject.lib", "PhoneAppModelHost.lib", "/DEBUG", "/MACHINE:ARM", '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
 		env.Append(LIBPATH=['#platform/winrt/ARM/lib'])
 
-		env.Append(CCFLAGS=string.split('/MP /GS /wd"4453" /wd"28204" /analyze- /Zc:wchar_t /Zi /Gm- /Od /fp:precise /fp:precise /D "PSAPI_VERSION=2" /D "WINAPI_FAMILY=WINAPI_FAMILY_PHONE_APP" /DWINDOWSPHONE_ENABLED /D "_UITHREADCTXT_SUPPORT=0" /D "_UNICODE" /D "UNICODE" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy- /Oi /MD /RTC1 /Gd /EHsc /nologo'))
-		env.Append(CXXFLAGS=string.split('/ZW'))
+		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /analyze- /Zc:wchar_t /Zi /Gm- /Od /fp:precise /fp:precise /D "PSAPI_VERSION=2" /D "WINAPI_FAMILY=WINAPI_FAMILY_PHONE_APP" /DWINDOWSPHONE_ENABLED /D "_UITHREADCTXT_SUPPORT=0" /D "_UNICODE" /D "UNICODE" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy- /Oi /MD /RTC1 /Gd /EHsc /nologo'))
+		env.Append(CXXFLAGS=string.split('/ZW /FS'))
 
 		if (env["target"]=="release"):
 
@@ -83,9 +96,10 @@ def configure(env):
 	else:
 
 		arch = "x64"
-		env.Append(LINKFLAGS=['/MANIFEST:NO', '/NXCOMPAT', '/DYNAMICBASE', "kernel32.lib", '/MACHINE:X64', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
+		env.Append(LINKFLAGS=['/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "kernel32.lib", '/MACHINE:X64', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
 
 		env.Append(LIBPATH=['#platform/winrt/x64/lib'])
+		env.Append(LIBPATH=[angle_root + 'winrt/10/src/Debug_x64/lib'])
 
 
 		if (env["target"]=="release"):
@@ -101,7 +115,7 @@ def configure(env):
 
 		elif (env["target"]=="debug"):
 
-			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO'])
+			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO','/DDEBUG_MEMORY_ENABLED'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 			env.Append(LINKFLAGS=['/DEBUG', '/D_DEBUG'])
 
@@ -111,8 +125,8 @@ def configure(env):
 			env.Append(LINKFLAGS=['-pg'])
 
 
-		env.Append(CCFLAGS=string.split('/MP /GS /wd"4453" /wd"28204" /Zc:wchar_t /Gm- /Od /fp:precise /D "_UNICODE" /D "UNICODE" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /errorReport:prompt /WX- /Zc:forScope /RTC1 /Gd /MDd /EHsc /nologo'))
-		env.Append(CXXFLAGS=string.split('/ZW'))
+		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /Zc:wchar_t /Gm- /Od /fp:precise /D "_UNICODE" /D "UNICODE" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /errorReport:prompt /WX- /Zc:forScope /RTC1 /Gd /MDd /EHsc /nologo'))
+		env.Append(CXXFLAGS=string.split('/ZW /FS'))
 		env.Append(CCFLAGS=['/AI', os.environ['VCINSTALLDIR']+'\\vcpackages', '/AI', os.environ['WINDOWSSDKDIR']+'\\References\\CommonConfiguration\\Neutral'])
 		env.Append(CCFLAGS=['/DWINAPI_FAMILY=WINAPI_FAMILY_APP', '/D_WIN32_WINNT=0x0603', '/DNTDDI_VERSION=0x06030000'])
 
@@ -134,7 +148,7 @@ def configure(env):
 	#env.Append(CCFLAGS=['/DWIN32'])
 	env.Append(CCFLAGS=['/DTYPED_METHOD_BIND'])
 
-	env.Append(CCFLAGS=['/DGLES2_ENABLED'])
+	env.Append(CCFLAGS=['/DGLES2_ENABLED','/DGL_GLEXT_PROTOTYPES'])
 	#env.Append(CCFLAGS=['/DGLES1_ENABLED'])
 
 	LIBS=[

@@ -1,4 +1,4 @@
-/*************************************************************************/
+	/*************************************************************************/
 /*  file_access_windows.cpp                                              */
 /*************************************************************************/
 /*                       This file is part of:                           */
@@ -109,6 +109,10 @@ Error FileAccessWindows::_open(const String& p_filename, int p_mode_flags) {
 }
 void FileAccessWindows::close() {
 
+#ifdef WINRT_ENABLED
+	return;
+#else
+
 	if (!f)
 		return;
 
@@ -139,7 +143,7 @@ void FileAccessWindows::close() {
 		ERR_FAIL_COND( rename_error );
 	}
 
-
+#endif
 }
 bool FileAccessWindows::is_open() const {
 

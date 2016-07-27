@@ -17,7 +17,7 @@ using namespace Windows::Graphics::Display;
 using namespace Microsoft::WRL;
 using namespace Platform;
 
-using namespace $ext_safeprojectname$;
+using namespace GodotWinRT;
 
 // Helper to convert a length in device-independent pixels (DIPs) to a length in physical pixels.
 inline float ConvertDipsToPixels(float dips, float dpi)
