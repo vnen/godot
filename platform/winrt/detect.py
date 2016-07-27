@@ -1,5 +1,3 @@
-
-
 import os
 
 import sys
@@ -148,7 +146,7 @@ def configure(env):
 	#env.Append(CCFLAGS=['/DWIN32'])
 	env.Append(CCFLAGS=['/DTYPED_METHOD_BIND'])
 
-	env.Append(CCFLAGS=['/DGLES2_ENABLED','/DGL_GLEXT_PROTOTYPES'])
+	env.Append(CCFLAGS=['/DGLES2_ENABLED','/DGL_GLEXT_PROTOTYPES','/DANGLE_ENABLED'])
 	#env.Append(CCFLAGS=['/DGLES1_ENABLED'])
 
 	LIBS=[

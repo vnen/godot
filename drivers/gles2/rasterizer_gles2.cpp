@@ -5210,7 +5210,6 @@ bool RasterizerGLES2::_setup_material(const Geometry *p_geometry,const Material 
 
 		material_shader.set_conditional(MaterialShaderGLES2::USE_FOG,current_env && current_env->fx_enabled[VS::ENV_FX_FOG]);
 		//glDepthMask( true );
-
 	}
 
 
@@ -10831,6 +10830,11 @@ void RasterizerGLES2::init() {
 	canvas_shader.set_conditional(CanvasShaderGLES2::USE_GLES_OVER_GL,true);
 	canvas_shadow_shader.set_conditional(CanvasShadowShaderGLES2::USE_GLES_OVER_GL,true);
 	copy_shader.set_conditional(CopyShaderGLES2::USE_GLES_OVER_GL,true);
+#endif
+
+#ifdef ANGLE_ENABLED
+	// Fix for ANGLE
+	material_shader.set_conditional(MaterialShaderGLES2::DISABLE_FRONT_FACING, true);
 #endif
 
 
