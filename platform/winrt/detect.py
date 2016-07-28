@@ -75,7 +75,7 @@ def configure(env):
 
 			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
-			env.Append(LINKFLAGS=['/DEBUG', '/D_DEBUG'])
+			env.Append(LINKFLAGS=['/DEBUG'])
 
 		elif (env["target"]=="profile"):
 
@@ -97,7 +97,7 @@ def configure(env):
 		env.Append(LINKFLAGS=['/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "kernel32.lib", '/MACHINE:X64', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
 
 		env.Append(LIBPATH=['#platform/winrt/x64/lib'])
-		env.Append(LIBPATH=[angle_root + 'winrt/10/src/Debug_x64/lib'])
+		env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_x64/lib'])
 
 
 		if (env["target"]=="release"):
@@ -115,7 +115,7 @@ def configure(env):
 
 			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO','/DDEBUG_MEMORY_ENABLED'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
-			env.Append(LINKFLAGS=['/DEBUG', '/D_DEBUG'])
+			env.Append(LINKFLAGS=['/DEBUG'])
 
 		elif (env["target"]=="profile"):
 

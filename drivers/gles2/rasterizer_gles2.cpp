@@ -10924,7 +10924,11 @@ void RasterizerGLES2::init() {
 
 
 	srgb_supported=extensions.has("GL_EXT_sRGB");
+#ifndef ANGLE_ENABLED
 	s3tc_srgb_supported =  s3tc_supported && extensions.has("GL_EXT_texture_compression_s3tc");
+#else
+	s3tc_srgb_supported = s3tc_supported;
+#endif
 	latc_supported = extensions.has("GL_EXT_texture_compression_latc");
 	anisotropic_level=1.0;
 	use_anisotropic_filter=extensions.has("GL_EXT_texture_filter_anisotropic");
