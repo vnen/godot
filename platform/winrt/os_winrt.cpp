@@ -293,6 +293,9 @@ String OSWinrt::get_clipboard() const {
 
 void OSWinrt::input_event(InputEvent &p_event) {
 	p_event.ID = ++last_id;
+	if (p_event.type == InputEvent::KEY) {
+		print_line("running event " + itos(p_event.ID) + " is unicode " + itos(p_event.key.unicode) + " and scancode " + itos(p_event.key.scancode));
+	}
 	input->parse_input_event(p_event);
 };
 
@@ -527,7 +530,50 @@ uint64_t OSWinrt::get_ticks_usec() const {
 
 
 void OSWinrt::process_events() {
+	process_key_events();
+}
 
+void OSWinrt::process_key_events()
+{
+
+	for (int i = 0; i < key_event_pos; i++) {
+
+		KeyEvent &kev = key_event_buffer[i];
+		InputEvent iev;
+
+		iev.type = InputEvent::KEY;
+		iev.key.mod = kev.mod_state;
+		iev.key.echo = kev.echo;
+		iev.key.scancode = kev.scancode;
+		iev.key.unicode = kev.unicode;
+		iev.key.pressed = kev.pressed;
+
+		input_event(iev);
+
+	}
+	key_event_pos = 0;
+}
+
+void OSWinrt::queue_key_event(KeyEvent & p_event)
+{
+	// This merges Char events with the previous Key event, so
+	// the unicode can be retrieved without sending duplicate events.
+	if (p_event.type == KeyEvent::MessageType::CHAR_EVENT_MESSAGE && key_event_pos > 0) {
+
+		// Let Return key follow its course
+		if (p_event.unicode == 13) return;
+
+		KeyEvent &old = key_event_buffer[key_event_pos - 1];
+		ERR_FAIL_COND(old.type != KeyEvent::MessageType::KEY_EVENT_MESSAGE);
+
+		// Override the old event with the new data
+		key_event_buffer[key_event_pos - 1] = p_event;
+		return;
+	}
+
+	ERR_FAIL_COND(key_event_pos >= KEY_EVENT_BUFFER_SIZE);
+
+	key_event_buffer[key_event_pos++] = p_event;
 }
 
 void OSWinrt::set_cursor_shape(CursorShape p_shape) {

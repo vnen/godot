@@ -44,6 +44,9 @@
 
 #include "gl_context_egl.h"
 
+#include "core/math/math_2d.h"
+#include "core/ustring.h"
+
 #include <windows.h>
 
 #include <io.h>
@@ -57,6 +60,28 @@
 */
 class OSWinrt : public OS {
 
+public:
+
+	struct KeyEvent {
+
+		enum MessageType
+		{
+			KEY_EVENT_MESSAGE,
+			CHAR_EVENT_MESSAGE
+		};
+
+		InputModifierState mod_state;
+		MessageType type;
+		bool pressed;
+		unsigned int scancode;
+		unsigned int unicode;
+		bool echo;
+		CorePhysicalKeyStatus status;
+
+	};
+
+private:
+
 	enum {
 		JOYSTICKS_MAX = 8,
 		JOY_AXIS_COUNT = 6,
@@ -65,16 +90,6 @@ class OSWinrt : public OS {
 	};
 
 	FILE *stdo;
-
-
-	struct KeyEvent {
-
-		InputModifierState mod_state;
-		UINT uMsg;
-		WPARAM	wParam;
-		LPARAM	lParam;
-
-	};
 
 	KeyEvent key_event_buffer[KEY_EVENT_BUFFER_SIZE];
 	int key_event_pos;
@@ -238,7 +253,7 @@ public:
 	virtual void make_rendering_thread();
 	virtual void swap_buffers();
 
-	virtual bool has_touchscreen_ui_hint() const { return true; };
+	virtual bool has_touchscreen_ui_hint() const { return false; };
 
 	virtual Error shell_open(String p_uri);
 
@@ -247,6 +262,8 @@ public:
 	virtual bool get_swap_ok_cancel() { return true; }
 
 	void input_event(InputEvent &p_event);
+
+	void queue_key_event(KeyEvent &p_event);
 
 	OSWinrt();
 	~OSWinrt();

@@ -26,6 +26,8 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+#ifdef WINDOWS_ENABLED
+
 #define WINVER 0x0500
 #include "key_mapping_win.h"
 #include <stdio.h>
@@ -254,3 +256,5 @@ unsigned int KeyMappingWindows::get_keysym(unsigned int p_code) {
 
 	return KEY_UNKNOWN;
 }
+
+#endif

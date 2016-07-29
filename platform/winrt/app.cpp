@@ -7,15 +7,19 @@
 #include "main/main.h"
 #include "core/os/dir_access.h"
 #include "core/os/file_access.h"
+#include "core/os/keyboard.h"
+
+#include "key_mapping_win.h"
 
 using namespace Windows::ApplicationModel::Core;
 using namespace Windows::ApplicationModel::Activation;
 using namespace Windows::UI::Core;
 using namespace Windows::UI::Input;
+using namespace Windows::UI::Xaml::Input;
 using namespace Windows::Foundation;
 using namespace Windows::Graphics::Display;
+using namespace Windows::System;
 using namespace Microsoft::WRL;
-using namespace Platform;
 
 using namespace GodotWinRT;
 
@@ -69,6 +73,9 @@ void App::Initialize(CoreApplicationView^ applicationView)
     // http://msdn.microsoft.com/en-us/library/windows/apps/xaml/hh994930.aspx
 
 	os = new OSWinrt;
+
+	// Register event delegates
+
 }
 
 // Called when the CoreWindow object is created (or re-created).
@@ -101,6 +108,16 @@ void App::SetWindow(CoreWindow^ p_window)
 
 	window->PointerReleased +=
 		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerReleased);
+
+	window->CharacterReceived +=
+		ref new TypedEventHandler<CoreWindow^, CharacterReceivedEventArgs^>(this, &App::OnCharacterReceived);
+
+	window->KeyDown +=
+		ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &App::OnKeyDown);
+	window->KeyUp+=
+		ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &App::OnKeyUp);
+
+	
 
 	//window->PointerWheelChanged +=
 	//	ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerWheelChanged);
@@ -250,6 +267,7 @@ void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core
 	event.mouse_button.y = pos.Y;
 	event.mouse_button.global_x = pos.X;
 	event.mouse_button.global_y = pos.Y;
+	//print_line("Mouse event: " + rtos(pos.X) + ", " + rtos(pos.Y));
 
 	last_touch_x[31] = pos.X;
 	last_touch_y[31] = pos.Y;
@@ -303,7 +321,77 @@ void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Cor
 
 	os->input_event(event);
 
-};
+}
+void App::key_event(Windows::UI::Core::CoreWindow^ sender, bool p_pressed, Windows::UI::Core::KeyEventArgs^ key_args, Windows::UI::Core::CharacterReceivedEventArgs^ char_args)
+{
+#if 0
+	InputEvent ev;
+	ev.type = InputEvent::KEY;
+	InputEventKey &k = ev.key;
+	k.scancode = KeyMappingWindows::get_keysym(key_args != nullptr ? (unsigned int)key_args->VirtualKey : char_args->KeyCode);
+	k.unicode = 0;
+	k.pressed = p_pressed;
+	k.echo = (!p_pressed && !args->KeyStatus.IsKeyReleased) || (p_pressed && args->KeyStatus.WasKeyDown);
+
+	k.mod.control = sender->GetAsyncKeyState(VirtualKey::Control) == CoreVirtualKeyStates::Down;
+	k.mod.alt = sender->GetAsyncKeyState(VirtualKey::Menu) == CoreVirtualKeyStates::Down || sender->GetAsyncKeyState(VirtualKey::LeftMenu) == CoreVirtualKeyStates::Down;
+	k.mod.shift = sender->GetAsyncKeyState(VirtualKey::Shift) == CoreVirtualKeyStates::Down;
+	
+	os->input_event(ev);
+
+	print_line("key event " + String(args->VirtualKey.ToString()->Data()) +  " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
+
+	args->Handled = true;
+#endif
+
+
+	OSWinrt::KeyEvent ke;
+
+	InputModifierState mod;
+	mod.meta = false;
+	mod.command = false;
+	mod.control = sender->GetAsyncKeyState(VirtualKey::Control) == CoreVirtualKeyStates::Down;
+	mod.alt = sender->GetAsyncKeyState(VirtualKey::Menu) == CoreVirtualKeyStates::Down;
+	mod.shift = sender->GetAsyncKeyState(VirtualKey::Shift) == CoreVirtualKeyStates::Down;
+	ke.mod_state = mod;
+
+	ke.pressed = p_pressed;
+	
+	if (key_args != nullptr) {
+		
+		ke.type = OSWinrt::KeyEvent::MessageType::KEY_EVENT_MESSAGE;
+		ke.unicode = 0;
+		ke.scancode = KeyMappingWindows::get_keysym((unsigned int)key_args->VirtualKey);
+		ke.echo = (!p_pressed && !key_args->KeyStatus.IsKeyReleased) || (p_pressed && key_args->KeyStatus.WasKeyDown);
+
+	} else {
+
+		ke.type = OSWinrt::KeyEvent::MessageType::CHAR_EVENT_MESSAGE;
+		ke.unicode = char_args->KeyCode;
+		ke.scancode = 0;
+		ke.echo = (!p_pressed && !char_args->KeyStatus.IsKeyReleased) || (p_pressed && char_args->KeyStatus.WasKeyDown);
+	}
+
+	os->queue_key_event(ke);
+
+}
+void App::OnKeyDown(CoreWindow^ sender, KeyEventArgs^ args)
+{
+	print_line("key down event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
+	key_event(sender, true, args);
+}
+
+void App::OnKeyUp(CoreWindow^ sender, KeyEventArgs^ args)
+{
+	print_line("key up event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
+	key_event(sender, false, args);
+}
+
+void App::OnCharacterReceived(CoreWindow^ sender, CharacterReceivedEventArgs^ args)
+{
+	print_line("Character received " + itos(args->KeyCode) + " " + String::chr(args->KeyCode) + " sk code " + itos(args->KeyStatus.ScanCode));
+	key_event(sender, true, nullptr, args);
+}
 
 
 // Initializes scene resources

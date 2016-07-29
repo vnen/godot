@@ -37,7 +37,7 @@ def configure(env):
 	angle_root = em_path=os.environ["ANGLE_ROOT_PATH"] + '/'
 
 	#env.Append(CPPPATH=['#platform/winrt', '#platform/winrt/include'])
-	env.Append(CPPPATH=['#platform/winrt'])
+	env.Append(CPPPATH=['#platform/winrt','#drivers/windows'])
 	
 	env.Append(CPPPATH=[angle_root + 'include'])
 
