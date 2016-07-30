@@ -566,14 +566,10 @@ void OSWinrt::queue_key_event(KeyEvent & p_event)
 	// the unicode can be retrieved without sending duplicate events.
 	if (p_event.type == KeyEvent::MessageType::CHAR_EVENT_MESSAGE && key_event_pos > 0) {
 
-		// Let Return key follow its course
-		if (p_event.unicode == 13) return;
-
 		KeyEvent &old = key_event_buffer[key_event_pos - 1];
 		ERR_FAIL_COND(old.type != KeyEvent::MessageType::KEY_EVENT_MESSAGE);
 
-		// Override the old event with the new data
-		key_event_buffer[key_event_pos - 1] = p_event;
+		key_event_buffer[key_event_pos - 1].unicode = p_event.unicode;
 		return;
 	}
 
