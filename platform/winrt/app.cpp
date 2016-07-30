@@ -102,19 +102,18 @@ void App::SetWindow(CoreWindow^ p_window)
 
 	window->PointerPressed +=
 		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerPressed);
-
 	window->PointerMoved +=
 		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerMoved);
-
 	window->PointerReleased +=
 		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerReleased);
+	window->PointerWheelChanged +=
+		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerWheelChanged);
 
 	window->CharacterReceived +=
 		ref new TypedEventHandler<CoreWindow^, CharacterReceivedEventArgs^>(this, &App::OnCharacterReceived);
-
 	window->KeyDown +=
 		ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &App::OnKeyDown);
-	window->KeyUp+=
+	window->KeyUp +=
 		ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &App::OnKeyUp);
 
 	
@@ -234,7 +233,7 @@ static int _get_finger(uint32_t p_touch_id) {
 	return p_touch_id % 31; // for now
 };
 
-void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args, bool p_pressed) {
+void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args, bool p_pressed, bool p_is_wheel) {
 
 	Windows::UI::Input::PointerPoint ^point = args->CurrentPoint;
 	Windows::Foundation::Point pos = _get_pixel_position(window, point->Position, os);
@@ -267,7 +266,16 @@ void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core
 	event.mouse_button.y = pos.Y;
 	event.mouse_button.global_x = pos.X;
 	event.mouse_button.global_y = pos.Y;
-	//print_line("Mouse event: " + rtos(pos.X) + ", " + rtos(pos.Y));
+
+	if (p_is_wheel) {
+		if (point->Properties->MouseWheelDelta > 0) {
+			event.mouse_button.button_index = point->Properties->IsHorizontalMouseWheel ? BUTTON_WHEEL_RIGHT : BUTTON_WHEEL_UP;
+		} else if (point->Properties->MouseWheelDelta < 0) {
+			event.mouse_button.button_index = point->Properties->IsHorizontalMouseWheel ? BUTTON_WHEEL_LEFT : BUTTON_WHEEL_DOWN;
+		}
+		print_line("is wheel " + String(point->Properties->IsHorizontalMouseWheel ? "horizontal " : "vertical ") + itos(point->Properties->MouseWheelDelta));
+	}
+	print_line("Mouse event: " + rtos(pos.X) + ", " + rtos(pos.Y));
 
 	last_touch_x[31] = pos.X;
 	last_touch_y[31] = pos.Y;
@@ -285,6 +293,11 @@ void App::OnPointerPressed(Windows::UI::Core::CoreWindow^ sender, Windows::UI::C
 void App::OnPointerReleased(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args) {
 
 	pointer_event(sender, args, false);
+};
+
+void App::OnPointerWheelChanged(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args) {
+
+	pointer_event(sender, args, true, true);
 };
 
 void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args) {
