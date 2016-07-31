@@ -154,6 +154,7 @@ def configure(env):
 		'libEGL',
 		'libGLESv2',
 		'libANGLE',
+		'xaudio2',
 		#'kernel32','ole32','user32', 'advapi32'
 		]
 	env.Append(LINKFLAGS=[p+".lib" for p in LIBS])

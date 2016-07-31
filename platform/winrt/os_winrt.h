@@ -40,7 +40,7 @@
 #include "servers/spatial_sound/spatial_sound_server_sw.h"
 #include "servers/spatial_sound_2d/spatial_sound_2d_server_sw.h"
 #include "servers/physics_2d/physics_2d_server_sw.h"
-#include "servers/audio/audio_driver_dummy.h"
+#include "audio_driver_winrt.h"
 
 #include "gl_context_egl.h"
 
@@ -142,7 +142,7 @@ private:
 
 	MainLoop *main_loop;
 
-	AudioDriverDummy audio_driver;
+	AudioDriverWinRT audio_driver;
 	AudioServerSW *audio_server;
 	SampleManagerMallocSW *sample_manager;
 	SpatialSoundServerSW *spatial_sound_server;

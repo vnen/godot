@@ -509,7 +509,24 @@ OS::TimeZoneInfo OSWinrt::get_time_zone_info() const {
 
 uint64_t OSWinrt::get_unix_time() const {
 
-	return 1000000;
+	FILETIME ft;
+	SYSTEMTIME st;
+	GetSystemTime(&st);
+	SystemTimeToFileTime(&st, &ft);
+
+	SYSTEMTIME ep;
+	ep.wYear = 1970;
+	ep.wMonth = 1;
+	ep.wDayOfWeek = 4;
+	ep.wDay = 1;
+	ep.wHour = 0;
+	ep.wMinute = 0;
+	ep.wSecond = 0;
+	ep.wMilliseconds = 0;
+	FILETIME fep;
+	SystemTimeToFileTime(&ep, &fep);
+
+	return (*(uint64_t*)&ft - *(uint64_t*)&fep) / 10000000;
 };
 
 void OSWinrt::delay_usec(uint32_t p_usec) const {

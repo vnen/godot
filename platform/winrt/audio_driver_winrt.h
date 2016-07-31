@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  thread_winrt.cpp                                                     */
+/*  audio_driver_winrt.h                                                 */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -26,49 +26,78 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
-#include "thread_winrt.h"
+#ifndef AUDIO_DRIVER_WINRT_H
+#define AUDIO_DRIVER_WINRT_H
 
-#include "os/memory.h"
+#include "servers/audio/audio_server_sw.h"
 
-Thread* ThreadWinrt::create_func_winrt(ThreadCreateCallback p_callback,void *p_user,const Settings&) {
+#include "core/os/thread.h"
+#include "core/os/mutex.h"
 
-	ThreadWinrt* thread = memnew(ThreadWinrt);
+#include <windows.h>
+#include <mmsystem.h>
+#include <mmreg.h>
+#include <xaudio2.h>
+#include <wrl/client.h>
 
+class AudioDriverWinRT : public AudioDriverSW {
 
-	std::thread new_thread(p_callback, p_user);
-	std::swap(thread->thread, new_thread);
+	struct XAudio2DriverVoiceCallback : public IXAudio2VoiceCallback {
 
-	return thread;
+		HANDLE buffer_end_event;
+		XAudio2DriverVoiceCallback() : buffer_end_event(CreateEvent(NULL, FALSE, FALSE, NULL)) {}
+		void OnBufferEnd(void*) { SetEvent(buffer_end_event); }
+
+		//Unused methods are stubs
+		void OnStreamEnd() { }
+		void OnVoiceProcessingPassEnd() { }
+		void OnVoiceProcessingPassStart(UINT32 SamplesRequired) {    }
+		void OnBufferStart(void * pBufferContext) {    }
+		void OnLoopEnd(void * pBufferContext) {    }
+		void OnVoiceError(void * pBufferContext, HRESULT Error) { }
+
+	};
+
+	Thread* thread;
+	Mutex* mutex;
+
+	int32_t* samples_in;
+	int16_t* samples_out;
+
+	static void thread_func(void* p_udata);
+	int buffer_size;
+
+	unsigned int mix_rate;
+	OutputFormat output_format;
+
+	int channels;
+
+	bool active;
+	bool thread_exited;
+	mutable bool exit_thread;
+	bool pcm_open;
+
+	WAVEFORMATEX wave_format;
+	Microsoft::WRL::ComPtr<IXAudio2> xaudio;
+	IXAudio2MasteringVoice* mastering_voice;
+	XAUDIO2_BUFFER xaudio_buffer;
+	IXAudio2SourceVoice* source_voice;
+	XAudio2DriverVoiceCallback* voice_callback;
+
+public:
+
+	const char* get_name() const;
+
+	virtual Error init();
+	virtual void start();
+	virtual int get_mix_rate() const;
+	virtual OutputFormat get_output_format() const;
+	virtual void lock();
+	virtual void unlock();
+	virtual void finish();
+
+	AudioDriverWinRT();
+	~AudioDriverWinRT();
 };
 
-Thread::ID ThreadWinrt::get_thread_ID_func_winrt() {
-
-	return std::hash<std::thread::id>()(std::this_thread::get_id());
-};
-
-void ThreadWinrt::wait_to_finish_func_winrt(Thread* p_thread) {
-
-	ThreadWinrt *tp=static_cast<ThreadWinrt*>(p_thread);
-	tp->thread.join();
-};
-
-
-Thread::ID ThreadWinrt::get_ID() const {
-
-	return std::hash<std::thread::id>()(thread.get_id());
-};
-
-void ThreadWinrt::make_default() {
-	create_func = create_func_winrt;
-	get_thread_ID_func = get_thread_ID_func_winrt;
-	wait_to_finish_func = wait_to_finish_func_winrt;
-};
-
-ThreadWinrt::ThreadWinrt() {
-
-};
-
-ThreadWinrt::~ThreadWinrt() {
-
-};
-
+#endif
