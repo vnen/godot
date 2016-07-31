@@ -42,11 +42,15 @@
 
 class AudioDriverWinRT : public AudioDriverSW {
 
+	enum {
+		AUDIO_BUFFERS = 2
+	};
+
 	struct XAudio2DriverVoiceCallback : public IXAudio2VoiceCallback {
 
 		HANDLE buffer_end_event;
 		XAudio2DriverVoiceCallback() : buffer_end_event(CreateEvent(NULL, FALSE, FALSE, NULL)) {}
-		void OnBufferEnd(void*) { SetEvent(buffer_end_event); }
+		void OnBufferEnd(void* pBufferContext) { SetEvent(buffer_end_event); }
 
 		//Unused methods are stubs
 		void OnStreamEnd() { }
@@ -62,7 +66,7 @@ class AudioDriverWinRT : public AudioDriverSW {
 	Mutex* mutex;
 
 	int32_t* samples_in;
-	int16_t* samples_out;
+	int16_t* samples_out[AUDIO_BUFFERS];
 
 	static void thread_func(void* p_udata);
 	int buffer_size;
@@ -79,8 +83,9 @@ class AudioDriverWinRT : public AudioDriverSW {
 
 	WAVEFORMATEX wave_format;
 	Microsoft::WRL::ComPtr<IXAudio2> xaudio;
+	int current_buffer;
 	IXAudio2MasteringVoice* mastering_voice;
-	XAUDIO2_BUFFER xaudio_buffer;
+	XAUDIO2_BUFFER xaudio_buffer[AUDIO_BUFFERS];
 	IXAudio2SourceVoice* source_voice;
 	XAudio2DriverVoiceCallback* voice_callback;
 
