@@ -273,9 +273,9 @@ void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core
 		} else if (point->Properties->MouseWheelDelta < 0) {
 			event.mouse_button.button_index = point->Properties->IsHorizontalMouseWheel ? BUTTON_WHEEL_LEFT : BUTTON_WHEEL_DOWN;
 		}
-		print_line("is wheel " + String(point->Properties->IsHorizontalMouseWheel ? "horizontal " : "vertical ") + itos(point->Properties->MouseWheelDelta));
+		//print_line("is wheel " + String(point->Properties->IsHorizontalMouseWheel ? "horizontal " : "vertical ") + itos(point->Properties->MouseWheelDelta));
 	}
-	print_line("Mouse event: " + rtos(pos.X) + ", " + rtos(pos.Y));
+	//print_line("Mouse event: " + rtos(pos.X) + ", " + rtos(pos.Y));
 
 	last_touch_x[31] = pos.X;
 	last_touch_y[31] = pos.Y;
@@ -337,26 +337,6 @@ void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Cor
 }
 void App::key_event(Windows::UI::Core::CoreWindow^ sender, bool p_pressed, Windows::UI::Core::KeyEventArgs^ key_args, Windows::UI::Core::CharacterReceivedEventArgs^ char_args)
 {
-#if 0
-	InputEvent ev;
-	ev.type = InputEvent::KEY;
-	InputEventKey &k = ev.key;
-	k.scancode = KeyMappingWindows::get_keysym(key_args != nullptr ? (unsigned int)key_args->VirtualKey : char_args->KeyCode);
-	k.unicode = 0;
-	k.pressed = p_pressed;
-	k.echo = (!p_pressed && !args->KeyStatus.IsKeyReleased) || (p_pressed && args->KeyStatus.WasKeyDown);
-
-	k.mod.control = sender->GetAsyncKeyState(VirtualKey::Control) == CoreVirtualKeyStates::Down;
-	k.mod.alt = sender->GetAsyncKeyState(VirtualKey::Menu) == CoreVirtualKeyStates::Down || sender->GetAsyncKeyState(VirtualKey::LeftMenu) == CoreVirtualKeyStates::Down;
-	k.mod.shift = sender->GetAsyncKeyState(VirtualKey::Shift) == CoreVirtualKeyStates::Down;
-	
-	os->input_event(ev);
-
-	print_line("key event " + String(args->VirtualKey.ToString()->Data()) +  " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
-
-	args->Handled = true;
-#endif
-
 
 	OSWinrt::KeyEvent ke;
 
@@ -390,19 +370,19 @@ void App::key_event(Windows::UI::Core::CoreWindow^ sender, bool p_pressed, Windo
 }
 void App::OnKeyDown(CoreWindow^ sender, KeyEventArgs^ args)
 {
-	print_line("key down event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
+	//print_line("key down event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
 	key_event(sender, true, args);
 }
 
 void App::OnKeyUp(CoreWindow^ sender, KeyEventArgs^ args)
 {
-	print_line("key up event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
+	//print_line("key up event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
 	key_event(sender, false, args);
 }
 
 void App::OnCharacterReceived(CoreWindow^ sender, CharacterReceivedEventArgs^ args)
 {
-	print_line("Character received " + itos(args->KeyCode) + " " + String::chr(args->KeyCode) + " sk code " + itos(args->KeyStatus.ScanCode));
+	//print_line("Character received " + itos(args->KeyCode) + " " + String::chr(args->KeyCode) + " sk code " + itos(args->KeyStatus.ScanCode));
 	key_event(sender, true, nullptr, args);
 }
 

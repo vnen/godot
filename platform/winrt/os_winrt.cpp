@@ -293,9 +293,9 @@ String OSWinrt::get_clipboard() const {
 
 void OSWinrt::input_event(InputEvent &p_event) {
 	p_event.ID = ++last_id;
-	if (p_event.type == InputEvent::KEY) {
+	/*if (p_event.type == InputEvent::KEY) {
 		print_line("running event " + itos(p_event.ID) + " is unicode " + itos(p_event.key.unicode) + " and scancode " + itos(p_event.key.scancode));
-	}
+	}*/
 	input->parse_input_event(p_event);
 	if (p_event.type == InputEvent::MOUSE_BUTTON && p_event.mouse_button.pressed && p_event.mouse_button.button_index>3) {
 		//send release for mouse wheel
