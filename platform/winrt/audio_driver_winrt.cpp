@@ -51,7 +51,7 @@ Error AudioDriverWinRT::init() {
 	samples_in = NULL;
 
 
-	mix_rate = 44100;
+	mix_rate = 48000;
 	output_format = OUTPUT_STEREO;
 	channels = 2;
 
@@ -78,12 +78,23 @@ Error AudioDriverWinRT::init() {
 		ERR_FAIL_V(ERR_UNAVAILABLE);
 	}
 
+#ifdef DEBUG_ENABLED
+	XAUDIO2_DEBUG_CONFIGURATION debug_config;
+	debug_config.TraceMask = XAUDIO2_LOG_DETAIL | XAUDIO2_LOG_WARNINGS | XAUDIO2_LOG_STREAMING;
+	debug_config.LogFileline = true;
+	debug_config.LogTiming = false;
+	debug_config.LogFunctionName = true;
+	debug_config.LogThreadID = false;
+	xaudio->SetDebugConfiguration(&debug_config);
+#endif
+		
+
 	wave_format.nChannels = channels;
 	wave_format.cbSize = 0;
 	wave_format.nSamplesPerSec = mix_rate;
 	wave_format.wFormatTag = WAVE_FORMAT_PCM;
 	wave_format.wBitsPerSample = 16;
-	wave_format.nBlockAlign = channels * wave_format.wBitsPerSample  >> 3;
+	wave_format.nBlockAlign = channels * wave_format.wBitsPerSample >> 3;
 	wave_format.nAvgBytesPerSec = mix_rate * wave_format.nBlockAlign;
 
 	voice_callback = memnew(XAudio2DriverVoiceCallback);
@@ -91,12 +102,6 @@ Error AudioDriverWinRT::init() {
 	hr = xaudio->CreateSourceVoice(&source_voice, &wave_format, 0, XAUDIO2_MAX_FREQ_RATIO, voice_callback);
 	if (hr != S_OK) {
 		ERR_EXPLAIN("Error creating XAudio2 source voice. " + itos(hr));
-		ERR_FAIL_V(ERR_UNAVAILABLE);
-	}
-
-	hr = source_voice->SubmitSourceBuffer(&xaudio_buffer[0]);
-	if (hr != S_OK) {
-		ERR_EXPLAIN("Error submiting XAudio2 source voice buffer. " + itos(hr));
 		ERR_FAIL_V(ERR_UNAVAILABLE);
 	}
 
@@ -121,11 +126,6 @@ void AudioDriverWinRT::thread_func(void* p_udata) {
 
 		if (!ad->active) {
 
-			for (unsigned int i = 0; i < ad->buffer_size * ad->channels; i++) {
-
-				ad->samples_out[i] = 0;
-			}
-
 			for (int i = 0; i < AUDIO_BUFFERS; i++) {
 				ad->xaudio_buffer[i].Flags = XAUDIO2_END_OF_STREAM;
 			}
@@ -143,27 +143,28 @@ void AudioDriverWinRT::thread_func(void* p_udata) {
 				ad->samples_out[ad->current_buffer][i] = ad->samples_in[i] >> 16;
 			}
 
-			XAUDIO2_VOICE_STATE state;
-			while (ad->source_voice->GetState(&state), state.BuffersQueued > AUDIO_BUFFERS - 1)
-			{
-				print_line("waiting for buffers");
-				WaitForSingleObject(ad->voice_callback->buffer_end_event, INFINITE);
-			}
-
-			print_line("running again");
+			//print_line("running again");
 
 			ad->xaudio_buffer[ad->current_buffer].Flags = 0;
 			ad->xaudio_buffer[ad->current_buffer].AudioBytes = ad->buffer_size * ad->channels * sizeof(int16_t);
 			ad->xaudio_buffer[ad->current_buffer].pAudioData = (const BYTE*)(ad->samples_out[ad->current_buffer]);
+			ad->xaudio_buffer[ad->current_buffer].PlayBegin = 0;
 			ad->source_voice->SubmitSourceBuffer(&(ad->xaudio_buffer[ad->current_buffer]));
 
 			ad->current_buffer = (ad->current_buffer + 1) % AUDIO_BUFFERS;
+
+			XAUDIO2_VOICE_STATE state;
+			while (ad->source_voice->GetState(&state), state.BuffersQueued > AUDIO_BUFFERS - 1)
+			{
+				//print_line("waiting for buffers");
+				WaitForSingleObject(ad->voice_callback->buffer_end_event, INFINITE);
+			}
 		}
 
 	};
 
 	ad->thread_exited = true;
-	print_line("audio thread exited");
+	//print_line("audio thread exited");
 
 };
 
@@ -185,6 +186,18 @@ AudioDriverSW::OutputFormat AudioDriverWinRT::get_output_format() const {
 
 	return output_format;
 };
+
+float AudioDriverWinRT::get_latency() {
+
+	XAUDIO2_PERFORMANCE_DATA perf_data;
+	xaudio->GetPerformanceData(&perf_data);
+	if (perf_data.CurrentLatencyInSamples) {
+		return (float)(perf_data.CurrentLatencyInSamples / ((float)mix_rate));
+	} else {
+		return 0;
+	}
+}
+
 void AudioDriverWinRT::lock() {
 
 	if (!thread || !mutex)
@@ -221,6 +234,7 @@ void AudioDriverWinRT::finish() {
 	};
 
 	memdelete(voice_callback);
+	memdelete(mastering_voice);
 
 	memdelete(thread);
 	if (mutex)

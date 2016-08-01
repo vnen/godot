@@ -50,7 +50,7 @@ class AudioDriverWinRT : public AudioDriverSW {
 
 		HANDLE buffer_end_event;
 		XAudio2DriverVoiceCallback() : buffer_end_event(CreateEvent(NULL, FALSE, FALSE, NULL)) {}
-		void OnBufferEnd(void* pBufferContext) { SetEvent(buffer_end_event); }
+		void OnBufferEnd(void* pBufferContext) { /*print_line("buffer ended");*/ SetEvent(buffer_end_event); }
 
 		//Unused methods are stubs
 		void OnStreamEnd() { }
@@ -97,6 +97,7 @@ public:
 	virtual void start();
 	virtual int get_mix_rate() const;
 	virtual OutputFormat get_output_format() const;
+	virtual float get_latency();
 	virtual void lock();
 	virtual void unlock();
 	virtual void finish();
