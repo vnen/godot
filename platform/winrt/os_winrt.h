@@ -166,6 +166,13 @@ private:
 	void _drag_event(int idx,UINT uMsg, WPARAM	wParam,	LPARAM	lParam);
 	void _touch_event(int idx, UINT uMsg, WPARAM	wParam,	LPARAM	lParam);
 
+	ref class ManagedType sealed {
+	public:
+		property bool alert_close_handle;
+		void alert_close(Windows::UI::Popups::IUICommand^ command);
+		ManagedType() { alert_close_handle = false; }
+	};
+	ManagedType^ managed_object;
 
 	// functions used by main to initialize/deintialize the OS
 protected:

@@ -53,6 +53,7 @@ using namespace Windows::ApplicationModel::Core;
 using namespace Windows::ApplicationModel::Activation;
 using namespace Windows::UI::Core;
 using namespace Windows::UI::Input;
+using namespace Windows::UI::Popups;
 using namespace Windows::Foundation;
 using namespace Windows::Graphics::Display;
 using namespace Microsoft::WRL;
@@ -397,7 +398,23 @@ void OSWinrt::vprint(const char* p_format, va_list p_list, bool p_stderr) {
 
 void OSWinrt::alert(const String& p_alert,const String& p_title) {
 
-	print_line("ALERT: "+p_alert);
+	Platform::String^ alert = ref new Platform::String(p_alert.c_str());
+	Platform::String^ title = ref new Platform::String(p_title.c_str());
+
+	MessageDialog^ msg = ref new MessageDialog(alert, title);
+
+	UICommand^ close = ref new UICommand("Close", ref new UICommandInvokedHandler(managed_object, &OSWinrt::ManagedType::alert_close));
+	msg->Commands->Append(close);
+	msg->DefaultCommandIndex = 0;
+	
+	managed_object->alert_close_handle = true;
+
+	msg->ShowAsync();
+}
+
+void OSWinrt::ManagedType::alert_close(IUICommand^ command) {
+
+	alert_close_handle = false;
 }
 
 void OSWinrt::set_mouse_mode(MouseMode p_mode) {
@@ -691,6 +708,7 @@ void OSWinrt::run() {
 	while (!force_quit) {
 
 		CoreWindow::GetForCurrentThread()->Dispatcher->ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
+		if (managed_object->alert_close_handle) continue;
 		process_events(); // get rid of pending events
 		if (Main::iteration()==true)
 			break;
@@ -736,6 +754,8 @@ OSWinrt::OSWinrt() {
 #endif
 
 	gl_context = NULL;
+
+	managed_object = ref new ManagedType;
 
 	AudioDriverManagerSW::add_driver(&audio_driver);
 }
