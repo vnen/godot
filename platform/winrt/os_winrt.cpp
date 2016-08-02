@@ -32,7 +32,7 @@
 #include "drivers/unix/memory_pool_static_malloc.h"
 #include "os/memory_pool_dynamic_static.h"
 #include "thread_winrt.h"
-//#include "drivers/windows/semaphore_windows.h"
+#include "drivers/windows/semaphore_windows.h"
 #include "drivers/windows/mutex_windows.h"
 #include "main/main.h"
 #include "drivers/windows/file_access_windows.h"
@@ -103,7 +103,7 @@ void OSWinrt::initialize_core() {
 	//RedirectIOToConsole();
 
 	ThreadWinrt::make_default();
-	//SemaphoreWindows::make_default();
+	SemaphoreWindows::make_default();
 	MutexWindows::make_default();
 
 	FileAccess::make_default<FileAccessWindows>(FileAccess::ACCESS_RESOURCES);
