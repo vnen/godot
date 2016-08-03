@@ -50,15 +50,15 @@ class AudioDriverWinRT : public AudioDriverSW {
 
 		HANDLE buffer_end_event;
 		XAudio2DriverVoiceCallback() : buffer_end_event(CreateEvent(NULL, FALSE, FALSE, NULL)) {}
-		void OnBufferEnd(void* pBufferContext) { /*print_line("buffer ended");*/ SetEvent(buffer_end_event); }
+		void STDMETHODCALLTYPE OnBufferEnd(void* pBufferContext) { /*print_line("buffer ended");*/ SetEvent(buffer_end_event); }
 
 		//Unused methods are stubs
-		void OnStreamEnd() { }
-		void OnVoiceProcessingPassEnd() { }
-		void OnVoiceProcessingPassStart(UINT32 SamplesRequired) {    }
-		void OnBufferStart(void * pBufferContext) {    }
-		void OnLoopEnd(void * pBufferContext) {    }
-		void OnVoiceError(void * pBufferContext, HRESULT Error) { }
+		void STDMETHODCALLTYPE OnStreamEnd() { }
+		void STDMETHODCALLTYPE OnVoiceProcessingPassEnd() { }
+		void STDMETHODCALLTYPE OnVoiceProcessingPassStart(UINT32 SamplesRequired) {    }
+		void STDMETHODCALLTYPE OnBufferStart(void * pBufferContext) {    }
+		void STDMETHODCALLTYPE OnLoopEnd(void * pBufferContext) {    }
+		void STDMETHODCALLTYPE OnVoiceError(void * pBufferContext, HRESULT Error) { }
 
 	};
 
