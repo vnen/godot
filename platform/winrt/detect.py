@@ -59,8 +59,10 @@ def configure(env):
 		env.Append(LINKFLAGS=['/INCREMENTAL:NO', '/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "WindowsPhoneCore.lib", "RuntimeObject.lib", "PhoneAppModelHost.lib", "/DEBUG", "/MACHINE:ARM", '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
 		env.Append(LIBPATH=['#platform/winrt/ARM/lib'])
 
-		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /analyze- /Zc:wchar_t /Zi /Gm- /Od /fp:precise /fp:precise /D "PSAPI_VERSION=2" /D "WINAPI_FAMILY=WINAPI_FAMILY_PHONE_APP" /DWINDOWSPHONE_ENABLED /D "_UITHREADCTXT_SUPPORT=0" /D "_UNICODE" /D "UNICODE" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy- /Oi /MD /RTC1 /Gd /EHsc /nologo'))
+		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /analyze- /Zc:wchar_t /Zi /Gm- /Od /fp:precise /fp:precise /D "PSAPI_VERSION=2" /D "WINAPI_FAMILY=WINAPI_FAMILY_PHONE_APP" /DWINDOWSPHONE_ENABLED /D "_UITHREADCTXT_SUPPORT=0" /D "_UNICODE" /D "UNICODE" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy- /Oi /Gd /EHsc /nologo'))
 		env.Append(CXXFLAGS=string.split('/ZW /FS'))
+		#env.Append(CPPFLAGS=['/FU', 'C:/Program Files (x86)/Windows Phone Kits/8.1/References/CommonConfiguration/Neutral/Windows.winmd'])
+		#env.Append(CPPFLAGS=['/FU', 'platform.winmd'])
 
 		if (env["target"]=="release"):
 
@@ -74,7 +76,7 @@ def configure(env):
 
 		elif (env["target"]=="debug"):
 
-			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO'])
+			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO','/RTC1'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 			env.Append(LINKFLAGS=['/DEBUG'])
 
@@ -94,9 +96,12 @@ def configure(env):
 
 	else:
 
-		env.Append(LINKFLAGS=['/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "kernel32.lib", '/WINMD', '/APPCONTAINER', '/SAFESEH', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
-
+		env.Append(LINKFLAGS=['/MANIFEST:NO', '/NXCOMPAT', '/DYNAMICBASE', '/WINMD', '/APPCONTAINER', '/SAFESEH', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1', '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"'])
+		env.Append(CPPFLAGS=['/D','__WRL_NO_DEFAULT_LIB__'])
+		#env.Append(CPPFLAGS=['/FU', os.environ['VCINSTALLDIR'] + 'lib/store/references/platform.winmd'])
 		env.Append(LIBPATH=['#platform/winrt/x64/lib'])
+		env.Append(LIBPATH=[os.environ['VCINSTALLDIR'] + 'lib/store'])
+		env.Append(LIBPATH=['C:/Program Files (x86)/Windows Phone Kits/8.1/lib/x86'])
 		
 		if (env["bits"] == "32"):
 			arch = "x86"
@@ -112,9 +117,9 @@ def configure(env):
 
 		if (env["target"]=="release"):
 
-			env.Append(CCFLAGS=['/O2'])
-			env.Append(LINKFLAGS=['/SUBSYSTEM:WINDOWS'])
-			env.Append(LINKFLAGS=['/ENTRY:mainCRTStartup'])
+			env.Append(CPPFLAGS=['/O2', '/GL'])
+			env.Append(CPPFLAGS=['/MD'])
+			env.Append(LINKFLAGS=['/SUBSYSTEM:WINDOWS', '/LTCG'])
 
 		elif (env["target"]=="test"):
 
@@ -124,6 +129,7 @@ def configure(env):
 		elif (env["target"]=="debug"):
 
 			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO','/DDEBUG_MEMORY_ENABLED'])
+			env.Append(CPPFLAGS=['/MDd'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 			env.Append(LINKFLAGS=['/DEBUG'])
 
@@ -133,10 +139,10 @@ def configure(env):
 			env.Append(LINKFLAGS=['-pg'])
 
 
-		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /Zc:wchar_t /Gm- /Od /fp:precise /D "_UNICODE" /D "UNICODE" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /errorReport:prompt /WX- /Zc:forScope /RTC1 /Gd /MDd /EHsc /nologo'))
+		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /Zc:wchar_t /Gm- /fp:precise /D "_UNICODE" /D "UNICODE" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /errorReport:prompt /WX- /Zc:forScope /Gd /EHsc /nologo'))
 		env.Append(CXXFLAGS=string.split('/ZW /FS'))
 		env.Append(CCFLAGS=['/AI', os.environ['VCINSTALLDIR']+'\\vcpackages', '/AI', os.environ['WINDOWSSDKDIR']+'\\References\\CommonConfiguration\\Neutral'])
-		env.Append(CCFLAGS=['/DWINAPI_FAMILY=WINAPI_FAMILY_APP', '/D_WIN32_WINNT=0x0603', '/DNTDDI_VERSION=0x06030000'])
+		env.Append(CCFLAGS=['/DWINAPI_FAMILY=WINAPI_FAMILY_APP']) #'/D_WIN32_WINNT=0x0603', '/DNTDDI_VERSION=0x06030000'
 
 		env['ENV'] = os.environ;
 
@@ -165,6 +171,13 @@ def configure(env):
 		'libGLESv2',
 		'libANGLE',
 		'xaudio2',
+		#'WindowsPhoneCore',
+		#'kernel32',
+		#'ole32',
+		'WindowsApp',
+		'mincore',
+		#'C:/Program Files (x86)/Windows Kits/10/Lib/10.0.14393.0/um/x86/kernel32',
+		#'C:/Program Files (x86)/Windows Kits/10/Lib/10.0.14393.0/um/x86/ole32',
 		#'kernel32','ole32','user32', 'advapi32'
 		]
 	env.Append(LINKFLAGS=[p+".lib" for p in LIBS])
