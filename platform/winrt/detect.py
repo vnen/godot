@@ -29,6 +29,7 @@ def get_flags():
 	('tools', 'no'),
 	('opus', 'no'),
 	('freetype', 'no'),
+	('openssl', 'no'),
 	]
 
 
@@ -93,11 +94,20 @@ def configure(env):
 
 	else:
 
-		arch = "x64"
-		env.Append(LINKFLAGS=['/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "kernel32.lib", '/MACHINE:X64', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
+		env.Append(LINKFLAGS=['/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "kernel32.lib", '/WINMD', '/APPCONTAINER', '/SAFESEH', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
 
 		env.Append(LIBPATH=['#platform/winrt/x64/lib'])
-		env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_x64/lib'])
+		
+		if (env["bits"] == "32"):
+			arch = "x86"
+			env.Append(CPPFLAGS=['/DPNG_ABORT=abort'])
+			env.Append(LINKFLAGS=['/MACHINE:X86'])
+			env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_Win32/lib'])
+		else:
+			arch = "x64"
+			env.Append(LINKFLAGS=['/MACHINE:X64'])
+			env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_x64/lib'])
+		
 
 
 		if (env["target"]=="release"):
