@@ -51,7 +51,7 @@
 
 #include <windows.h>
 
-#include "key_mapping_win.h"
+#include "drivers/windows/key_mapping_win.h"
 #include <windowsx.h>
 #include <io.h>
 
