@@ -60,6 +60,7 @@ class AppxPackager {
 		ZIP64_HEADER_SIZE = 0x18,
 		ZIP64_END_OF_CENTRAL_DIR_SIZE = 44,
 		END_OF_CENTRAL_DIR_SIZE = 42,
+		BLOCK_SIZE = 65536,
 	};
 
 	struct BlockHash {
@@ -72,6 +73,7 @@ class AppxPackager {
 
 		String name;
 		int lfh_size;
+		bool compressed;
 		size_t compressed_size;
 		size_t uncompressed_size;
 		Vector<BlockHash> hashes;
@@ -246,8 +248,13 @@ void AppxPackager::make_central_dir_header(uint8_t* p_buf, const FileMeta p_file
 		p_buf[offs++] = (GENERAL_PURPOSE >> (i * 8)) & 0xFF;
 	}
 
-	// Compression, mod date/time
-	for (int i = 0; i < 6; i++) {
+	// Compression
+	for (int i = 0; i < 2; i++) {
+		p_buf[offs++] = (((uint16_t)(p_file.compressed ? 8 : 0)) >> i * 8) & 0xFF;
+	}
+
+	// Modification date/time
+	for (int i = 0; i < 4; i++) {
 		p_buf[offs++] = 0;
 	}
 
@@ -427,6 +434,8 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	meta.name = p_file_name;
 	meta.uncompressed_size = p_len;
 	meta.compressed_size = p_len;
+	meta.compressed = p_compress;
+	meta.zip_offset = package->get_pos();
 
 
 	// Create file header
@@ -434,12 +443,89 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	file_header.resize(BASE_FILE_HEADER_SIZE + p_file_name.length());
 	make_file_header(file_header.ptr(), p_file_name, p_compress);
 	meta.lfh_size = file_header.size();
-	meta.zip_offset = package->get_pos();
 
 	package->store_buffer(file_header.ptr(), file_header.size());
 
-	// Store file
-	package->store_buffer(p_buffer, p_len);
+
+	if (p_compress) {
+
+		z_stream strm;
+		strm.zalloc = zipio_alloc;
+		strm.zfree = zipio_free;
+		FileAccess* strm_f = NULL;
+		strm.opaque = &strm_f;
+
+		int step = 0;
+
+		Vector<uint8_t> strm_in;
+		strm_in.resize(BLOCK_SIZE);
+		Vector<uint8_t> strm_out;
+		strm_out.resize(BLOCK_SIZE + 8);
+
+
+		deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
+
+		while (p_len - step > 0) {
+
+			size_t block_size = (p_len - step) > BLOCK_SIZE ? BLOCK_SIZE : (p_len - step);
+
+			for (int i = 0; i < block_size; i++) {
+				strm_in[i] = p_buffer[step + i];
+			}
+
+			strm.avail_in = block_size;
+			strm.avail_out = strm_out.size();
+			strm.next_in = strm_in.ptr();
+			strm.next_out = strm_out.ptr();
+
+			int total_out_before = strm.total_out;
+
+			deflate(&strm, (p_len - (step + block_size)) > 0 ? Z_SYNC_FLUSH : Z_FINISH);
+
+			BlockHash bh;
+			bh.base64_hash = hash_block(strm_in.ptr(), block_size);
+			bh.compressed_size = strm.total_out - total_out_before;
+
+			package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
+
+			meta.hashes.push_back(bh);
+
+			step += block_size;
+		}
+
+		deflateEnd(&strm);
+
+		meta.compressed_size = strm.total_out;
+
+	} else {
+
+		// Make block hashes
+		if (p_make_hash) {
+			Vector<uint8_t> block;
+			block.resize(BLOCK_SIZE);
+			size_t step = 0;
+
+			while (p_len - step > 0) {
+
+				size_t block_size = (p_len - step) > BLOCK_SIZE ? BLOCK_SIZE : (p_len - step);
+
+				for (int i = 0; i < block_size; i++) {
+					block[i] = p_buffer[step + i];
+				}
+
+				BlockHash bh;
+				bh.base64_hash = hash_block(block.ptr(), block_size);
+				bh.compressed_size = block_size;
+
+				meta.hashes.push_back(bh);
+
+				step += block_size;
+			}
+		}
+
+		// Store file
+		package->store_buffer(p_buffer, p_len);
+	}
 
 	// Calculate file CRC-32
 	uLong crc = crc32(0L, Z_NULL, 0);
@@ -449,33 +535,9 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	// Create data descriptor
 	Vector<uint8_t> file_descriptor;
 	file_descriptor.resize(DATA_DESCRIPTOR_SIZE);
-	make_file_descriptor(file_descriptor.ptr(), crc, p_len, p_len);
+	make_file_descriptor(file_descriptor.ptr(), crc, meta.compressed_size, meta.uncompressed_size);
 
 	package->store_buffer(file_descriptor.ptr(), file_descriptor.size());
-
-	// Make block hashes
-	if (p_make_hash) {
-		Vector<uint8_t> block;
-		block.resize(65536);
-		size_t step = 0;
-
-		while (p_len - step > 0) {
-
-			size_t block_size = (p_len - step) > 65536 ? 65536 : (p_len - step);
-
-			for (int i = 0; i < block_size; i++) {
-				block[i] = p_buffer[step + i];
-			}
-
-			BlockHash bh;
-			bh.base64_hash = hash_block(block.ptr(), block_size);
-			bh.compressed_size = block_size;
-
-			meta.hashes.push_back(bh);
-
-			step += block_size;
-		}
-	}
 
 	file_metadata.push_back(meta);
 }
@@ -490,7 +552,7 @@ void AppxPackager::finish() {
 
 	blockmap_file->get_buffer(blockmap_buffer.ptr(), blockmap_buffer.size());
 
-	add_file("AppxBlockMap.xml", blockmap_buffer.ptr(), blockmap_buffer.size(), false, false);
+	add_file("AppxBlockMap.xml", blockmap_buffer.ptr(), blockmap_buffer.size(), true, false);
 
 	blockmap_file->close();
 	blockmap_file = NULL;
@@ -503,7 +565,7 @@ void AppxPackager::finish() {
 
 	types_file->get_buffer(types_buffer.ptr(), types_buffer.size());
 
-	add_file("[Content_Types].xml", types_buffer.ptr(), types_buffer.size(), false, false);
+	add_file("[Content_Types].xml", types_buffer.ptr(), types_buffer.size(), true, false);
 
 	types_file->close();
 	types_file = NULL;
@@ -582,7 +644,7 @@ Error EditorExportPlatformWinrt::save_appx_file(void * p_userdata, const String 
 	AppxPackager *packager = (AppxPackager*)p_userdata;
 	String dst_path = p_path.replace_first("res://", "");
 
-	packager->add_file(dst_path, p_data.ptr(), p_data.size());
+	packager->add_file(dst_path, p_data.ptr(), p_data.size(), !p_path.ends_with(".png"));
 
 	return OK;
 }
@@ -729,7 +791,7 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 
 		print_line("ADDING: " + file);
 
-		packager.add_file(file, data.ptr(), data.size(), false);
+		packager.add_file(file, data.ptr(), data.size(), !file.ends_with(".png"));
 
 		ret = unzGoToNextFile(pkg);
 	}
