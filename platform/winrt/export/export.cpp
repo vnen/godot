@@ -97,16 +97,16 @@ class AppxPackager {
 
 	void make_block_map();
 
-	void make_file_header(uint8_t *p_buf, String p_name, bool p_compress);
-	void make_file_descriptor(uint8_t* p_buf, uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size);
-	void make_central_dir_header(uint8_t* p_buf, const FileMeta p_file);
+	int write_file_header(String p_name, bool p_compress);
+	int write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size);
+	int write_central_dir_header(const FileMeta p_file);
 	void write_zip64_end_of_central_record();
 	void write_end_of_central_record();
 
 public:
 
 	void init(FileAccess* p_fa, EditorProgress* p_progress);
-	void add_file(String p_file_name, const uint8_t* p_buffer, size_t p_len, bool p_compress = false, bool p_make_hash = true);
+	void add_file(String p_file_name, const uint8_t* p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress = false);
 	void finish();
 };
 
@@ -138,12 +138,11 @@ void AppxPackager::make_block_map() {
 		FileMeta file = file_metadata[i];
 
 		tmp_file->store_string(
-			"<File Name=\"" + file.name.replace("/","\\")
+			"<File Name=\"" + file.name.replace("/", "\\")
 			+ "\" Size=\"" + itos(file.uncompressed_size)
 			+ "\" LfhSize=\"" + itos(file.lfh_size) + "\">");
 
 
-		// <Block Hash="HKjnnQ/pWYOjvpXHoeXz0LPUHuFH7DL5jujS6+f+bsI=" Size="853"/>
 		for (int j = 0; j < file.hashes.size(); j++) {
 
 			tmp_file->store_string("<Block Hash=\""
@@ -160,166 +159,189 @@ void AppxPackager::make_block_map() {
 	tmp_file = NULL;
 }
 
-void AppxPackager::make_file_header(uint8_t *p_buf, String p_name, bool p_compress) {
+int AppxPackager::write_file_header(String p_name, bool p_compress) {
 
-	int name_len = p_name.length();
+	Vector<uint8_t> buf;
+	buf.resize(BASE_FILE_HEADER_SIZE + p_name.length());
 
+	int offs = 0;
 	// Write magic
-	p_buf[0] = 0x50;
-	p_buf[1] = 0x4b;
-	p_buf[2] = 0x03;
-	p_buf[3] = 0x04;
+	for (int i = 0; i < 4; i++) {
+		buf[offs++] = (FILE_HEADER_MAGIC >> (i * 8)) & 0xFF;
+	}
 
 	// Version
-	p_buf[4] = 0x2d;
-	p_buf[5] = 0x00;
+	for (int i = 0; i < 2; i++) {
+		buf[offs++] = (ZIP_VERSION >> (i * 8)) & 0xFF;
+	}
 
 	// Special flag
-	p_buf[6] = 0x08;
-	p_buf[7] = 0x00;
+	for (int i = 0; i < 2; i++) {
+		buf[offs++] = (GENERAL_PURPOSE >> (i * 8)) & 0xFF;
+	}
 
 	// Compression
-	p_buf[8] = p_compress ? 0x08 : 0x00;
-	p_buf[9] = 0x00;
+	for (int i = 0; i < 2; i++) {
+		buf[offs++] = (((uint16_t)(p_compress ? 0x0008 : 0x0000)) >> (i * 8)) & 0xFF;
+	}
 
 	// Empty header data
-	for (int i = 10; i < 26; i++) {
-		p_buf[i] = 0x00;
+	for (int i = 0; i < 16; i++) {
+		buf[offs++] = 0;
 	}
 
-	// File name length (little-endian)
-	p_buf[26] = name_len & 0xFF;
-	p_buf[27] = (name_len >> 8) & 0xFF;
+	// File name length
+	for (int i = 0; i < 2; i++) {
+		buf[offs++] = (p_name.length() >> (i * 8)) & 0xFF;
+	}
 
 	// Extra data length
-	p_buf[28] = 0x00;
-	p_buf[29] = 0x00;
+	for (int i = 0; i < 2; i++) {
+		buf[offs++] = 0;
+	}
 
 	// File name
-	for (int i = 0; i < name_len; i++) {
-		p_buf[i + 30] = p_name.utf8().get(i);
+	for (int i = 0; i < p_name.length(); i++) {
+		buf[offs++] = p_name.utf8().get(i);
 	}
 
 	// Done!
+	package->store_buffer(buf.ptr(), buf.size());
+
+	return buf.size();
 }
 
-void AppxPackager::make_file_descriptor(uint8_t* p_buf, uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size) {
+int AppxPackager::write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size) {
 
-	// Write magic
-	for (int i = 0; i < 4; i++) {
-		p_buf[i] = (DATA_DESCRIPTOR_MAGIC >> (i*8)) & 0xFF;
-	}
-
-	// CRC
-	for (int i = 0; i < 4; i++) {
-		p_buf[i + 4] = (p_crc32 >> (i*8)) & 0xFF;
-	}
-
-	// Compressed size
-	for (int i = 0; i < 8; i++) {
-		p_buf[i + 8] = (p_compressed_size >> (i*8)) & 0xFF;
-	}
-
-	// Uncompressed size
-	for (int i = 0; i < 8; i++) {
-		p_buf[i + 16] = (p_uncompressed_size >> (i*8)) & 0xFF;
-	}
-
-	// Done!
-}
-
-void AppxPackager::make_central_dir_header(uint8_t* p_buf, const FileMeta p_file) {
+	Vector<uint8_t> buf;
+	buf.resize(DATA_DESCRIPTOR_SIZE);
 
 	int offs = 0;
 
 	// Write magic
 	for (int i = 0; i < 4; i++) {
-		p_buf[offs++] = (CENTRAL_DIR_MAGIC >> (i*8)) & 0xFF;
+		buf[offs++] = (DATA_DESCRIPTOR_MAGIC >> (i * 8)) & 0xFF;
+	}
+
+	// CRC
+	for (int i = 0; i < 4; i++) {
+		buf[offs++] = (p_crc32 >> (i * 8)) & 0xFF;
+	}
+
+	// Compressed size
+	for (int i = 0; i < 8; i++) {
+		buf[offs++] = (p_compressed_size >> (i * 8)) & 0xFF;
+	}
+
+	// Uncompressed size
+	for (int i = 0; i < 8; i++) {
+		buf[offs++] = (p_uncompressed_size >> (i * 8)) & 0xFF;
+	}
+
+	// Done!
+	package->store_buffer(buf.ptr(), buf.size());
+
+	return buf.size();
+}
+
+int AppxPackager::write_central_dir_header(const FileMeta p_file) {
+
+	Vector<uint8_t> buf;
+	buf.resize(BASE_CENTRAL_DIR_SIZE + p_file.name.length() + EXTRA_FIELD_LENGTH);
+
+	int offs = 0;
+
+	// Write magic
+	for (int i = 0; i < 4; i++) {
+		buf[offs++] = (CENTRAL_DIR_MAGIC >> (i * 8)) & 0xFF;
 	}
 	// Version (twice)
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (ZIP_VERSION >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP_VERSION >> (i * 8)) & 0xFF;
 	}
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (ZIP_VERSION >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP_VERSION >> (i * 8)) & 0xFF;
 	}
 	// General purpose flag
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (GENERAL_PURPOSE >> (i * 8)) & 0xFF;
+		buf[offs++] = (GENERAL_PURPOSE >> (i * 8)) & 0xFF;
 	}
 
 	// Compression
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (((uint16_t)(p_file.compressed ? 8 : 0)) >> i * 8) & 0xFF;
+		buf[offs++] = (((uint16_t)(p_file.compressed ? 8 : 0)) >> i * 8) & 0xFF;
 	}
 
 	// Modification date/time
 	for (int i = 0; i < 4; i++) {
-		p_buf[offs++] = 0;
+		buf[offs++] = 0;
 	}
 
 	// Crc-32
 	for (int i = 0; i < 4; i++) {
-		p_buf[offs++] = (p_file.file_crc32 >> (i*8)) & 0xFF;
+		buf[offs++] = (p_file.file_crc32 >> (i * 8)) & 0xFF;
 	}
 
 	// File sizes (will be in extra field)
 	for (int i = 0; i < 8; i++) {
-		p_buf[offs++] = 0xFF;
+		buf[offs++] = 0xFF;
 	}
 
 	// File name length
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (p_file.name.length() >> (i*8)) & 0xFF;
+		buf[offs++] = (p_file.name.length() >> (i * 8)) & 0xFF;
 	}
 
 	// Extra field length
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (EXTRA_FIELD_LENGTH >> (i*8)) & 0xFF;
+		buf[offs++] = (EXTRA_FIELD_LENGTH >> (i * 8)) & 0xFF;
 	}
 
 	// Comment length
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = 0;
+		buf[offs++] = 0;
 	}
 
 	// Disk number start, internal/external file attributes
 	for (int i = 0; i < 8; i++) {
-		p_buf[offs++] = 0;
+		buf[offs++] = 0;
 	}
 
 	// Relative offset (will be on extra field)
 	for (int i = 0; i < 4; i++) {
-		p_buf[offs++] = 0xFF;
+		buf[offs++] = 0xFF;
 	}
 
 	// File name
 	for (int i = 0; i < p_file.name.length(); i++) {
-		p_buf[offs++] = p_file.name.utf8().get(i);
+		buf[offs++] = p_file.name.utf8().get(i);
 	}
 
 	// Zip64 extra field
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (ZIP64_HEADER_ID >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP64_HEADER_ID >> (i * 8)) & 0xFF;
 	}
 	for (int i = 0; i < 2; i++) {
-		p_buf[offs++] = (ZIP64_HEADER_SIZE >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP64_HEADER_SIZE >> (i * 8)) & 0xFF;
 	}
 
 	// Original size
 	for (int i = 0; i < 8; i++) {
-		p_buf[offs++] = (p_file.uncompressed_size >> (i*8)) & 0xFF;
+		buf[offs++] = (p_file.uncompressed_size >> (i * 8)) & 0xFF;
 	}
 	// Compressed size
 	for (int i = 0; i < 8; i++) {
-		p_buf[offs++] = (p_file.compressed_size >> (i*8)) & 0xFF;
+		buf[offs++] = (p_file.compressed_size >> (i * 8)) & 0xFF;
 	}
 	// File offset
 	for (int i = 0; i < 8; i++) {
-		p_buf[offs++] = (p_file.zip_offset >> (i*8)) & 0xFF;
+		buf[offs++] = (p_file.zip_offset >> (i * 8)) & 0xFF;
 	}
 
 	// Done!
+	package->store_buffer(buf.ptr(), buf.size());
+
+	return buf.size();
 }
 
 void AppxPackager::write_zip64_end_of_central_record() {
@@ -331,20 +353,20 @@ void AppxPackager::write_zip64_end_of_central_record() {
 
 	// Write magic
 	for (int i = 0; i < 4; i++) {
-		buf[offs++] = (ZIP64_END_OF_CENTRAL_DIR_MAGIC >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP64_END_OF_CENTRAL_DIR_MAGIC >> (i * 8)) & 0xFF;
 	}
 
 	// Size of this record
 	for (int i = 0; i < 8; i++) {
-		buf[offs++] = (((uint64_t)ZIP64_END_OF_CENTRAL_DIR_SIZE) >> (i*8)) & 0xFF;
+		buf[offs++] = (((uint64_t)ZIP64_END_OF_CENTRAL_DIR_SIZE) >> (i * 8)) & 0xFF;
 	}
 
 	// Version (yes, twice)
 	for (int i = 0; i < 2; i++) {
-		buf[offs++] = (ZIP_VERSION >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP_VERSION >> (i * 8)) & 0xFF;
 	}
 	for (int i = 0; i < 2; i++) {
-		buf[offs++] = (ZIP_VERSION >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP_VERSION >> (i * 8)) & 0xFF;
 	}
 
 	// Disk number
@@ -354,20 +376,20 @@ void AppxPackager::write_zip64_end_of_central_record() {
 
 	// Number of entries (total and per disk)
 	for (int i = 0; i < 8; i++) {
-		buf[offs++] = (((uint64_t)file_metadata.size()) >> (i*8)) & 0xFF;
+		buf[offs++] = (((uint64_t)file_metadata.size()) >> (i * 8)) & 0xFF;
 	}
 	for (int i = 0; i < 8; i++) {
-		buf[offs++] = (((uint64_t)file_metadata.size()) >> (i*8)) & 0xFF;
+		buf[offs++] = (((uint64_t)file_metadata.size()) >> (i * 8)) & 0xFF;
 	}
 
 	// Size of central dir
 	for (int i = 0; i < 8; i++) {
-		buf[offs++] = (((uint64_t)central_dir_size) >> (i*8)) & 0xFF;
+		buf[offs++] = (((uint64_t)central_dir_size) >> (i * 8)) & 0xFF;
 	}
 
 	// Central dir offset
 	for (int i = 0; i < 8; i++) {
-		buf[offs++] = (central_dir_offset >> (i*8)) & 0xFF;
+		buf[offs++] = (central_dir_offset >> (i * 8)) & 0xFF;
 	}
 
 	// Done!
@@ -383,7 +405,7 @@ void AppxPackager::write_end_of_central_record() {
 
 	// Write magic for zip64 centra dir locator
 	for (int i = 0; i < 4; i++) {
-		buf[offs++] = (ZIP64_END_DIR_LOCATOR_MAGIC >> (i*8)) & 0xFF;
+		buf[offs++] = (ZIP64_END_DIR_LOCATOR_MAGIC >> (i * 8)) & 0xFF;
 	}
 
 	// Disk number
@@ -393,17 +415,17 @@ void AppxPackager::write_end_of_central_record() {
 
 	// Relative offset
 	for (int i = 0; i < 8; i++) {
-		buf[offs++] = (end_of_central_dir_offset >> (i*8)) & 0xFF;
+		buf[offs++] = (end_of_central_dir_offset >> (i * 8)) & 0xFF;
 	}
 
 	// Number of disks
 	for (int i = 0; i < 4; i++) {
-		buf[offs++] = (1 >> (i*8)) & 0xFF;
+		buf[offs++] = (1 >> (i * 8)) & 0xFF;
 	}
 
 	// Write magic for end central dir
 	for (int i = 0; i < 4; i++) {
-		buf[offs++] = (END_OF_CENTRAL_DIR_MAGIC >> (i*8)) & 0xFF;
+		buf[offs++] = (END_OF_CENTRAL_DIR_MAGIC >> (i * 8)) & 0xFF;
 	}
 
 	// Dummy stuff for Zip64
@@ -428,7 +450,11 @@ void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress) {
 	tmp_blockmap_file_name = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpblockmap.xml";
 }
 
-void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t p_len, bool p_compress, bool p_make_hash) {
+void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress) {
+
+	if (p_file_no >= 1 && p_total_files >= 1) {
+		progress->step("File: " + p_file_name, 3 + p_file_no * 100 / p_total_files);
+	}
 
 	FileMeta meta;
 	meta.name = p_file_name;
@@ -439,39 +465,40 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 
 
 	// Create file header
-	Vector<uint8_t> file_header;
-	file_header.resize(BASE_FILE_HEADER_SIZE + p_file_name.length());
-	make_file_header(file_header.ptr(), p_file_name, p_compress);
-	meta.lfh_size = file_header.size();
+	meta.lfh_size = write_file_header(p_file_name, p_compress);
 
-	package->store_buffer(file_header.ptr(), file_header.size());
-
+	// Data for compression
+	z_stream strm;
+	FileAccess* strm_f = NULL;
+	Vector<uint8_t> strm_in;
+	strm_in.resize(BLOCK_SIZE);
+	Vector<uint8_t> strm_out;
 
 	if (p_compress) {
 
-		z_stream strm;
 		strm.zalloc = zipio_alloc;
 		strm.zfree = zipio_free;
-		FileAccess* strm_f = NULL;
 		strm.opaque = &strm_f;
 
-		int step = 0;
-
-		Vector<uint8_t> strm_in;
-		strm_in.resize(BLOCK_SIZE);
-		Vector<uint8_t> strm_out;
 		strm_out.resize(BLOCK_SIZE + 8);
 
-
 		deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
+	}
 
-		while (p_len - step > 0) {
+	int step = 0;
 
-			size_t block_size = (p_len - step) > BLOCK_SIZE ? BLOCK_SIZE : (p_len - step);
+	while (p_len - step > 0) {
 
-			for (int i = 0; i < block_size; i++) {
-				strm_in[i] = p_buffer[step + i];
-			}
+		size_t block_size = (p_len - step) > BLOCK_SIZE ? BLOCK_SIZE : (p_len - step);
+
+		for (int i = 0; i < block_size; i++) {
+			strm_in[i] = p_buffer[step + i];
+		}
+
+		BlockHash bh;
+		bh.base64_hash = hash_block(strm_in.ptr(), block_size);
+
+		if (p_compress) {
 
 			strm.avail_in = block_size;
 			strm.avail_out = strm_out.size();
@@ -481,50 +508,28 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 			int total_out_before = strm.total_out;
 
 			deflate(&strm, (p_len - (step + block_size)) > 0 ? Z_SYNC_FLUSH : Z_FINISH);
-
-			BlockHash bh;
-			bh.base64_hash = hash_block(strm_in.ptr(), block_size);
 			bh.compressed_size = strm.total_out - total_out_before;
 
 			package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
 
-			meta.hashes.push_back(bh);
-
-			step += block_size;
+		} else {
+			bh.compressed_size = block_size;
+			package->store_buffer(strm_in.ptr(), block_size);
 		}
 
-		deflateEnd(&strm);
+		meta.hashes.push_back(bh);
 
+		step += block_size;
+	}
+
+	if (p_compress) {
+
+		deflateEnd(&strm);
 		meta.compressed_size = strm.total_out;
 
 	} else {
 
-		// Make block hashes
-		if (p_make_hash) {
-			Vector<uint8_t> block;
-			block.resize(BLOCK_SIZE);
-			size_t step = 0;
-
-			while (p_len - step > 0) {
-
-				size_t block_size = (p_len - step) > BLOCK_SIZE ? BLOCK_SIZE : (p_len - step);
-
-				for (int i = 0; i < block_size; i++) {
-					block[i] = p_buffer[step + i];
-				}
-
-				BlockHash bh;
-				bh.base64_hash = hash_block(block.ptr(), block_size);
-				bh.compressed_size = block_size;
-
-				meta.hashes.push_back(bh);
-
-				step += block_size;
-			}
-		}
-
-		// Store file
-		package->store_buffer(p_buffer, p_len);
+		meta.compressed_size = p_len;
 	}
 
 	// Calculate file CRC-32
@@ -533,11 +538,7 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	meta.file_crc32 = crc;
 
 	// Create data descriptor
-	Vector<uint8_t> file_descriptor;
-	file_descriptor.resize(DATA_DESCRIPTOR_SIZE);
-	make_file_descriptor(file_descriptor.ptr(), crc, meta.compressed_size, meta.uncompressed_size);
-
-	package->store_buffer(file_descriptor.ptr(), file_descriptor.size());
+	write_file_descriptor(crc, meta.compressed_size, meta.uncompressed_size);
 
 	file_metadata.push_back(meta);
 }
@@ -545,6 +546,7 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 void AppxPackager::finish() {
 
 	// Create and add block map file
+	progress->step("Creating block map...", 103);
 	make_block_map();
 	FileAccess* blockmap_file = FileAccess::open(tmp_blockmap_file_name, FileAccess::READ);
 	Vector<uint8_t> blockmap_buffer;
@@ -552,39 +554,33 @@ void AppxPackager::finish() {
 
 	blockmap_file->get_buffer(blockmap_buffer.ptr(), blockmap_buffer.size());
 
-	add_file("AppxBlockMap.xml", blockmap_buffer.ptr(), blockmap_buffer.size(), true, false);
+	add_file("AppxBlockMap.xml", blockmap_buffer.ptr(), blockmap_buffer.size(), -1, -1, true);
 
 	blockmap_file->close();
 	blockmap_file = NULL;
 
 
 	// Add content types
+	progress->step("Setting content types...", 104);
 	FileAccess* types_file = FileAccess::open(EditorSettings::get_singleton()->get_settings_path() + "/tmp/[Content_Types].xml", FileAccess::READ);
 	Vector<uint8_t> types_buffer;
 	types_buffer.resize(types_file->get_len());
 
 	types_file->get_buffer(types_buffer.ptr(), types_buffer.size());
 
-	add_file("[Content_Types].xml", types_buffer.ptr(), types_buffer.size(), true, false);
+	add_file("[Content_Types].xml", types_buffer.ptr(), types_buffer.size(), -1, -1, true);
 
 	types_file->close();
 	types_file = NULL;
 
 
 	// Central directory
+	progress->step("Finishing package...", 105);
 	central_dir_offset = package->get_pos();
 	central_dir_size = 0;
 	for (int i = 0; i < file_metadata.size(); i++) {
 
-		FileMeta file = file_metadata[i];
-		Vector<uint8_t> buff;
-		buff.resize(BASE_CENTRAL_DIR_SIZE + file.name.length() + EXTRA_FIELD_LENGTH);
-
-		central_dir_size += buff.size();
-
-		make_central_dir_header(buff.ptr(), file);
-
-		package->store_buffer(buff.ptr(), buff.size());
+		central_dir_size += write_central_dir_header(file_metadata[i]);
 	}
 
 	// End record
@@ -617,6 +613,7 @@ class EditorExportPlatformWinrt : public EditorExportPlatform {
 	String custom_debug_package;
 
 	static Error save_appx_file(void *p_userdata, const String& p_path, const Vector<uint8_t>& p_data, int p_file, int p_total);
+	static bool _should_compress_asset(const String& p_path, const Vector<uint8_t>& p_data);
 
 protected:
 
@@ -644,9 +641,58 @@ Error EditorExportPlatformWinrt::save_appx_file(void * p_userdata, const String 
 	AppxPackager *packager = (AppxPackager*)p_userdata;
 	String dst_path = p_path.replace_first("res://", "");
 
-	packager->add_file(dst_path, p_data.ptr(), p_data.size(), !p_path.ends_with(".png"));
+	packager->add_file(dst_path, p_data.ptr(), p_data.size(), p_file, p_total, _should_compress_asset(p_path, p_data));
 
 	return OK;
+}
+
+bool EditorExportPlatformWinrt::_should_compress_asset(const String & p_path, const Vector<uint8_t>& p_data) {
+
+	/* TODO: This was copied verbatim from Android export. It should be
+	 * refactored to the parent class and also be used for .zip export.
+	 */
+
+	 /*
+	 *  By not compressing files with little or not benefit in doing so,
+	 *  a performance gain is expected at runtime. Moreover, if the APK is
+	 *  zip-aligned, assets stored as they are can be efficiently read by
+	 *  Android by memory-mapping them.
+	 */
+
+	 // -- Unconditional uncompress to mimic AAPT plus some other
+
+	static const char* unconditional_compress_ext[] = {
+		// From https://github.com/android/platform_frameworks_base/blob/master/tools/aapt/Package.cpp
+		// These formats are already compressed, or don't compress well:
+		".jpg", ".jpeg", ".png", ".gif",
+		".wav", ".mp2", ".mp3", ".ogg", ".aac",
+		".mpg", ".mpeg", ".mid", ".midi", ".smf", ".jet",
+		".rtttl", ".imy", ".xmf", ".mp4", ".m4a",
+		".m4v", ".3gp", ".3gpp", ".3g2", ".3gpp2",
+		".amr", ".awb", ".wma", ".wmv",
+		// Godot-specific:
+		".webp", // Same reasoning as .png
+		".cfb", // Don't let small config files slow-down startup
+				// Trailer for easier processing
+				NULL
+	};
+
+	for (const char** ext = unconditional_compress_ext; *ext; ++ext) {
+		if (p_path.to_lower().ends_with(String(*ext))) {
+			return false;
+		}
+	}
+
+	// -- Compressed resource?
+
+	if (p_data.size() >= 4 && p_data[0] == 'R' && p_data[1] == 'S' && p_data[2] == 'C' && p_data[3] == 'C') {
+		// Already compressed
+		return false;
+	}
+
+	// --- TODO: Decide on texture resources according to their image compression setting
+
+	return true;
 }
 
 bool EditorExportPlatformWinrt::_set(const StringName& p_name, const Variant& p_value) {
@@ -774,9 +820,10 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 		char fname[16834];
 		ret = unzGetCurrentFileInfo(pkg, &info, fname, 16834, NULL, 0, NULL, 0);
 
-		String file = fname;
+		String path = fname;
 
-		if (file.ends_with("/")) {
+		if (path.ends_with("/")) {
+			// Ignore directories
 			ret = unzGoToNextFile(pkg);
 			continue;
 		}
@@ -789,9 +836,9 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 		unzReadCurrentFile(pkg, data.ptr(), data.size());
 		unzCloseCurrentFile(pkg);
 
-		print_line("ADDING: " + file);
+		print_line("ADDING: " + path);
 
-		packager.add_file(file, data.ptr(), data.size(), !file.ends_with(".png"));
+		packager.add_file(path, data.ptr(), data.size(), -1, -1, _should_compress_asset(path, data));
 
 		ret = unzGoToNextFile(pkg);
 	}
