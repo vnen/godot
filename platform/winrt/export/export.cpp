@@ -84,6 +84,7 @@ class AppxPackager {
 	EditorProgress *progress;
 	FileAccess *package;
 	String tmp_blockmap_file_name;
+	String tmp_content_types_file_name;
 
 	Set<String> mime_types;
 
@@ -96,12 +97,15 @@ class AppxPackager {
 	String hash_block(uint8_t* p_block_data, size_t p_block_len);
 
 	void make_block_map();
+	void make_content_types();
 
 	int write_file_header(String p_name, bool p_compress);
 	int write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size);
 	int write_central_dir_header(const FileMeta p_file);
 	void write_zip64_end_of_central_record();
 	void write_end_of_central_record();
+
+	String content_type(String p_extension);
 
 public:
 
@@ -146,8 +150,10 @@ void AppxPackager::make_block_map() {
 		for (int j = 0; j < file.hashes.size(); j++) {
 
 			tmp_file->store_string("<Block Hash=\""
-				+ file.hashes[j].base64_hash + "\" Size=\""
-				+ itos(file.hashes[j].compressed_size) + "\"/>");
+				+ file.hashes[j].base64_hash + "\" ");
+			if (file.compressed)
+				tmp_file->store_string("Size=\"" + itos(file.hashes[j].compressed_size) + "\" ");
+			tmp_file->store_string("/>");
 		}
 
 		tmp_file->store_string("</File>");
@@ -156,6 +162,54 @@ void AppxPackager::make_block_map() {
 	tmp_file->store_string("</BlockMap>");
 
 	tmp_file->close();
+	memdelete(tmp_file);
+	tmp_file = NULL;
+}
+
+String AppxPackager::content_type(String p_extension) {
+
+	if (p_extension == "png")
+		return "image/png";
+	else if (p_extension == "jpg")
+		return "image/jpg";
+	else if (p_extension == "xml")
+		return "application/xml";
+	else if (p_extension == "exe" || p_extension == "dll")
+		return "application/x-msdownload";
+	else
+		return "application/octet-stream";
+}
+
+void AppxPackager::make_content_types() {
+
+	FileAccess* tmp_file = FileAccess::open(tmp_content_types_file_name, FileAccess::WRITE);
+
+	tmp_file->store_string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+	tmp_file->store_string("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">");
+
+	Map<String, String>	types;
+
+	for (int i = 0; i < file_metadata.size(); i++) {
+
+		String ext = file_metadata[i].name.extension();
+
+		if (types.has(ext)) continue;
+
+		types[ext] = content_type(ext);
+
+		tmp_file->store_string("<Default Extension=\"" + ext +
+			"\" ContentType=\""
+			+ types[ext] + "\" />");
+	}
+
+	// Override for manifest and block map
+	tmp_file->store_string("<Override PartName=\"/AppxManifest.xml\" ContentType=\"application/vnd.ms-appx.manifest+xml\" />");
+	tmp_file->store_string("<Override PartName=\"/AppxBlockMap.xml\" ContentType=\"application/vnd.ms-appx.blockmap+xml\" />");
+
+	tmp_file->store_string("</Types>");
+
+	tmp_file->close();
+	memdelete(tmp_file);
 	tmp_file = NULL;
 }
 
@@ -448,6 +502,7 @@ void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress) {
 	central_dir_offset = 0;
 	end_of_central_dir_offset = 0;
 	tmp_blockmap_file_name = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpblockmap.xml";
+	tmp_content_types_file_name = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpcontenttypes.xml";
 }
 
 void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress) {
@@ -507,7 +562,7 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 
 			int total_out_before = strm.total_out;
 
-			deflate(&strm, (p_len - (step + block_size)) > 0 ? Z_SYNC_FLUSH : Z_FINISH);
+			deflate(&strm, Z_FULL_FLUSH);
 			bh.compressed_size = strm.total_out - total_out_before;
 
 			package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
@@ -523,6 +578,17 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	}
 
 	if (p_compress) {
+
+		strm.avail_in = 0;
+		strm.avail_out = strm_out.size();
+		strm.next_in = strm_in.ptr();
+		strm.next_out = strm_out.ptr();
+
+		int total_out_before = strm.total_out;
+
+		deflate(&strm, Z_FINISH);
+
+		package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
 
 		deflateEnd(&strm);
 		meta.compressed_size = strm.total_out;
@@ -557,12 +623,14 @@ void AppxPackager::finish() {
 	add_file("AppxBlockMap.xml", blockmap_buffer.ptr(), blockmap_buffer.size(), -1, -1, true);
 
 	blockmap_file->close();
+	memdelete(blockmap_file);
 	blockmap_file = NULL;
-
 
 	// Add content types
 	progress->step("Setting content types...", 104);
-	FileAccess* types_file = FileAccess::open(EditorSettings::get_singleton()->get_settings_path() + "/tmp/[Content_Types].xml", FileAccess::READ);
+	make_content_types();
+	
+	FileAccess* types_file = FileAccess::open(tmp_content_types_file_name, FileAccess::READ);
 	Vector<uint8_t> types_buffer;
 	types_buffer.resize(types_file->get_len());
 
@@ -571,6 +639,7 @@ void AppxPackager::finish() {
 	add_file("[Content_Types].xml", types_buffer.ptr(), types_buffer.size(), -1, -1, true);
 
 	types_file->close();
+	memdelete(types_file);
 	types_file = NULL;
 
 
@@ -589,6 +658,8 @@ void AppxPackager::finish() {
 	write_end_of_central_record();
 
 	package->close();
+	memdelete(package);
+	package = NULL;
 }
 
 class EditorExportPlatformWinrt : public EditorExportPlatform {
