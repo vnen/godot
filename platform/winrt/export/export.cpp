@@ -51,13 +51,13 @@ class AppxPackager {
 		ZIP64_END_OF_CENTRAL_DIR_MAGIC = 0x06064b50,
 		ZIP64_END_DIR_LOCATOR_MAGIC = 0x07064b50,
 		ZIP64_HEADER_ID = 0x0001,
-		ZIP_VERSION = 0x2d,
+		ZIP_VERSION = 45,
 		GENERAL_PURPOSE = 0x08,
 		BASE_FILE_HEADER_SIZE = 30,
 		DATA_DESCRIPTOR_SIZE = 24,
 		BASE_CENTRAL_DIR_SIZE = 46,
-		EXTRA_FIELD_LENGTH = 0x1c,
-		ZIP64_HEADER_SIZE = 0x18,
+		EXTRA_FIELD_LENGTH = 28,
+		ZIP64_HEADER_SIZE = 24,
 		ZIP64_END_OF_CENTRAL_DIR_SIZE = 44,
 		END_OF_CENTRAL_DIR_SIZE = 42,
 		BLOCK_SIZE = 65536,
@@ -113,6 +113,47 @@ public:
 	void add_file(String p_file_name, const uint8_t* p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress = false);
 	void finish();
 };
+
+class EditorExportPlatformWinrt : public EditorExportPlatform {
+
+	OBJ_TYPE(EditorExportPlatformWinrt, EditorExportPlatform);
+
+	Ref<ImageTexture> logo;
+
+	bool export_x86;
+	bool export_x64;
+	bool export_arm;
+
+	bool is_debug;
+
+	String custom_release_package;
+	String custom_debug_package;
+
+	static Error save_appx_file(void *p_userdata, const String& p_path, const Vector<uint8_t>& p_data, int p_file, int p_total);
+	static bool _should_compress_asset(const String& p_path, const Vector<uint8_t>& p_data);
+
+protected:
+
+	bool _set(const StringName& p_name, const Variant& p_value);
+	bool _get(const StringName& p_name, Variant &r_ret) const;
+	void _get_property_list(List<PropertyInfo> *p_list) const;
+
+public:
+
+	virtual String get_name() const { return "Windows Universal"; }
+	virtual ImageCompression get_image_compression() const { return IMAGE_COMPRESSION_ETC1; }
+	virtual Ref<Texture> get_logo() const { return logo; }
+
+	virtual bool can_export(String *r_error = NULL) const;
+	virtual String get_binary_extension() const { return "appx"; }
+
+	virtual Error export_project(const String& p_path, bool p_debug, int p_flags = 0);
+
+	EditorExportPlatformWinrt();
+	~EditorExportPlatformWinrt();
+};
+
+
 
 String AppxPackager::hash_block(uint8_t * p_block_data, size_t p_block_len) {
 
@@ -662,50 +703,9 @@ void AppxPackager::finish() {
 	package = NULL;
 }
 
-class EditorExportPlatformWinrt : public EditorExportPlatform {
 
-	OBJ_TYPE(EditorExportPlatformWinrt, EditorExportPlatform);
+//////////////////////////////////////////////
 
-	struct AppxExportData {
-
-		zipFile appx;
-		EditorProgress* ep;
-	};
-
-	Ref<ImageTexture> logo;
-
-	bool export_x86;
-	bool export_x64;
-	bool export_arm;
-
-	bool is_debug;
-
-	String custom_release_package;
-	String custom_debug_package;
-
-	static Error save_appx_file(void *p_userdata, const String& p_path, const Vector<uint8_t>& p_data, int p_file, int p_total);
-	static bool _should_compress_asset(const String& p_path, const Vector<uint8_t>& p_data);
-
-protected:
-
-	bool _set(const StringName& p_name, const Variant& p_value);
-	bool _get(const StringName& p_name, Variant &r_ret) const;
-	void _get_property_list(List<PropertyInfo> *p_list) const;
-
-public:
-
-	virtual String get_name() const { return "Windows Universal"; }
-	virtual ImageCompression get_image_compression() const { return IMAGE_COMPRESSION_ETC1; }
-	virtual Ref<Texture> get_logo() const { return logo; }
-
-	virtual bool can_export(String *r_error = NULL) const;
-	virtual String get_binary_extension() const { return "appx"; }
-
-	virtual Error export_project(const String& p_path, bool p_debug, int p_flags = 0);
-
-	EditorExportPlatformWinrt();
-	~EditorExportPlatformWinrt();
-};
 
 Error EditorExportPlatformWinrt::save_appx_file(void * p_userdata, const String & p_path, const Vector<uint8_t>& p_data, int p_file, int p_total) {
 
