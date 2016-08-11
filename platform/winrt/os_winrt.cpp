@@ -53,6 +53,7 @@
 #include "drivers/unix/ip_unix.h"
 
 #include <wrl.h>
+#include <ppltasks.h>
 
 using namespace Windows::ApplicationModel::Core;
 using namespace Windows::ApplicationModel::Activation;
@@ -64,6 +65,8 @@ using namespace Windows::Graphics::Display;
 using namespace Microsoft::WRL;
 using namespace Windows::UI::ViewManagement;
 using namespace Windows::Devices::Input;
+using namespace Windows::ApplicationModel::DataTransfer;
+using namespace concurrency;
 
 
 int OSWinrt::get_video_driver_count() const {
@@ -232,90 +235,27 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 		}
 	}
 
+	managed_object->update_clipboard();
+
+	Clipboard::ContentChanged += ref new EventHandler<Platform::Object^>(managed_object, &ManagedType::on_clipboard_changed);
+
 	_ensure_data_dir();
 
 }
 
 void OSWinrt::set_clipboard(const String& p_text) {
 
-	/*
-	if (!OpenClipboard(hWnd)) {
-		ERR_EXPLAIN("Unable to open clipboard.");
-		ERR_FAIL();
-	};
-	EmptyClipboard();
+	DataPackage^ clip = ref new DataPackage();
+	clip->RequestedOperation = DataPackageOperation::Copy;
+	clip->SetText(ref new Platform::String((const wchar_t*)p_text.c_str()));
 
-	HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, (p_text.length() + 1) * sizeof(CharType));
-	if (mem == NULL) {
-		ERR_EXPLAIN("Unable to allocate memory for clipboard contents.");
-		ERR_FAIL();
-	};
-	LPWSTR lptstrCopy = (LPWSTR)GlobalLock(mem);
-	memcpy(lptstrCopy, p_text.c_str(), (p_text.length() + 1) * sizeof(CharType));
-	//memset((lptstrCopy + p_text.length()), 0, sizeof(CharType));
-	GlobalUnlock(mem);
-
-	SetClipboardData(CF_UNICODETEXT, mem);
-
-	// set the CF_TEXT version (not needed?)
-	CharString utf8 = p_text.utf8();
-	mem = GlobalAlloc(GMEM_MOVEABLE, utf8.length() + 1);
-	if (mem == NULL) {
-		ERR_EXPLAIN("Unable to allocate memory for clipboard contents.");
-		ERR_FAIL();
-	};
-	LPTSTR ptr = (LPTSTR)GlobalLock(mem);
-	memcpy(ptr, utf8.get_data(), utf8.length());
-	ptr[utf8.length()] = 0;
-	GlobalUnlock(mem);
-
-	SetClipboardData(CF_TEXT, mem);
-
-	CloseClipboard();
-	*/
+	Clipboard::SetContent(clip);
 };
 
 String OSWinrt::get_clipboard() const {
 
-	/*
-	String ret;
-	if (!OpenClipboard(hWnd)) {
-		ERR_EXPLAIN("Unable to open clipboard.");
-		ERR_FAIL_V("");
-	};
-
-	if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
-
-		HGLOBAL mem = GetClipboardData(CF_UNICODETEXT);
-		if (mem != NULL) {
-
-			LPWSTR ptr = (LPWSTR)GlobalLock(mem);
-			if (ptr != NULL) {
-
-				ret = String((CharType*)ptr);
-				GlobalUnlock(mem);
-			};
-		};
-
-	} else if (IsClipboardFormatAvailable(CF_TEXT)) {
-
-		HGLOBAL mem = GetClipboardData(CF_UNICODETEXT);
-		if (mem != NULL) {
-
-			LPTSTR ptr = (LPTSTR)GlobalLock(mem);
-			if (ptr != NULL) {
-
-				ret.parse_utf8((const char*)ptr);
-				GlobalUnlock(mem);
-			};
-		};
-	};
-
-	CloseClipboard();
-
-	return ret;
-	*/
-	return "";
+	if (managed_object->clipboard != nullptr)
+		return managed_object->clipboard->Data();
 };
 
 
@@ -442,6 +382,25 @@ void OSWinrt::alert(const String& p_alert,const String& p_title) {
 void OSWinrt::ManagedType::alert_close(IUICommand^ command) {
 
 	alert_close_handle = false;
+}
+
+void OSWinrt::ManagedType::on_clipboard_changed(Platform::Object ^ sender, Platform::Object ^ ev) {
+
+	update_clipboard();
+}
+
+void OSWinrt::ManagedType::update_clipboard() {
+
+	DataPackageView^ data = Clipboard::GetContent();
+
+	if (data->Contains(StandardDataFormats::Text)) {
+
+		create_task(data->GetTextAsync()).then(
+			[this](Platform::String^ clipboard_content) {
+
+			this->clipboard = clipboard_content;
+		});
+	}
 }
 
 void OSWinrt::set_mouse_mode(MouseMode p_mode) {

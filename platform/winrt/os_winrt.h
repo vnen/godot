@@ -170,7 +170,10 @@ private:
 	ref class ManagedType sealed {
 	public:
 		property bool alert_close_handle;
+		property Platform::String^ clipboard;
 		void alert_close(Windows::UI::Popups::IUICommand^ command);
+		void on_clipboard_changed(Platform::Object^ sender, Platform::Object^ ev);
+		void update_clipboard();
 		ManagedType() { alert_close_handle = false; }
 	};
 	ManagedType^ managed_object;
