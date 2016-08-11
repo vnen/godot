@@ -28,7 +28,7 @@
 /*************************************************************************/
 #include "ip_unix.h"
 
-#if defined(UNIX_ENABLED) || defined(WINDOWS_ENABLED) && !defined(WINRT_ENABLED)
+#if defined(UNIX_ENABLED) || defined(WINDOWS_ENABLED)
 
 
 #ifdef WINDOWS_ENABLED
@@ -37,6 +37,7 @@
   #include <winsock2.h>
   #include <windows.h>
   #include <stdio.h>
+  //#include <windows.networking.connectivity.h>
  #else
   #define WINVER 0x0600
   #include <ws2tcpip.h>
@@ -83,6 +84,21 @@ IP_Address IP_Unix::_resolve_hostname(const String& p_hostname) {
 
 void IP_Unix::get_local_addresses(List<IP_Address> *r_addresses) const {
 
+	using namespace Windows::Networking;
+	using namespace Windows::Networking::Connectivity;
+
+	auto hostnames = NetworkInformation::GetHostNames();
+
+	for (int i = 0; i < hostnames->Size; i++) {
+
+		if (hostnames->GetAt(i)->Type == HostNameType::Ipv4 && hostnames->GetAt(i)->IPInformation != nullptr) {
+
+			print_line(String(hostnames->GetAt(i)->CanonicalName->Data()));
+
+			r_addresses->push_back(IP_Address(String(hostnames->GetAt(i)->CanonicalName->Data())));
+
+		}
+	}
 
 };
 #else

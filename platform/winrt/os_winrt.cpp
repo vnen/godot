@@ -47,6 +47,11 @@
 #include "globals.h"
 #include "io/marshalls.h"
 
+#include "platform/windows/packet_peer_udp_winsock.h"
+#include "platform/windows/stream_peer_winsock.h"
+#include "platform/windows/tcp_server_winsock.h"
+#include "drivers/unix/ip_unix.h"
+
 #include <wrl.h>
 
 using namespace Windows::ApplicationModel::Core;
@@ -117,6 +122,10 @@ void OSWinrt::initialize_core() {
 	//TCPServerWinsock::make_default();
 	//StreamPeerWinsock::make_default();
 
+	TCPServerWinsock::make_default();
+	StreamPeerWinsock::make_default();
+	PacketPeerUDPWinsock::make_default();
+
 	mempool_static = new MemoryPoolStaticMalloc;
 #if 1
 	mempool_dynamic = memnew( MemoryPoolDynamicStatic );
@@ -134,6 +143,8 @@ void OSWinrt::initialize_core() {
 	// the start of the computer when we call GetGameTime()
 	ticks_start = 0;
 	ticks_start = get_ticks_usec();
+
+	IP_Unix::make_default();
 
 	cursor_shape=CURSOR_ARROW;
 }
@@ -207,6 +218,7 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 
 
 	_ensure_data_dir();
+
 }
 
 void OSWinrt::set_clipboard(const String& p_text) {
