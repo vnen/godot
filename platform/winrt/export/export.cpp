@@ -40,6 +40,164 @@
 #include "io/sha256.h"
 #include "io/base64.h"
 #include "bind/core_bind.h"
+#include <zlib.h>
+
+#include <openssl/bio.h>
+#include <openssl/asn1.h>
+#include <openssl/pkcs7.h>
+#include <openssl/pkcs12.h>
+#include <openssl/err.h>
+#include <openssl/asn1t.h>
+#include <openssl/x509.h>
+#include <openssl/ossl_typ.h>
+
+namespace asn1 {
+	// https://msdn.microsoft.com/en-us/gg463180.aspx
+
+	struct SPCStatementType {
+		ASN1_OBJECT *type;
+	};
+	DECLARE_ASN1_FUNCTIONS(SPCStatementType)
+
+	struct SPCSpOpusInfo {
+		ASN1_TYPE *programName;
+		ASN1_TYPE *moreInfo;
+	};
+	DECLARE_ASN1_FUNCTIONS(SPCSpOpusInfo)
+
+	struct DigestInfo {
+		X509_ALGOR *digestAlgorithm;
+		ASN1_OCTET_STRING *digest;
+	};
+	DECLARE_ASN1_FUNCTIONS(DigestInfo)
+
+	struct SPCAttributeTypeAndOptionalValue {
+		ASN1_OBJECT *type;
+		ASN1_TYPE *value;  // SPCInfoValue
+	};
+	DECLARE_ASN1_FUNCTIONS(SPCAttributeTypeAndOptionalValue)
+
+	// Undocumented.
+	struct SPCInfoValue {
+		ASN1_INTEGER *i1;
+		ASN1_OCTET_STRING *s1;
+		ASN1_INTEGER *i2;
+		ASN1_INTEGER *i3;
+		ASN1_INTEGER *i4;
+		ASN1_INTEGER *i5;
+		ASN1_INTEGER *i6;
+	};
+	DECLARE_ASN1_FUNCTIONS(SPCInfoValue)
+
+	struct SPCIndirectDataContent {
+		SPCAttributeTypeAndOptionalValue *data;
+		DigestInfo *messageDigest;
+	};
+	DECLARE_ASN1_FUNCTIONS(SPCIndirectDataContent)
+
+	IMPLEMENT_ASN1_FUNCTIONS(SPCIndirectDataContent)
+		ASN1_SEQUENCE(SPCIndirectDataContent) = {
+		ASN1_SIMPLE(SPCIndirectDataContent, data,
+		SPCAttributeTypeAndOptionalValue),
+		ASN1_SIMPLE(SPCIndirectDataContent, messageDigest, DigestInfo),
+	} ASN1_SEQUENCE_END(SPCIndirectDataContent)
+
+	IMPLEMENT_ASN1_FUNCTIONS(SPCAttributeTypeAndOptionalValue)
+		ASN1_SEQUENCE(SPCAttributeTypeAndOptionalValue) = {
+		ASN1_SIMPLE(SPCAttributeTypeAndOptionalValue, type,
+		ASN1_OBJECT),
+		ASN1_OPT(SPCAttributeTypeAndOptionalValue, value, ASN1_ANY),
+	} ASN1_SEQUENCE_END(SPCAttributeTypeAndOptionalValue)
+
+	IMPLEMENT_ASN1_FUNCTIONS(SPCInfoValue)
+		ASN1_SEQUENCE(SPCInfoValue) = {
+		ASN1_SIMPLE(SPCInfoValue, i1, ASN1_INTEGER),
+		ASN1_SIMPLE(SPCInfoValue, s1, ASN1_OCTET_STRING),
+		ASN1_SIMPLE(SPCInfoValue, i2, ASN1_INTEGER),
+		ASN1_SIMPLE(SPCInfoValue, i3, ASN1_INTEGER),
+		ASN1_SIMPLE(SPCInfoValue, i4, ASN1_INTEGER),
+		ASN1_SIMPLE(SPCInfoValue, i5, ASN1_INTEGER),
+		ASN1_SIMPLE(SPCInfoValue, i6, ASN1_INTEGER),
+	} ASN1_SEQUENCE_END(SPCInfoValue)
+
+	IMPLEMENT_ASN1_FUNCTIONS(DigestInfo)
+		ASN1_SEQUENCE(DigestInfo) = {
+		ASN1_SIMPLE(DigestInfo, digestAlgorithm, X509_ALGOR),
+		ASN1_SIMPLE(DigestInfo, digest, ASN1_OCTET_STRING),
+	} ASN1_SEQUENCE_END(DigestInfo)
+
+	ASN1_SEQUENCE(SPCSpOpusInfo) = {
+		ASN1_OPT(SPCSpOpusInfo, programName, ASN1_ANY),
+		ASN1_OPT(SPCSpOpusInfo, moreInfo, ASN1_ANY),
+	} ASN1_SEQUENCE_END(SPCSpOpusInfo)
+	IMPLEMENT_ASN1_FUNCTIONS(SPCSpOpusInfo)
+
+		ASN1_SEQUENCE(SPCStatementType) = {
+		ASN1_SIMPLE(SPCStatementType, type, ASN1_OBJECT),
+	} ASN1_SEQUENCE_END(SPCStatementType)
+	IMPLEMENT_ASN1_FUNCTIONS(SPCStatementType)
+}
+
+class EncodedASN1 {
+
+	uint8_t* i_data;
+	size_t i_size;
+
+	EncodedASN1(uint8_t** p_data, size_t p_size) {
+
+		i_data = *p_data;
+		i_size = p_size;
+	}
+
+public:
+
+	template <typename T, int(*TEncode)(T *, uint8_t **)>
+	static EncodedASN1 FromItem(T *item) {
+		uint8_t *dataRaw = NULL;
+		int size = TEncode(item, &dataRaw);
+
+		return EncodedASN1(&dataRaw, size);
+	}
+
+	const uint8_t *data() const {
+		return i_data;
+	}
+
+	size_t size() const {
+		return i_size;
+	}
+
+	// Assumes the encoded ASN.1 represents a SEQUENCE and puts it into
+	// an ASN1_STRING.
+	//
+	// The returned object holds a copy of this object's data.
+	ASN1_STRING* ToSequenceString() {
+		ASN1_STRING* string = ASN1_STRING_new();
+		if (!string) {
+			return NULL;
+		}
+		if (!ASN1_STRING_set(string, i_data, i_size)) {
+			return NULL;
+		}
+		return string;
+	}
+
+	// Assumes the encoded ASN.1 represents a SEQUENCE and puts it into
+	// an ASN1_TYPE.
+	//
+	// The returned object holds a copy of this object's data.
+	ASN1_TYPE* ToSequenceType() {
+		ASN1_STRING* string = ToSequenceString();
+		ASN1_TYPE* type = ASN1_TYPE_new();
+		if (!type) {
+			return NULL;
+		}
+		type->type = V_ASN1_SEQUENCE;
+		type->value.sequence = string;
+		return type;
+	}
+
+};
 
 class AppxPackager {
 
@@ -107,11 +265,60 @@ class AppxPackager {
 
 	String content_type(String p_extension);
 
+	// Signing methods and structs:
+
+	String SPC_INDIRECT_DATA_OBJID;
+	String SPC_STATEMENT_TYPE_OBJID;
+	String SPC_SP_OPUS_INFO_OBJID;
+	String SPC_SIPINFO_OBJID;
+
+	String certificate_path;
+	String certificate_pass;
+	bool sign_package;
+
+	struct CertFile {
+
+		EVP_PKEY* private_key;
+		X509* certificate;
+	};
+
+	struct AppxDigests {
+
+		String axpc; // ZIP file header
+		String axcd; // ZIP directory entry
+		String axct; // Content types XML
+		String axbm; // Block map XML
+		String axci; // Code Integrity file (optional)
+
+		int len() { return axpc.length() + axcd.length() + axct.length() + axbm.length() + axci.length(); }
+	};
+
+	CertFile cert_file;
+	AppxDigests digests;
+
+	void MakeSPCInfoValue(asn1::SPCInfoValue &info);
+	Error MakeIndirectDataContent(asn1::SPCIndirectDataContent &idc);
+	Error add_attributes(PKCS7_SIGNER_INFO *signerInfo);
+	void write_digest(Vector<uint8_t> &p_out_buffer);
+
+	Error openssl_error(unsigned long p_err);
+	Error read_cert_file(const String &p_path, const String &p_password, CertFile* p_out_cf);
+	Error sign(const CertFile &p_cert, const AppxDigests &digests, PKCS7* p_out_signature);
+
 public:
 
-	void init(FileAccess* p_fa, EditorProgress* p_progress);
+	enum SignOption {
+
+		SIGN,
+		DONT_SIGN,
+	};
+
+	void init(FileAccess* p_fa, EditorProgress* p_progress, SignOption p_sign, String &p_certificate_path, String &p_certificate_password);
 	void add_file(String p_file_name, const uint8_t* p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress = false);
 	void finish();
+
+	AppxPackager();
+	~AppxPackager();
 };
 
 class EditorExportPlatformWinrt : public EditorExportPlatform {
@@ -128,6 +335,9 @@ class EditorExportPlatformWinrt : public EditorExportPlatform {
 
 	String custom_release_package;
 	String custom_debug_package;
+
+	String certificate_path;
+	String certificate_pass;
 
 	static Error save_appx_file(void *p_userdata, const String& p_path, const Vector<uint8_t>& p_data, int p_file, int p_total);
 	static bool _should_compress_asset(const String& p_path, const Vector<uint8_t>& p_data);
@@ -154,6 +364,7 @@ public:
 };
 
 
+///////////////////////////////////////////////////////////////////////////
 
 String AppxPackager::hash_block(uint8_t * p_block_data, size_t p_block_len) {
 
@@ -536,7 +747,7 @@ void AppxPackager::write_end_of_central_record() {
 	package->store_buffer(buf.ptr(), buf.size());
 }
 
-void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress) {
+void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress, SignOption p_sign, String &p_certificate_path, String &p_certificate_password) {
 
 	progress = p_progress;
 	package = p_fa;
@@ -544,6 +755,9 @@ void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress) {
 	end_of_central_dir_offset = 0;
 	tmp_blockmap_file_name = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpblockmap.xml";
 	tmp_content_types_file_name = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpcontenttypes.xml";
+	certificate_path = p_certificate_path;
+	certificate_pass = p_certificate_password;
+	sign_package = p_sign == SignOption::SIGN;
 }
 
 void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress) {
@@ -670,7 +884,7 @@ void AppxPackager::finish() {
 	// Add content types
 	progress->step("Setting content types...", 104);
 	make_content_types();
-	
+
 	FileAccess* types_file = FileAccess::open(tmp_content_types_file_name, FileAccess::READ);
 	Vector<uint8_t> types_buffer;
 	types_buffer.resize(types_file->get_len());
@@ -682,6 +896,44 @@ void AppxPackager::finish() {
 	types_file->close();
 	memdelete(types_file);
 	types_file = NULL;
+
+	// Create the signature file
+	if (sign_package) {
+
+		Error err = read_cert_file(certificate_path, certificate_pass, &cert_file);
+
+		if (err != OK) {
+			EditorNode::add_io_error(TTR("Couldn't read the certficate file. Are the path and password both correct?"));
+			package->close();
+			memdelete(package);
+			package = NULL;
+			return;
+		}
+
+		PKCS7 signature;
+		err = sign(cert_file, digests, &signature);
+
+		if (err != OK) {
+			EditorNode::add_io_error(TTR("Error creating the package signature."));
+			package->close();
+			memdelete(package);
+			package = NULL;
+			return;
+		}
+
+		// Read the signature as bytes
+		BIO* bio_out = BIO_new(BIO_s_mem());
+		i2d_PKCS7_bio(bio_out, &signature);
+
+		BIO_flush(bio_out);
+
+		uint8_t* bio_ptr;
+		size_t bio_size = BIO_get_mem_data(bio_out, &bio_ptr);
+
+		// Add the signature to the package
+		add_file("Signature.p7x", bio_ptr, bio_size, -1, -1, true);
+
+	}
 
 
 	// Central directory
@@ -703,8 +955,318 @@ void AppxPackager::finish() {
 	package = NULL;
 }
 
+AppxPackager::AppxPackager() {
 
-//////////////////////////////////////////////
+	// https://support.microsoft.com/en-us/kb/287547
+	SPC_INDIRECT_DATA_OBJID = "1.3.6.1.4.1.311.2.1.4";
+	SPC_STATEMENT_TYPE_OBJID = "1.3.6.1.4.1.311.2.1.11";
+	SPC_SP_OPUS_INFO_OBJID = "1.3.6.1.4.1.311.2.1.12";
+	SPC_SIPINFO_OBJID = "1.3.6.1.4.1.311.2.1.30";
+}
+
+AppxPackager::~AppxPackager() {}
+
+
+////////////////////////////////////////////////////////////////////
+
+
+Error AppxPackager::openssl_error(unsigned long p_err) {
+
+	ERR_load_crypto_strings();
+
+	char buffer[256];
+	ERR_error_string_n(p_err, buffer, sizeof(buffer));
+
+	String err(buffer);
+
+	ERR_EXPLAIN(err);
+	ERR_FAIL_V(FAILED);
+}
+
+
+void AppxPackager::MakeSPCInfoValue(asn1::SPCInfoValue &info) {
+
+	// I have no idea what these numbers mean.
+	static uint8_t s1Magic[] = {
+		0x4B, 0xDF, 0xC5, 0x0A, 0x07, 0xCE, 0xE2, 0x4D,
+		0xB7, 0x6E, 0x23, 0xC8, 0x39, 0xA0, 0x9F, 0xD1,
+	};
+	ASN1_INTEGER_set(info.i1, 0x01010000);
+	ASN1_OCTET_STRING_set(info.s1, s1Magic, sizeof(s1Magic));
+	ASN1_INTEGER_set(info.i2, 0x00000000);
+	ASN1_INTEGER_set(info.i3, 0x00000000);
+	ASN1_INTEGER_set(info.i4, 0x00000000);
+	ASN1_INTEGER_set(info.i5, 0x00000000);
+	ASN1_INTEGER_set(info.i6, 0x00000000);
+}
+
+Error AppxPackager::MakeIndirectDataContent(asn1::SPCIndirectDataContent &idc) {
+
+	using namespace asn1;
+
+	ASN1_TYPE* algorithmParameter = ASN1_TYPE_new();
+	if (!algorithmParameter) {
+		return openssl_error(ERR_peek_last_error());
+	}
+	algorithmParameter->type = V_ASN1_NULL;
+
+	SPCInfoValue* infoValue = SPCInfoValue_new();
+	if (!infoValue) {
+		return openssl_error(ERR_peek_last_error());
+	}
+	MakeSPCInfoValue(*infoValue);
+
+	ASN1_TYPE* value =
+		EncodedASN1::FromItem<asn1::SPCInfoValue,
+		asn1::i2d_SPCInfoValue>(infoValue)
+		.ToSequenceType();
+
+	{
+		Vector<uint8_t> digest;
+		write_digest(digest);
+		if (!ASN1_OCTET_STRING_set(idc.messageDigest->digest,
+			digest.ptr(), digest.size())) {
+
+			return openssl_error(ERR_peek_last_error());
+		}
+	}
+
+	idc.data->type = OBJ_txt2obj((const char*)SPC_SIPINFO_OBJID.c_str(), 1);
+	idc.data->value = value;
+	idc.messageDigest->digestAlgorithm->algorithm = OBJ_nid2obj(NID_sha256);
+	idc.messageDigest->digestAlgorithm->parameter = algorithmParameter;
+}
+
+Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
+
+	// Add opus attribute
+	asn1::SPCSpOpusInfo* opus = asn1::SPCSpOpusInfo_new();
+	if (!opus) return openssl_error(ERR_peek_last_error());
+
+	ASN1_STRING* opus_value = EncodedASN1::FromItem<asn1::SPCSpOpusInfo, asn1::i2d_SPCSpOpusInfo>(opus)
+		.ToSequenceString();
+
+	if (!PKCS7_add_signed_attribute(
+		p_signer_info,
+		OBJ_txt2nid((const char*)SPC_SP_OPUS_INFO_OBJID.c_str()),
+		V_ASN1_SEQUENCE,
+		opus_value)) {
+
+		asn1::SPCSpOpusInfo_free(opus);
+
+		ASN1_STRING_free(opus_value);
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	asn1::SPCSpOpusInfo_free(opus);
+
+	// Add statement type attribute
+	asn1::SPCStatementType* statement_type = asn1::SPCStatementType_new();
+	if (!statement_type) return openssl_error(ERR_peek_last_error());
+
+	statement_type->type = OBJ_nid2obj(NID_ms_code_ind);
+	ASN1_STRING* statement_type_value =
+		EncodedASN1::FromItem<asn1::SPCStatementType, asn1::i2d_SPCStatementType>(statement_type)
+		.ToSequenceString();
+
+	if (!PKCS7_add_signed_attribute(
+		p_signer_info,
+		OBJ_txt2nid((const char*)SPC_STATEMENT_TYPE_OBJID.c_str()),
+		V_ASN1_SEQUENCE,
+		statement_type_value
+	)) {
+
+		ASN1_STRING_free(opus_value);
+		asn1::SPCStatementType_free(statement_type);
+		ASN1_STRING_free(statement_type_value);
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
+}
+
+void AppxPackager::write_digest(Vector<uint8_t>& p_out_buffer) {
+
+	// Size of digests plus magic numbers
+	p_out_buffer.resize(digests.len() + (6 * 4));
+
+	int offs = 0;
+
+	// APPX
+	uint32_t sig = 0x58505041;
+	for (int i = 0; i < 4; i++) {
+		p_out_buffer[offs++] = (sig >> (i * 8)) & 0xFF;
+	}
+
+	// AXPC
+	uint32_t axpc_sig = 0x43505841;
+	for (int i = 0; i < 4; i++) {
+		p_out_buffer[offs++] = (axpc_sig >> (i * 8)) & 0xFF;
+	}
+	for (int i = 0; i < digests.axpc.utf8().size(); i++) {
+		p_out_buffer[offs++] = digests.axpc.utf8().get(i) & 0xFF;
+	}
+
+	// AXCD
+	uint32_t axcd_sig = 0x44435841;
+	for (int i = 0; i < 4; i++) {
+		p_out_buffer[offs++] = (axcd_sig >> (i * 8)) & 0xFF;
+	}
+	for (int i = 0; i < digests.axcd.utf8().size(); i++) {
+		p_out_buffer[offs++] = digests.axcd.utf8().get(i) & 0xFF;
+	}
+
+	// AXCT
+	uint32_t axct_sig = 0x54435841;
+	for (int i = 0; i < 4; i++) {
+		p_out_buffer[offs++] = (axct_sig >> (i * 8)) & 0xFF;
+	}
+	for (int i = 0; i < digests.axct.utf8().size(); i++) {
+		p_out_buffer[offs++] = digests.axct.utf8().get(i) & 0xFF;
+	}
+
+	// AXBM
+	uint32_t axbm_sig = 0x4D425841;
+	for (int i = 0; i < 4; i++) {
+		p_out_buffer[offs++] = (axbm_sig >> (i * 8)) & 0xFF;
+	}
+	for (int i = 0; i < digests.axbm.utf8().size(); i++) {
+		p_out_buffer[offs++] = digests.axbm.utf8().get(i) & 0xFF;
+	}
+
+	// AXCI
+	uint32_t axci_sig = 0x49435841;
+	for (int i = 0; i < 4; i++) {
+		p_out_buffer[offs++] = (axci_sig >> (i * 8)) & 0xFF;
+	}
+	for (int i = 0; i < digests.axci.utf8().size(); i++) {
+		p_out_buffer[offs++] = digests.axci.utf8().get(i) & 0xFF;
+	}
+}
+
+
+Error AppxPackager::read_cert_file(const String & p_path, const String &p_password, CertFile* p_out_cf) {
+
+	ERR_FAIL_COND_V(!p_out_cf, ERR_INVALID_PARAMETER);
+
+	BIO* bio = BIO_new_file(p_path.utf8().get_data(), "rb");
+	if (!bio) {
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	PKCS12* data = d2i_PKCS12_bio(bio, NULL);
+	if (!data) {
+		BIO_free(bio);
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	if (!PKCS12_parse(data, p_password.utf8().get_data(), &p_out_cf->private_key, &p_out_cf->certificate, NULL)) {
+		PKCS12_free(data);
+		BIO_free(bio);
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	if (!p_out_cf->private_key) {
+		PKCS12_free(data);
+		BIO_free(bio);
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	if (!p_out_cf->certificate) {
+		PKCS12_free(data);
+		BIO_free(bio);
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	PKCS12_free(data);
+	BIO_free(bio);
+
+	return OK;
+}
+
+Error AppxPackager::sign(const CertFile & p_cert, const AppxDigests & digests, PKCS7 * p_out_signature) {
+
+	OpenSSL_add_all_algorithms();
+
+	// Register object IDs
+	OBJ_create_and_add_object((const char*)SPC_INDIRECT_DATA_OBJID.c_str(), NULL, NULL);
+	OBJ_create_and_add_object((const char*)SPC_STATEMENT_TYPE_OBJID.c_str(), NULL, NULL);
+	OBJ_create_and_add_object((const char*)SPC_SP_OPUS_INFO_OBJID.c_str(), NULL, NULL);
+	OBJ_create_and_add_object((const char*)SPC_SIPINFO_OBJID.c_str(), NULL, NULL);
+
+	if (!PKCS7_set_type(p_out_signature, NID_pkcs7_signed)) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	PKCS7_SIGNER_INFO *signer_info = PKCS7_add_signature(p_out_signature, p_cert.certificate, p_cert.private_key, EVP_sha256());
+	if (!signer_info) return openssl_error(ERR_peek_last_error());
+
+	add_attributes(signer_info);
+
+	if (!PKCS7_content_new(p_out_signature, NID_pkcs7_data)) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	if (!PKCS7_add_certificate(p_out_signature, p_cert.certificate)) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	asn1::SPCIndirectDataContent* idc = asn1::SPCIndirectDataContent_new();
+
+	MakeIndirectDataContent(*idc);
+	EncodedASN1 idc_encoded =
+		EncodedASN1::FromItem<asn1::SPCIndirectDataContent, asn1::i2d_SPCIndirectDataContent>(idc);
+
+	BIO* signed_data = PKCS7_dataInit(p_out_signature, NULL);
+
+	if (idc_encoded.size() < 2) {
+
+		ERR_EXPLAIN("Invalid encoded size");
+		ERR_FAIL_V(FAILED);
+	}
+
+	/*if ((idc_encoded.data()[1] & 0x80) == 0x00) {
+
+		ERR_EXPLAIN("Invalid encoded data");
+		ERR_FAIL_V(FAILED);
+	}*/
+
+	size_t skip = 4;
+
+	if (BIO_write(signed_data, idc_encoded.data() + skip, idc_encoded.size() - skip)
+		!= idc_encoded.size() - skip) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+	if (BIO_flush(signed_data) != 1) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	if (!PKCS7_dataFinal(p_out_signature, signed_data)) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	PKCS7* content = PKCS7_new();
+	if (!content) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
+	content->type = OBJ_txt2obj((const char*)SPC_INDIRECT_DATA_OBJID.c_str(), 1);
+
+	ASN1_TYPE* idc_sequence = idc_encoded.ToSequenceType();
+	content->d.other = idc_sequence;
+
+	return OK;
+}
+
+
+////////////////////////////////////////////////////////////////////
 
 
 Error EditorExportPlatformWinrt::save_appx_file(void * p_userdata, const String & p_path, const Vector<uint8_t>& p_data, int p_file, int p_total) {
@@ -780,7 +1342,12 @@ bool EditorExportPlatformWinrt::_set(const StringName& p_name, const Variant& p_
 		custom_debug_package = p_value;
 	else if (n == "custom_package/release")
 		custom_release_package = p_value;
+	else if (n == "certificates/cert_file")
+		certificate_path = p_value;
+	else if (n == "certificates/cert_password")
+		certificate_pass = p_value;
 	else return false;
+
 	return true;
 }
 
@@ -798,7 +1365,12 @@ bool EditorExportPlatformWinrt::_get(const StringName& p_name, Variant &r_ret) c
 		r_ret = custom_debug_package;
 	else if (n == "custom_package/release")
 		r_ret = custom_release_package;
+	else if (n == "certificates/cert_file")
+		r_ret = certificate_path;
+	else if (n == "certificates/cert_password")
+		r_ret = certificate_pass;
 	else return false;
+
 	return true;
 }
 
@@ -810,6 +1382,9 @@ void EditorExportPlatformWinrt::_get_property_list(List<PropertyInfo>* p_list) c
 	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/arm"));
 	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/x86"));
 	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/x64"));
+
+	p_list->push_back(PropertyInfo(Variant::STRING, "certificates/cert_file", PROPERTY_HINT_GLOBAL_FILE, "pfx"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "certificates/cert_password"));
 }
 
 bool EditorExportPlatformWinrt::can_export(String * r_error) const {
@@ -863,11 +1438,16 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 	}
 
 	Error err = OK;
+
+	//CertFile cf;
+	//err = read_cert_file(certificate_path, certificate_pass, &cf);
+	//if (err != OK) return err;
+
 	FileAccess *fa_pack = FileAccess::open(p_path, FileAccess::WRITE, &err);
 	ERR_FAIL_COND_V(err != OK, ERR_CANT_CREATE);
 
 	AppxPackager packager;
-	packager.init(fa_pack, &ep);
+	packager.init(fa_pack, &ep, AppxPackager::SIGN, certificate_path, certificate_pass);
 
 	FileAccess *src_f = NULL;
 	zlib_filefunc_def io = zipio_create_io_from_file(&src_f);
