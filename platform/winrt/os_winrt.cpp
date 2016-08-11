@@ -63,6 +63,7 @@ using namespace Windows::Foundation;
 using namespace Windows::Graphics::Display;
 using namespace Microsoft::WRL;
 using namespace Windows::UI::ViewManagement;
+using namespace Windows::Devices::Input;
 
 
 int OSWinrt::get_video_driver_count() const {
@@ -216,6 +217,20 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 	spatial_sound_2d_server = memnew( SpatialSound2DServerSW );
 	spatial_sound_2d_server->init();
 
+	// Detect touch input
+
+	has_touch = false;
+	auto pointer_devices = PointerDevice::GetPointerDevices();
+
+	for (int i = 0; i < pointer_devices->Size; i++) {
+
+		if (pointer_devices->GetAt(i)->PointerDeviceType == PointerDeviceType::Touch) {
+
+			has_touch = true;
+			//break;
+			print_line(itos(pointer_devices->GetAt(i)->MaxContacts));
+		}
+	}
 
 	_ensure_data_dir();
 
@@ -702,6 +717,11 @@ void OSWinrt::make_rendering_thread() {
 void OSWinrt::swap_buffers() {
 
 	gl_context->swap_buffers();
+}
+
+bool OSWinrt::has_touchscreen_ui_hint() const {
+
+	return has_touch;
 }
 
 

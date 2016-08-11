@@ -149,6 +149,7 @@ private:
 	SpatialSound2DServerSW *spatial_sound_2d_server;
 
 	MouseMode mouse_mode;
+	bool has_touch;
 	bool alt_mem;
 	bool gr_mem;
 	bool shift_mem;
@@ -260,7 +261,7 @@ public:
 	virtual void make_rendering_thread();
 	virtual void swap_buffers();
 
-	virtual bool has_touchscreen_ui_hint() const { return false; };
+	virtual bool has_touchscreen_ui_hint() const;
 
 	virtual Error shell_open(String p_uri);
 
