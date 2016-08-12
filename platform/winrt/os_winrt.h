@@ -149,7 +149,6 @@ private:
 	SpatialSound2DServerSW *spatial_sound_2d_server;
 
 	MouseMode mouse_mode;
-	bool has_touch;
 	bool alt_mem;
 	bool gr_mem;
 	bool shift_mem;
