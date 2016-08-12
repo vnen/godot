@@ -432,6 +432,26 @@ void OSWinrt::ManagedType::update_clipboard() {
 
 void OSWinrt::set_mouse_mode(MouseMode p_mode) {
 
+	if (p_mode == MouseMode::MOUSE_MODE_CAPTURED) {
+
+		CoreWindow::GetForCurrentThread()->SetPointerCapture();
+
+	} else {
+
+		CoreWindow::GetForCurrentThread()->ReleasePointerCapture();
+
+	}
+
+	if (p_mode == MouseMode::MOUSE_MODE_CAPTURED || p_mode == MouseMode::MOUSE_MODE_HIDDEN) {
+
+		CoreWindow::GetForCurrentThread()->PointerCursor = nullptr;
+
+	} else {
+
+		CoreWindow::GetForCurrentThread()->PointerCursor = ref new CoreCursor(CoreCursorType::Arrow, 0);
+	}
+
+	mouse_mode = p_mode;
 }
 
 OSWinrt::MouseMode OSWinrt::get_mouse_mode() const{

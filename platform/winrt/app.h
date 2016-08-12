@@ -36,6 +36,7 @@ namespace GodotWinRT
 		void OnPointerPressed(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args);
 		void OnPointerReleased(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args);
 		void OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args);
+		void OnMouseMoved(Windows::Devices::Input::MouseDevice^ mouse_device, Windows::Devices::Input::MouseEventArgs^ args);
 		void OnPointerWheelChanged(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args);
 
 		void key_event(Windows::UI::Core::CoreWindow^ sender, bool p_pressed, Windows::UI::Core::KeyEventArgs^ key_args = nullptr, Windows::UI::Core::CharacterReceivedEventArgs^ char_args = nullptr);
@@ -62,6 +63,7 @@ namespace GodotWinRT
 		int last_touch_x[32]; // 20 fingers, index 31 reserved for the mouse
 		int last_touch_y[32];
 		int number_of_contacts;
+		Windows::Foundation::Point last_mouse_pos;
 	};
 
 }

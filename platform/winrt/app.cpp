@@ -15,6 +15,7 @@ using namespace Windows::ApplicationModel::Core;
 using namespace Windows::ApplicationModel::Activation;
 using namespace Windows::UI::Core;
 using namespace Windows::UI::Input;
+using namespace Windows::Devices::Input;
 using namespace Windows::UI::Xaml::Input;
 using namespace Windows::Foundation;
 using namespace Windows::Graphics::Display;
@@ -109,6 +110,9 @@ void App::SetWindow(CoreWindow^ p_window)
 		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerReleased);
 	window->PointerWheelChanged +=
 		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerWheelChanged);
+
+	MouseDevice::GetForCurrentView()->MouseMoved +=
+		ref new TypedEventHandler<MouseDevice^, MouseEventArgs^>(this, &App::OnMouseMoved);
 
 	window->CharacterReceived +=
 		ref new TypedEventHandler<CoreWindow^, CharacterReceivedEventArgs^>(this, &App::OnCharacterReceived);
@@ -325,6 +329,10 @@ void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Cor
 
 	}; // fallthrought of sorts
 
+	// In case the mouse grabbed, MouseMoved will handle this
+	if (os->get_mouse_mode() == OS::MouseMode::MOUSE_MODE_CAPTURED)
+		return;
+
 	InputEvent event;
 	event.type = InputEvent::MOUSE_MOTION;
 	event.device = 0;
@@ -335,9 +343,37 @@ void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Cor
 	event.mouse_motion.relative_x = pos.X - last_touch_x[31];
 	event.mouse_motion.relative_y = pos.Y - last_touch_y[31];
 
+	last_mouse_pos = pos;
+
 	os->input_event(event);
 
 }
+
+void App::OnMouseMoved(MouseDevice ^ mouse_device, MouseEventArgs ^ args) {
+
+	// In case the mouse isn't grabbed, PointerMoved will handle this
+	if (os->get_mouse_mode() != OS::MouseMode::MOUSE_MODE_CAPTURED)
+		return;
+
+	Windows::Foundation::Point pos;
+	pos.X = last_mouse_pos.X + args->MouseDelta.X;
+	pos.Y = last_mouse_pos.Y + args->MouseDelta.Y;
+
+	InputEvent event;
+	event.type = InputEvent::MOUSE_MOTION;
+	event.device = 0;
+	event.mouse_motion.x = pos.X;
+	event.mouse_motion.y = pos.Y;
+	event.mouse_motion.global_x = pos.X;
+	event.mouse_motion.global_y = pos.Y;
+	event.mouse_motion.relative_x = pos.X - last_touch_x[31];
+	event.mouse_motion.relative_y = pos.Y - last_touch_y[31];
+
+	last_mouse_pos = pos;
+
+	os->input_event(event);
+}
+
 void App::key_event(Windows::UI::Core::CoreWindow^ sender, bool p_pressed, Windows::UI::Core::KeyEventArgs^ key_args, Windows::UI::Core::CharacterReceivedEventArgs^ char_args)
 {
 
