@@ -281,6 +281,8 @@ String OSWinrt::get_clipboard() const {
 
 	if (managed_object->clipboard != nullptr)
 		return managed_object->clipboard->Data();
+	else
+		return "";
 };
 
 
