@@ -56,7 +56,8 @@ App::App() :
     mWindowHeight(0),
     mEglDisplay(EGL_NO_DISPLAY),
     mEglContext(EGL_NO_CONTEXT),
-    mEglSurface(EGL_NO_SURFACE)
+    mEglSurface(EGL_NO_SURFACE),
+	number_of_contacts(0)
 {
 }
 
@@ -252,7 +253,7 @@ void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core
 		last_touch_y[event.screen_touch.index] = pos.Y;
 
 		os->input_event(event);
-		if (event.screen_touch.index != 0)
+		if (number_of_contacts > 1)
 			return;
 
 	}; // fallthrought of sorts
@@ -286,12 +287,14 @@ void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core
 
 void App::OnPointerPressed(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args) {
 
+	number_of_contacts++;
 	pointer_event(sender, args, true);
 };
 
 
 void App::OnPointerReleased(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args) {
 
+	number_of_contacts--;
 	pointer_event(sender, args, false);
 };
 
@@ -305,7 +308,7 @@ void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Cor
 	Windows::UI::Input::PointerPoint ^point = args->CurrentPoint;
 	Windows::Foundation::Point pos = _get_pixel_position(window, point->Position, os);
 
-	if (_is_touch(point)) {
+	if (point->IsInContact && _is_touch(point)) {
 
 		InputEvent event;
 		event.type = InputEvent::SCREEN_DRAG;
@@ -317,7 +320,7 @@ void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Cor
 		event.screen_drag.relative_y = event.screen_drag.y - last_touch_y[event.screen_drag.index];
 
 		os->input_event(event);
-		if (event.screen_drag.index != 0)
+		if (number_of_contacts > 1)
 			return;
 
 	}; // fallthrought of sorts
