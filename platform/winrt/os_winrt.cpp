@@ -90,6 +90,32 @@ Size2 OSWinrt::get_window_size() const {
 	return size;
 }
 
+void OSWinrt::set_window_fullscreen(bool p_enabled) {
+
+	ApplicationView^ view = ApplicationView::GetForCurrentView();
+
+	video_mode.fullscreen = view->IsFullScreenMode;
+
+	if (video_mode.fullscreen == p_enabled)
+		return;
+
+	if (p_enabled) {
+
+		video_mode.fullscreen = view->TryEnterFullScreenMode();
+
+	} else {
+
+		view->ExitFullScreenMode();
+		video_mode.fullscreen = false;
+
+	}
+}
+
+bool OSWinrt::is_window_fullscreen() const {
+
+	return ApplicationView::GetForCurrentView()->IsFullScreenMode;
+}
+
 int OSWinrt::get_audio_driver_count() const {
 
 	return AudioDriverManagerSW::get_driver_count();
@@ -178,8 +204,22 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 	VideoMode vm;
 	vm.width = gl_context->get_window_width();
 	vm.height = gl_context->get_window_height();
-	vm.fullscreen = true;
 	vm.resizable = false;
+
+	ApplicationView^ view = ApplicationView::GetForCurrentView();
+	vm.fullscreen = view->IsFullScreenMode;
+
+	if (p_desired.fullscreen != view->IsFullScreenMode) {
+		if (p_desired.fullscreen) {
+
+			vm.fullscreen = view->TryEnterFullScreenMode();
+
+		} else {
+
+			view->ExitFullScreenMode();
+			vm.fullscreen = false;
+		}
+	}
 
 	set_video_mode(vm);
 
