@@ -684,7 +684,7 @@ String OSWinrt::get_locale() const {
 	return "en";
 #else
 	Platform::String ^language = Windows::Globalization::Language::CurrentInputMethodLanguageTag;
-	return language->Data();
+	return String(language->Data()).replace("-", "_");
 #endif
 }
 
