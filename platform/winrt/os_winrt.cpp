@@ -647,6 +647,34 @@ void OSWinrt::queue_key_event(KeyEvent & p_event)
 
 void OSWinrt::set_cursor_shape(CursorShape p_shape) {
 
+	ERR_FAIL_INDEX(p_shape, CURSOR_MAX);
+
+	if (cursor_shape == p_shape)
+		return;
+
+	static const CoreCursorType uwp_cursors[CURSOR_MAX] = {
+		CoreCursorType::Arrow,
+		CoreCursorType::IBeam,
+		CoreCursorType::Hand,
+		CoreCursorType::Cross,
+		CoreCursorType::Wait,
+		CoreCursorType::Wait,
+		CoreCursorType::Arrow,
+		CoreCursorType::Arrow,
+		CoreCursorType::UniversalNo,
+		CoreCursorType::SizeNorthSouth,
+		CoreCursorType::SizeWestEast,
+		CoreCursorType::SizeNortheastSouthwest,
+		CoreCursorType::SizeNorthwestSoutheast,
+		CoreCursorType::SizeAll,
+		CoreCursorType::SizeNorthSouth,
+		CoreCursorType::SizeWestEast,
+		CoreCursorType::Help
+	};
+
+	CoreWindow::GetForCurrentThread()->PointerCursor = ref new CoreCursor(uwp_cursors[p_shape], 0);
+
+	cursor_shape = p_shape;
 }
 
 Error OSWinrt::execute(const String& p_path, const List<String>& p_arguments,bool p_blocking,ProcessID *r_child_id,String* r_pipe,int *r_exitcode) {
