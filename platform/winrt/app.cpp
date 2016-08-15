@@ -394,8 +394,8 @@ void App::OnMouseMoved(MouseDevice ^ mouse_device, MouseEventArgs ^ args) {
 	event.mouse_motion.y = pos.Y;
 	event.mouse_motion.global_x = pos.X;
 	event.mouse_motion.global_y = pos.Y;
-	event.mouse_motion.relative_x = pos.X - last_touch_x[31];
-	event.mouse_motion.relative_y = pos.Y - last_touch_y[31];
+	event.mouse_motion.relative_x = args->MouseDelta.X;
+	event.mouse_motion.relative_y = args->MouseDelta.Y;
 
 	last_mouse_pos = pos;
 
