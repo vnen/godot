@@ -797,7 +797,7 @@ String OSWinrt::get_data_dir() const {
 
 	Windows::Storage::StorageFolder ^data_folder = Windows::Storage::ApplicationData::Current->LocalFolder;
 
-	return data_folder->Path->Data();
+	return String(data_folder->Path->Data()).replace("\\", "/");
 }
 
 

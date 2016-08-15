@@ -37,12 +37,6 @@
 #include <stdio.h>
 #include "print_string.h"
 
-#ifdef WINRT_ENABLED
-#include <Synchapi.h>
-#include <collection.h>
-#include <ppltasks.h>
-#endif
-
 /*
 
 [03:57] <reduz> yessopie, so i dont havemak to rely on unicows
@@ -135,14 +129,6 @@ Error DirAccessWindows::change_dir(String p_dir) {
 
 	GLOBAL_LOCK_FUNCTION
 
-#ifdef WINRT_ENABLED
-
-	/*p_dir = fix_path(p_dir);
-	current_dir = normalize_path(p_dir);*/
-
-	return ERR_CANT_RESOLVE;
-#else
-
 
 	p_dir=fix_path(p_dir);
 
@@ -178,18 +164,11 @@ Error DirAccessWindows::change_dir(String p_dir) {
 	//}
 
 	return worked?OK:ERR_INVALID_PARAMETER;
-#endif
 }
 
 Error DirAccessWindows::make_dir(String p_dir) {
 
 	GLOBAL_LOCK_FUNCTION
-
-#ifdef WINRT_ENABLED
-
-	return ERR_CANT_CREATE;
-
-#else
 
 	if (p_dir.is_rel_path())
 		p_dir=get_current_dir().plus_file(p_dir);
@@ -215,8 +194,6 @@ Error DirAccessWindows::make_dir(String p_dir) {
 	};
 
 	return ERR_CANT_CREATE;
-
-#endif
 }
 
 
@@ -243,10 +220,6 @@ bool DirAccessWindows::file_exists(String p_file) {
 
 	GLOBAL_LOCK_FUNCTION
 
-#ifdef WINRT_ENABLED
-	return false;
-#else
-
 	if (!p_file.is_abs_path())
 		p_file=get_current_dir().plus_file(p_file);
 
@@ -263,16 +236,11 @@ bool DirAccessWindows::file_exists(String p_file) {
 		return false;
 
 	return !(fileAttr&FILE_ATTRIBUTE_DIRECTORY);
-#endif
 }
 
 bool DirAccessWindows::dir_exists(String p_dir) {
 
 	GLOBAL_LOCK_FUNCTION
-
-#ifdef WINRT_ENABLED
-	return false;
-#else
 
 	if (p_dir.is_rel_path())
 		p_dir=get_current_dir().plus_file(p_dir);
@@ -290,7 +258,6 @@ bool DirAccessWindows::dir_exists(String p_dir) {
 	if (INVALID_FILE_ATTRIBUTES == fileAttr)
 		    return false;
 	return (fileAttr&FILE_ATTRIBUTE_DIRECTORY);
-#endif
 }
 
 Error DirAccessWindows::rename(String p_path,String p_new_path) {
@@ -316,10 +283,6 @@ Error DirAccessWindows::rename(String p_path,String p_new_path) {
 
 Error DirAccessWindows::remove(String p_path)  {
 
-#ifdef WINRT_ENABLED
-	return ERR_CANT_OPEN;
-#else
-
 	if (p_path.is_rel_path())
 		p_path=get_current_dir().plus_file(p_path);
 
@@ -339,7 +302,6 @@ Error DirAccessWindows::remove(String p_path)  {
 		return ::_wrmdir(p_path.c_str())==0?OK:FAILED;
 	else
 		return ::_wunlink(p_path.c_str())==0?OK:FAILED;
-#endif
 }
 /*
 
