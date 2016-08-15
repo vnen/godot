@@ -166,16 +166,25 @@ private:
 	void _drag_event(int idx,UINT uMsg, WPARAM	wParam,	LPARAM	lParam);
 	void _touch_event(int idx, UINT uMsg, WPARAM	wParam,	LPARAM	lParam);
 
-	ref class ManagedType sealed {
+	ref class ManagedType {
 	public:
 		property bool alert_close_handle;
 		property Platform::String^ clipboard;
 		void alert_close(Windows::UI::Popups::IUICommand^ command);
 		void on_clipboard_changed(Platform::Object^ sender, Platform::Object^ ev);
 		void update_clipboard();
+		void on_accelerometer_reading_changed(Windows::Devices::Sensors::Accelerometer^ sender, Windows::Devices::Sensors::AccelerometerReadingChangedEventArgs^ args);
+		void on_magnetometer_reading_changed(Windows::Devices::Sensors::Magnetometer^ sender, Windows::Devices::Sensors::MagnetometerReadingChangedEventArgs^ args);
+		void on_gyroscope_reading_changed(Windows::Devices::Sensors::Gyrometer^ sender, Windows::Devices::Sensors::GyrometerReadingChangedEventArgs^ args);
+
+	internal:
 		ManagedType() { alert_close_handle = false; }
+		property OSWinrt* os;
 	};
 	ManagedType^ managed_object;
+	Windows::Devices::Sensors::Accelerometer^ accelerometer;
+	Windows::Devices::Sensors::Magnetometer^ magnetometer;
+	Windows::Devices::Sensors::Gyrometer^ gyrometer;
 
 	// functions used by main to initialize/deintialize the OS
 protected:

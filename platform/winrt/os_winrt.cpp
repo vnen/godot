@@ -65,6 +65,7 @@ using namespace Windows::Graphics::Display;
 using namespace Microsoft::WRL;
 using namespace Windows::UI::ViewManagement;
 using namespace Windows::Devices::Input;
+using namespace Windows::Devices::Sensors;
 using namespace Windows::ApplicationModel::DataTransfer;
 using namespace concurrency;
 
@@ -264,6 +265,33 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 
 	Clipboard::ContentChanged += ref new EventHandler<Platform::Object^>(managed_object, &ManagedType::on_clipboard_changed);
 
+	accelerometer = Accelerometer::GetDefault();
+	if (accelerometer != nullptr) {
+		// 60 FPS
+		accelerometer->ReportInterval = (1.0f / 60.0f) * 1000;
+		accelerometer->ReadingChanged +=
+			ref new TypedEventHandler<Accelerometer^, AccelerometerReadingChangedEventArgs^>
+			(managed_object, &ManagedType::on_accelerometer_reading_changed);
+	}
+
+	magnetometer = Magnetometer::GetDefault();
+	if (magnetometer != nullptr) {
+		// 60 FPS
+		magnetometer->ReportInterval = (1.0f / 60.0f) * 1000;
+		magnetometer->ReadingChanged +=
+			ref new TypedEventHandler<Magnetometer^, MagnetometerReadingChangedEventArgs^>
+			(managed_object, &ManagedType::on_magnetometer_reading_changed);
+	}
+
+	gyrometer = Gyrometer::GetDefault();
+	if (gyrometer != nullptr) {
+		// 60 FPS
+		gyrometer->ReportInterval = (1.0f / 60.0f) * 1000;
+		gyrometer->ReadingChanged +=
+			ref new TypedEventHandler<Gyrometer^, GyrometerReadingChangedEventArgs^>
+			(managed_object, &ManagedType::on_gyroscope_reading_changed);
+	}
+
 	_ensure_data_dir();
 
 }
@@ -428,6 +456,39 @@ void OSWinrt::ManagedType::update_clipboard() {
 			this->clipboard = clipboard_content;
 		});
 	}
+}
+
+void OSWinrt::ManagedType::on_accelerometer_reading_changed(Accelerometer ^ sender, AccelerometerReadingChangedEventArgs ^ args) {
+	
+	AccelerometerReading^ reading = args->Reading;
+
+	os->input->set_accelerometer(Vector3(
+		reading->AccelerationX,
+		reading->AccelerationY,
+		reading->AccelerationZ
+	));
+}
+
+void OSWinrt::ManagedType::on_magnetometer_reading_changed(Magnetometer ^ sender, MagnetometerReadingChangedEventArgs ^ args) {
+
+	MagnetometerReading^ reading = args->Reading;
+
+	os->input->set_magnetometer(Vector3(
+		reading->MagneticFieldX,
+		reading->MagneticFieldY,
+		reading->MagneticFieldZ
+	));
+}
+
+void OSWinrt::ManagedType::on_gyroscope_reading_changed(Gyrometer ^ sender, GyrometerReadingChangedEventArgs ^ args) {
+
+	GyrometerReading^ reading = args->Reading;
+
+	os->input->set_magnetometer(Vector3(
+		reading->AngularVelocityX,
+		reading->AngularVelocityY,
+		reading->AngularVelocityZ
+	));
 }
 
 void OSWinrt::set_mouse_mode(MouseMode p_mode) {
@@ -823,6 +884,7 @@ OSWinrt::OSWinrt() {
 	gl_context = NULL;
 
 	managed_object = ref new ManagedType;
+	managed_object->os = this;
 
 	AudioDriverManagerSW::add_driver(&audio_driver);
 }
