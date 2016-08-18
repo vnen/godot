@@ -820,6 +820,23 @@ bool OSWinrt::has_touchscreen_ui_hint() const {
 	return tc->TouchPresent != 0 || UIViewSettings::GetForCurrentView()->UserInteractionMode == UserInteractionMode::Touch;
 }
 
+bool OSWinrt::has_virtual_keyboard() const {
+
+	return UIViewSettings::GetForCurrentView()->UserInteractionMode == UserInteractionMode::Touch;
+}
+
+void OSWinrt::show_virtual_keyboard(const String & p_existing_text, const Rect2 & p_screen_rect) {
+
+	InputPane^ pane = InputPane::GetForCurrentView();
+	pane->TryShow();
+}
+
+void OSWinrt::hide_virtual_keyboard() {
+
+	InputPane^ pane = InputPane::GetForCurrentView();
+	pane->TryHide();
+}
+
 
 void OSWinrt::run() {
 
