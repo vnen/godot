@@ -161,6 +161,8 @@ private:
 
 	InputDefault *input;
 
+	Windows::System::Display::DisplayRequest^ display_request;
+
 	void _post_dpad(DWORD p_dpad, int p_device, bool p_pressed);
 
 	void _drag_event(int idx,UINT uMsg, WPARAM	wParam,	LPARAM	lParam);
@@ -232,6 +234,7 @@ public:
 	virtual Size2 get_window_size() const;
 	virtual void set_window_fullscreen(bool p_enabled);
 	virtual bool is_window_fullscreen() const;
+	virtual void set_keep_screen_on(bool p_enabled);
 
 	virtual MainLoop *get_main_loop() const;
 

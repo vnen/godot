@@ -117,6 +117,18 @@ bool OSWinrt::is_window_fullscreen() const {
 	return ApplicationView::GetForCurrentView()->IsFullScreenMode;
 }
 
+void OSWinrt::set_keep_screen_on(bool p_enabled) {
+
+	if (is_keep_screen_on() == p_enabled) return;
+
+	if (p_enabled)
+		display_request->RequestActive();
+	else
+		display_request->RequestRelease();
+
+	OS::set_keep_screen_on(p_enabled);
+}
+
 int OSWinrt::get_audio_driver_count() const {
 
 	return AudioDriverManagerSW::get_driver_count();
@@ -293,6 +305,11 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 	}
 
 	_ensure_data_dir();
+
+	if (is_keep_screen_on())
+		display_request->RequestActive();
+
+	set_keep_screen_on(GLOBAL_DEF("display/keep_screen_on", true));
 
 }
 
@@ -899,6 +916,8 @@ OSWinrt::OSWinrt() {
 #endif
 
 	gl_context = NULL;
+
+	display_request = ref new Windows::System::Display::DisplayRequest();
 
 	managed_object = ref new ManagedType;
 	managed_object->os = this;
