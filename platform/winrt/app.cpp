@@ -104,8 +104,6 @@ void App::Initialize(CoreApplicationView^ applicationView)
 
 	os = new OSWinrt;
 
-	// Register event delegates
-
 }
 
 // Called when the CoreWindow object is created (or re-created).
@@ -148,12 +146,6 @@ void App::SetWindow(CoreWindow^ p_window)
 		ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &App::OnKeyDown);
 	window->KeyUp +=
 		ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &App::OnKeyUp);
-
-	
-
-	//window->PointerWheelChanged +=
-	//	ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerWheelChanged);
-
 
 
 	char* args[] = {"-path", "game", NULL};
@@ -306,9 +298,7 @@ void App::pointer_event(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core
 		} else if (point->Properties->MouseWheelDelta < 0) {
 			event.mouse_button.button_index = point->Properties->IsHorizontalMouseWheel ? BUTTON_WHEEL_LEFT : BUTTON_WHEEL_DOWN;
 		}
-		//print_line("is wheel " + String(point->Properties->IsHorizontalMouseWheel ? "horizontal " : "vertical ") + itos(point->Properties->MouseWheelDelta));
 	}
-	//print_line("Mouse event: " + rtos(pos.X) + ", " + rtos(pos.Y));
 
 	last_touch_x[31] = pos.X;
 	last_touch_y[31] = pos.Y;
@@ -437,19 +427,16 @@ void App::key_event(Windows::UI::Core::CoreWindow^ sender, bool p_pressed, Windo
 }
 void App::OnKeyDown(CoreWindow^ sender, KeyEventArgs^ args)
 {
-	//print_line("key down event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
 	key_event(sender, true, args);
 }
 
 void App::OnKeyUp(CoreWindow^ sender, KeyEventArgs^ args)
 {
-	//print_line("key up event " + String(args->VirtualKey.ToString()->Data()) + " - " + itos((unsigned int)args->VirtualKey) + " - ks_scan: " + itos(args->KeyStatus.ScanCode));
 	key_event(sender, false, args);
 }
 
 void App::OnCharacterReceived(CoreWindow^ sender, CharacterReceivedEventArgs^ args)
 {
-	//print_line("Character received " + itos(args->KeyCode) + " " + String::chr(args->KeyCode) + " sk code " + itos(args->KeyStatus.ScanCode));
 	key_event(sender, true, nullptr, args);
 }
 
@@ -457,8 +444,7 @@ void App::OnCharacterReceived(CoreWindow^ sender, CharacterReceivedEventArgs^ ar
 // Initializes scene resources
 void App::Load(Platform::String^ entryPoint)
 {
-	//char* args[] = {"-test", "render", NULL};
-	//Main::setup("winrt", 2, args);
+
 }
 
 // This method is called after the window becomes active.

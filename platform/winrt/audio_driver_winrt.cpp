@@ -78,17 +78,6 @@ Error AudioDriverWinRT::init() {
 		ERR_FAIL_V(ERR_UNAVAILABLE);
 	}
 
-#ifdef DEBUG_ENABLED
-	XAUDIO2_DEBUG_CONFIGURATION debug_config;
-	debug_config.TraceMask = XAUDIO2_LOG_DETAIL | XAUDIO2_LOG_WARNINGS | XAUDIO2_LOG_STREAMING;
-	debug_config.LogFileline = true;
-	debug_config.LogTiming = false;
-	debug_config.LogFunctionName = true;
-	debug_config.LogThreadID = false;
-	xaudio->SetDebugConfiguration(&debug_config);
-#endif
-		
-
 	wave_format.nChannels = channels;
 	wave_format.cbSize = 0;
 	wave_format.nSamplesPerSec = mix_rate;
@@ -105,8 +94,6 @@ Error AudioDriverWinRT::init() {
 		ERR_FAIL_V(ERR_UNAVAILABLE);
 	}
 
-	print_line("WinRT audio driver init");
-
 	mutex = Mutex::create();
 	thread = Thread::create(AudioDriverWinRT::thread_func, this);
 
@@ -118,8 +105,6 @@ void AudioDriverWinRT::thread_func(void* p_udata) {
 	AudioDriverWinRT* ad = (AudioDriverWinRT*)p_udata;
 
 	uint64_t usdelay = (ad->buffer_size / float(ad->mix_rate)) * 1000000;
-
-	print_line("audio thread started");
 
 	while (!ad->exit_thread) {
 
@@ -143,8 +128,6 @@ void AudioDriverWinRT::thread_func(void* p_udata) {
 				ad->samples_out[ad->current_buffer][i] = ad->samples_in[i] >> 16;
 			}
 
-			//print_line("running again");
-
 			ad->xaudio_buffer[ad->current_buffer].Flags = 0;
 			ad->xaudio_buffer[ad->current_buffer].AudioBytes = ad->buffer_size * ad->channels * sizeof(int16_t);
 			ad->xaudio_buffer[ad->current_buffer].pAudioData = (const BYTE*)(ad->samples_out[ad->current_buffer]);
@@ -156,7 +139,6 @@ void AudioDriverWinRT::thread_func(void* p_udata) {
 			XAUDIO2_VOICE_STATE state;
 			while (ad->source_voice->GetState(&state), state.BuffersQueued > AUDIO_BUFFERS - 1)
 			{
-				//print_line("waiting for buffers");
 				WaitForSingleObject(ad->voice_callback->buffer_end_event, INFINITE);
 			}
 		}
@@ -164,7 +146,6 @@ void AudioDriverWinRT::thread_func(void* p_udata) {
 	};
 
 	ad->thread_exited = true;
-	//print_line("audio thread exited");
 
 };
 
@@ -173,7 +154,8 @@ void AudioDriverWinRT::start() {
 	active = true;
 	HRESULT hr = source_voice->Start(0);
 	if (hr != S_OK) {
-		print_line("Start error " + itos(hr));
+		ERR_EXPLAIN("XAudio2 start error " + itos(hr));
+		ERR_FAIL();
 	}
 };
 
