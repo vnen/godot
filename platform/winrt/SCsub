@@ -5,6 +5,7 @@ files = [
 	'#platform/windows/tcp_server_winsock.cpp',
 	'#platform/windows/packet_peer_udp_winsock.cpp',
 	'#platform/windows/stream_peer_winsock.cpp',
+	'joystick_winrt.cpp',
 	'gl_context_egl.cpp',
 	'audio_driver_winrt.cpp',
 	'app.cpp',

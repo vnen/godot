@@ -256,6 +256,9 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 
 	input = memnew( InputDefault );
 
+	joystick = ref new JoystickWinrt(input);
+	joystick->register_events();
+
 	AudioDriverManagerSW::get_driver(p_audio_driver)->set_singleton();
 
 	if (AudioDriverManagerSW::get_driver(p_audio_driver)->init()!=OK) {
@@ -395,6 +398,8 @@ void OSWinrt::finalize() {
 
 	physics_2d_server->finish();
 	memdelete(physics_2d_server);
+
+	joystick = nullptr;
 
 }
 void OSWinrt::finalize_core() {
@@ -681,6 +686,8 @@ uint64_t OSWinrt::get_ticks_usec() const {
 
 
 void OSWinrt::process_events() {
+
+	last_id = joystick->process_controllers(last_id);
 	process_key_events();
 }
 

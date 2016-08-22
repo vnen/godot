@@ -55,6 +55,8 @@
 #include <stdio.h>
 #include "main/input_default.h"
 
+#include "joystick_winrt.h"
+
 /**
 	@author Juan Linietsky <reduzio@gmail.com>
 */
@@ -112,32 +114,6 @@ private:
 
 	ContextEGL* gl_context;
 
-	struct Joystick {
-
-		int id;
-		bool attached;
-
-		DWORD last_axis[JOY_AXIS_COUNT];
-		DWORD last_buttons;
-		DWORD last_pov;
-		String name;
-
-		Joystick() {
-			id = -1;
-			attached = false;
-			for (int i=0; i<JOY_AXIS_COUNT; i++) {
-
-				last_axis[i] = 0;
-			};
-			last_buttons = 0;
-			last_pov = 0;
-		};
-	};
-
-	List<Joystick> joystick_change_queue;
-	int joystick_count;
-	Joystick joysticks[JOYSTICKS_MAX];
-
 	VideoMode video_mode;
 
 	MainLoop *main_loop;
@@ -160,6 +136,8 @@ private:
 	CursorShape cursor_shape;
 
 	InputDefault *input;
+
+	JoystickWinrt^ joystick;
 
 	Windows::System::Display::DisplayRequest^ display_request;
 
@@ -209,8 +187,6 @@ protected:
 
 	void process_events();
 
-	void probe_joysticks();
-	void process_joysticks();
 	void process_key_events();
 
 public:
