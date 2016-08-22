@@ -109,6 +109,7 @@ def configure(env):
 			env.Append(LINKFLAGS=['/MACHINE:X86'])
 			env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_Win32/lib'])
 		else:
+			env["bits"] = "64"
 			arch = "x64"
 			env.Append(LINKFLAGS=['/MACHINE:X64'])
 			env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_x64/lib'])
@@ -128,7 +129,7 @@ def configure(env):
 
 		elif (env["target"]=="debug"):
 
-			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO','/DDEBUG_MEMORY_ENABLED'])
+			env.Append(CCFLAGS=['/Zi','/DDEBUG_ENABLED','/DDEBUG_MEMORY_ENABLED'])
 			env.Append(CPPFLAGS=['/MDd'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 			env.Append(LINKFLAGS=['/DEBUG'])
@@ -139,7 +140,7 @@ def configure(env):
 			env.Append(LINKFLAGS=['-pg'])
 
 
-		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /Zc:wchar_t /Gm- /fp:precise /D "_UNICODE" /D "UNICODE" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /errorReport:prompt /WX- /Zc:forScope /Gd /EHsc /nologo'))
+		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /wd"4291" /Zc:wchar_t /Gm- /fp:precise /D "_UNICODE" /D "UNICODE" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /errorReport:prompt /WX- /Zc:forScope /Gd /EHsc /nologo'))
 		env.Append(CXXFLAGS=string.split('/ZW /FS'))
 		env.Append(CCFLAGS=['/AI', os.environ['VCINSTALLDIR']+'\\vcpackages', '/AI', os.environ['WINDOWSSDKDIR']+'\\References\\CommonConfiguration\\Neutral'])
 		env.Append(CCFLAGS=['/DWINAPI_FAMILY=WINAPI_FAMILY_APP']) #'/D_WIN32_WINNT=0x0603', '/DNTDDI_VERSION=0x06030000'
@@ -158,7 +159,6 @@ def configure(env):
 	##env.Append(CCFLAGS=['/I'+os.getenv("WindowsSdkDir")+"/Include"])
 	env.Append(CCFLAGS=['/DWINRT_ENABLED'])
 	env.Append(CCFLAGS=['/DWINDOWS_ENABLED'])
-	env.Append(CCFLAGS=['/DRTAUDIO_ENABLED'])
 	#env.Append(CCFLAGS=['/DWIN32'])
 	env.Append(CCFLAGS=['/DTYPED_METHOD_BIND'])
 
@@ -181,6 +181,10 @@ def configure(env):
 		#'kernel32','ole32','user32', 'advapi32'
 		]
 	env.Append(LINKFLAGS=[p+".lib" for p in LIBS])
+	
+	# Incremental linking fix
+	env['BUILDERS']['ProgramOriginal'] = env['BUILDERS']['Program']
+	env['BUILDERS']['Program'] = precious_program
 
 	import methods
 	env.Append( BUILDERS = { 'GLSL120' : env.Builder(action = methods.build_legacygl_headers, suffix = 'glsl.h',src_suffix = '.glsl') } )
@@ -190,3 +194,9 @@ def configure(env):
 
 
 #/c/Program Files (x86)/Windows Phone Kits/8.1/lib/ARM/WindowsPhoneCore.lib
+
+
+def precious_program(env, program, sources, **args):
+	program = env.ProgramOriginal(program, sources, **args)
+	env.Precious(program)
+	return program
