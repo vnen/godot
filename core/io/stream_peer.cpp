@@ -492,6 +492,7 @@ Error StreamPeerBuffer::get_partial_data(uint8_t* p_buffer, int p_bytes,int &r_r
 
 	DVector<uint8_t>::Read r = data.read();
 	copymem(p_buffer,r.ptr(),r_received);
+	return OK;
 }
 
 int StreamPeerBuffer::get_available_bytes() const {
