@@ -37,7 +37,7 @@
 #include "core/os/file_access.h"
 #include "core/os/keyboard.h"
 
-#include "key_mapping_win.h"
+#include "platform/windows/key_mapping_win.h"
 
 using namespace Windows::ApplicationModel::Core;
 using namespace Windows::ApplicationModel::Activation;
