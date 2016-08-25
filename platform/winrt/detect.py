@@ -14,9 +14,6 @@ def can_build():
 	if (os.name=="nt"):
 		#building natively on windows!
 		if (os.getenv("VSINSTALLDIR")):
-			if (not os.environ.has_key("ANGLE_ROOT_PATH")):
-				print ("You need to define the ANGLE_ROOT_PATH environment variable.")
-				return False
 			return True			
 	return False
 
@@ -37,10 +34,7 @@ def configure(env):
 
 	angle_root = em_path=os.environ["ANGLE_ROOT_PATH"] + '/'
 
-	#env.Append(CPPPATH=['#platform/winrt', '#platform/winrt/include'])
 	env.Append(CPPPATH=['#platform/winrt','#drivers/windows'])
-	
-	env.Append(CPPPATH=[angle_root + 'include'])
 
 	arch = ""
 
@@ -98,7 +92,7 @@ def configure(env):
 
 		env.Append(LINKFLAGS=['/MANIFEST:NO', '/NXCOMPAT', '/DYNAMICBASE', '/WINMD', '/APPCONTAINER', '/SAFESEH', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1', '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"'])
 		env.Append(CPPFLAGS=['/D','__WRL_NO_DEFAULT_LIB__'])
-		#env.Append(CPPFLAGS=['/FU', os.environ['VCINSTALLDIR'] + 'lib/store/references/platform.winmd'])
+		env.Append(CPPFLAGS=['/FU', os.environ['VCINSTALLDIR'] + 'lib/store/references/platform.winmd'])
 		env.Append(LIBPATH=['#platform/winrt/x64/lib'])
 		env.Append(LIBPATH=[os.environ['VCINSTALLDIR'] + 'lib/store'])
 		env.Append(LIBPATH=['C:/Program Files (x86)/Windows Phone Kits/8.1/lib/x86'])
@@ -107,12 +101,10 @@ def configure(env):
 			arch = "x86"
 			env.Append(CPPFLAGS=['/DPNG_ABORT=abort'])
 			env.Append(LINKFLAGS=['/MACHINE:X86'])
-			env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_Win32/lib'])
 		else:
 			env["bits"] = "64"
 			arch = "x64"
 			env.Append(LINKFLAGS=['/MACHINE:X64'])
-			env.Append(LIBPATH=[angle_root + 'winrt/10/src/Release_x64/lib'])
 		
 
 
@@ -162,14 +154,14 @@ def configure(env):
 	#env.Append(CCFLAGS=['/DWIN32'])
 	env.Append(CCFLAGS=['/DTYPED_METHOD_BIND'])
 
-	env.Append(CCFLAGS=['/DGLES2_ENABLED','/DGL_GLEXT_PROTOTYPES','/DANGLE_ENABLED'])
+	env.Append(CCFLAGS=['/DGLES2_ENABLED','/DGL_GLEXT_PROTOTYPES','/DEGL_EGLEXT_PROTOTYPES','/DANGLE_ENABLED'])
 	#env.Append(CCFLAGS=['/DGLES1_ENABLED'])
 
 	LIBS=[
 		#'winmm',
-		'libEGL',
-		'libGLESv2',
-		'libANGLE',
+		#'libEGL',
+		#'libGLESv2',
+		#'libANGLE',
 		'xaudio2',
 		#'WindowsPhoneCore',
 		#'kernel32',
