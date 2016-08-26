@@ -250,7 +250,7 @@ class AppxPackager {
 
 	ZPOS64_T central_dir_offset;
 	ZPOS64_T end_of_central_dir_offset;
-	size_t central_dir_size;
+	Vector<uint8_t> central_dir_data;
 
 	String hash_block(uint8_t* p_block_data, size_t p_block_len);
 
@@ -288,7 +288,7 @@ class AppxPackager {
 
 	int write_file_header(String p_name, bool p_compress);
 	int write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size);
-	int write_central_dir_header(const FileMeta p_file);
+	void store_central_dir_header(const FileMeta p_file);
 	void write_zip64_end_of_central_record();
 	void write_end_of_central_record();
 
@@ -557,12 +557,12 @@ int AppxPackager::write_file_descriptor(uint32_t p_crc32, size_t p_compressed_si
 	return buf.size();
 }
 
-int AppxPackager::write_central_dir_header(const FileMeta p_file) {
+void AppxPackager::store_central_dir_header(const FileMeta p_file) {
 
-	Vector<uint8_t> buf;
-	buf.resize(BASE_CENTRAL_DIR_SIZE + p_file.name.length() + EXTRA_FIELD_LENGTH);
+	Vector<uint8_t> &buf = central_dir_data;
+	int offs = buf.size();
+	buf.resize(buf.size() + BASE_CENTRAL_DIR_SIZE + p_file.name.length() + EXTRA_FIELD_LENGTH);
 
-	int offs = 0;
 
 	// Write magic
 	offs += buf_put_int32(CENTRAL_DIR_MAGIC, &buf[offs]);
@@ -624,9 +624,6 @@ int AppxPackager::write_central_dir_header(const FileMeta p_file) {
 	offs += buf_put_int64(p_file.zip_offset, &buf[offs]);
 
 	// Done!
-	package->store_buffer(buf.ptr(), buf.size());
-
-	return buf.size();
 }
 
 void AppxPackager::write_zip64_end_of_central_record() {
@@ -656,7 +653,7 @@ void AppxPackager::write_zip64_end_of_central_record() {
 	offs += buf_put_int64(file_metadata.size(), &buf[offs]);
 
 	// Size of central dir
-	offs += buf_put_int64(central_dir_size, &buf[offs]);
+	offs += buf_put_int64(central_dir_data.size(), &buf[offs]);
 
 	// Central dir offset
 	offs += buf_put_int64(central_dir_offset, &buf[offs]);
@@ -852,6 +849,11 @@ void AppxPackager::finish() {
 	memdelete(types_file);
 	types_file = NULL;
 
+	// Pre-process central directory before signing
+	for (int i = 0; i < file_metadata.size(); i++) {
+		store_central_dir_header(file_metadata[i]);
+	}
+
 	// Create the signature file
 	if (sign_package) {
 
@@ -886,19 +888,17 @@ void AppxPackager::finish() {
 		size_t bio_size = BIO_get_mem_data(bio_out, &bio_ptr);
 
 		// Add the signature to the package
-		add_file("Signature.p7x", bio_ptr, bio_size, -1, -1, true);
+		add_file("AppxSignature.p7x", bio_ptr, bio_size, -1, -1, true);
 
+		// Add central directory entry
+		store_central_dir_header(file_metadata[file_metadata.size() - 1]);
 	}
 
 
-	// Central directory
+	// Write central directory
 	progress->step("Finishing package...", 105);
 	central_dir_offset = package->get_pos();
-	central_dir_size = 0;
-	for (int i = 0; i < file_metadata.size(); i++) {
-
-		central_dir_size += write_central_dir_header(file_metadata[i]);
-	}
+	package->store_buffer(central_dir_data.ptr(), central_dir_data.size());
 
 	// End record
 	end_of_central_dir_offset = package->get_pos();
