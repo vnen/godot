@@ -55,16 +55,16 @@ uint32_t JoystickWinrt::process_controllers(uint32_t p_last_id) {
 			int button_mask = (int)GamepadButtons::Menu;
 			for (int j = 0; j < 14; j++) {
 
-				p_last_id = input->joy_button(p_last_id, i, j,(int)reading.Buttons & button_mask);
+				p_last_id = input->joy_button(p_last_id, controllers[i].id, j,(int)reading.Buttons & button_mask);
 				button_mask *= 2;
 			}
 
-			p_last_id = input->joy_axis(p_last_id, i, JOY_AXIS_0, axis_correct(reading.LeftThumbstickX));
-			p_last_id = input->joy_axis(p_last_id, i, JOY_AXIS_1, axis_correct(reading.LeftThumbstickY, true));
-			p_last_id = input->joy_axis(p_last_id, i, JOY_AXIS_2, axis_correct(reading.RightThumbstickX));
-			p_last_id = input->joy_axis(p_last_id, i, JOY_AXIS_3, axis_correct(reading.RightThumbstickY, true));
-			p_last_id = input->joy_axis(p_last_id, i, JOY_AXIS_4, axis_correct(reading.LeftTrigger, false, true));
-			p_last_id = input->joy_axis(p_last_id, i, JOY_AXIS_5, axis_correct(reading.RightTrigger, false, true));
+			p_last_id = input->joy_axis(p_last_id, controllers[i].id, JOY_AXIS_0, axis_correct(reading.LeftThumbstickX));
+			p_last_id = input->joy_axis(p_last_id, controllers[i].id, JOY_AXIS_1, axis_correct(reading.LeftThumbstickY, true));
+			p_last_id = input->joy_axis(p_last_id, controllers[i].id, JOY_AXIS_2, axis_correct(reading.RightThumbstickX));
+			p_last_id = input->joy_axis(p_last_id, controllers[i].id, JOY_AXIS_3, axis_correct(reading.RightThumbstickY, true));
+			p_last_id = input->joy_axis(p_last_id, controllers[i].id, JOY_AXIS_4, axis_correct(reading.LeftTrigger, false, true));
+			p_last_id = input->joy_axis(p_last_id, controllers[i].id, JOY_AXIS_5, axis_correct(reading.RightTrigger, false, true));
 
 			break;
 		}
