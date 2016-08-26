@@ -208,6 +208,7 @@ class AppxPackager {
 		END_OF_CENTRAL_DIR_MAGIC = 0x06054b50,
 		ZIP64_END_OF_CENTRAL_DIR_MAGIC = 0x06064b50,
 		ZIP64_END_DIR_LOCATOR_MAGIC = 0x07064b50,
+		P7X_SIGNATURE= 0x58434b50,
 		ZIP64_HEADER_ID = 0x0001,
 		ZIP_VERSION = 45,
 		GENERAL_PURPOSE = 0x08,
@@ -241,8 +242,8 @@ class AppxPackager {
 
 	EditorProgress *progress;
 	FileAccess *package;
-	String tmp_blockmap_file_name;
-	String tmp_content_types_file_name;
+	String tmp_blockmap_file_path;
+	String tmp_content_types_file_path;
 
 	Set<String> mime_types;
 
@@ -296,11 +297,6 @@ class AppxPackager {
 
 	// Signing methods and structs:
 
-	String SPC_INDIRECT_DATA_OBJID;
-	String SPC_STATEMENT_TYPE_OBJID;
-	String SPC_SP_OPUS_INFO_OBJID;
-	String SPC_SIPINFO_OBJID;
-
 	String certificate_path;
 	String certificate_pass;
 	bool sign_package;
@@ -311,15 +307,16 @@ class AppxPackager {
 		X509* certificate;
 	};
 
+	sha256_context axpc_context; // SHA256 context for ZIP file headers
+	sha256_context axcd_context; // SHA256 context for ZIP directory entries
+
 	struct AppxDigests {
 
-		String axpc; // ZIP file header
-		String axcd; // ZIP directory entry
-		String axct; // Content types XML
-		String axbm; // Block map XML
-		String axci; // Code Integrity file (optional)
-
-		int len() { return axpc.length() + axcd.length() + axct.length() + axbm.length() + axci.length(); }
+		uint8_t axpc[32]; // ZIP file header
+		uint8_t axcd[32]; // ZIP directory entry
+		uint8_t axct[32]; // Content types XML
+		uint8_t axbm[32]; // Block map XML
+		uint8_t axci[32]; // Code Integrity file (optional)
 	};
 
 	CertFile cert_file;
@@ -328,6 +325,7 @@ class AppxPackager {
 	void MakeSPCInfoValue(asn1::SPCInfoValue &info);
 	Error MakeIndirectDataContent(asn1::SPCIndirectDataContent &idc);
 	Error add_attributes(PKCS7_SIGNER_INFO *signerInfo);
+	void make_digests();
 	void write_digest(Vector<uint8_t> &p_out_buffer);
 
 	Error openssl_error(unsigned long p_err);
@@ -413,7 +411,7 @@ String AppxPackager::hash_block(uint8_t * p_block_data, size_t p_block_len) {
 
 void AppxPackager::make_block_map() {
 
-	FileAccess* tmp_file = FileAccess::open(tmp_blockmap_file_name, FileAccess::WRITE);
+	FileAccess* tmp_file = FileAccess::open(tmp_blockmap_file_path, FileAccess::WRITE);
 
 	tmp_file->store_string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>");
 	tmp_file->store_string("<BlockMap xmlns=\"http://schemas.microsoft.com/appx/2010/blockmap\" HashMethod=\"http://www.w3.org/2001/04/xmlenc#sha256\">");
@@ -463,7 +461,7 @@ String AppxPackager::content_type(String p_extension) {
 
 void AppxPackager::make_content_types() {
 
-	FileAccess* tmp_file = FileAccess::open(tmp_content_types_file_name, FileAccess::WRITE);
+	FileAccess* tmp_file = FileAccess::open(tmp_content_types_file_path, FileAccess::WRITE);
 
 	tmp_file->store_string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
 	tmp_file->store_string("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">");
@@ -525,6 +523,9 @@ int AppxPackager::write_file_header(String p_name, bool p_compress) {
 
 	// File name
 	offs += buf_put_string(p_name, &buf[offs]);
+
+	// Calculate the hash for signing
+	sha256_hash(&axpc_context, buf.ptr(), buf.size());
 
 	// Done!
 	package->store_buffer(buf.ptr(), buf.size());
@@ -623,6 +624,9 @@ void AppxPackager::store_central_dir_header(const FileMeta p_file) {
 	// File offset
 	offs += buf_put_int64(p_file.zip_offset, &buf[offs]);
 
+	// Calculate the hash for signing
+	sha256_hash(&axcd_context, buf.ptr(), buf.size());
+
 	// Done!
 }
 
@@ -705,11 +709,13 @@ void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress, SignOptio
 	package = p_fa;
 	central_dir_offset = 0;
 	end_of_central_dir_offset = 0;
-	tmp_blockmap_file_name = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpblockmap.xml";
-	tmp_content_types_file_name = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpcontenttypes.xml";
+	tmp_blockmap_file_path = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpblockmap.xml";
+	tmp_content_types_file_path = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpcontenttypes.xml";
 	certificate_path = p_certificate_path;
 	certificate_pass = p_certificate_password;
 	sign_package = p_sign == SignOption::SIGN;
+	sha256_init(&axpc_context);
+	sha256_init(&axcd_context);
 }
 
 void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress) {
@@ -821,11 +827,17 @@ void AppxPackager::finish() {
 	// Create and add block map file
 	progress->step("Creating block map...", 103);
 	make_block_map();
-	FileAccess* blockmap_file = FileAccess::open(tmp_blockmap_file_name, FileAccess::READ);
+	FileAccess* blockmap_file = FileAccess::open(tmp_blockmap_file_path, FileAccess::READ);
 	Vector<uint8_t> blockmap_buffer;
 	blockmap_buffer.resize(blockmap_file->get_len());
 
 	blockmap_file->get_buffer(blockmap_buffer.ptr(), blockmap_buffer.size());
+
+	// Hash the file for signing
+	sha256_context axbm_context;
+	sha256_init(&axbm_context);
+	sha256_hash(&axbm_context, blockmap_buffer.ptr(), blockmap_buffer.size());
+	sha256_done(&axbm_context, digests.axbm);
 
 	add_file("AppxBlockMap.xml", blockmap_buffer.ptr(), blockmap_buffer.size(), -1, -1, true);
 
@@ -837,11 +849,17 @@ void AppxPackager::finish() {
 	progress->step("Setting content types...", 104);
 	make_content_types();
 
-	FileAccess* types_file = FileAccess::open(tmp_content_types_file_name, FileAccess::READ);
+	FileAccess* types_file = FileAccess::open(tmp_content_types_file_path, FileAccess::READ);
 	Vector<uint8_t> types_buffer;
 	types_buffer.resize(types_file->get_len());
 
 	types_file->get_buffer(types_buffer.ptr(), types_buffer.size());
+
+	// Hash the file for signing
+	sha256_context axct_context;
+	sha256_init(&axct_context);
+	sha256_hash(&axct_context, types_buffer.ptr(), types_buffer.size());
+	sha256_done(&axct_context, digests.axct);
 
 	add_file("[Content_Types].xml", types_buffer.ptr(), types_buffer.size(), -1, -1, true);
 
@@ -867,6 +885,8 @@ void AppxPackager::finish() {
 			return;
 		}
 
+		make_digests();
+
 		PKCS7 signature;
 		err = sign(cert_file, digests, &signature);
 
@@ -887,8 +907,15 @@ void AppxPackager::finish() {
 		uint8_t* bio_ptr;
 		size_t bio_size = BIO_get_mem_data(bio_out, &bio_ptr);
 
+		// Create the signature buffer with magic number
+		Vector<uint8_t> signature_file;
+		signature_file.resize(4 + bio_size);
+		buf_put_int32(P7X_SIGNATURE, signature_file.ptr());
+		for (int i = 0; i < bio_size; i++)
+			signature_file[i + 4] = bio_ptr[i];
+
 		// Add the signature to the package
-		add_file("AppxSignature.p7x", bio_ptr, bio_size, -1, -1, true);
+		add_file("AppxSignature.p7x", signature_file.ptr(), signature_file.size(), -1, -1, true);
 
 		// Add central directory entry
 		store_central_dir_header(file_metadata[file_metadata.size() - 1]);
@@ -910,14 +937,13 @@ void AppxPackager::finish() {
 	package = NULL;
 }
 
-AppxPackager::AppxPackager() {
+// https://support.microsoft.com/en-us/kb/287547
+const char SPC_INDIRECT_DATA_OBJID[] = "1.3.6.1.4.1.311.2.1.4";
+const char SPC_STATEMENT_TYPE_OBJID[] = "1.3.6.1.4.1.311.2.1.11";
+const char SPC_SP_OPUS_INFO_OBJID[] = "1.3.6.1.4.1.311.2.1.12";
+const char SPC_SIPINFO_OBJID[] = "1.3.6.1.4.1.311.2.1.30";
 
-	// https://support.microsoft.com/en-us/kb/287547
-	SPC_INDIRECT_DATA_OBJID = "1.3.6.1.4.1.311.2.1.4";
-	SPC_STATEMENT_TYPE_OBJID = "1.3.6.1.4.1.311.2.1.11";
-	SPC_SP_OPUS_INFO_OBJID = "1.3.6.1.4.1.311.2.1.12";
-	SPC_SIPINFO_OBJID = "1.3.6.1.4.1.311.2.1.30";
-}
+AppxPackager::AppxPackager() {}
 
 AppxPackager::~AppxPackager() {}
 
@@ -986,7 +1012,7 @@ Error AppxPackager::MakeIndirectDataContent(asn1::SPCIndirectDataContent &idc) {
 		}
 	}
 
-	idc.data->type = OBJ_txt2obj((const char*)SPC_SIPINFO_OBJID.c_str(), 1);
+	idc.data->type = OBJ_txt2obj(SPC_SIPINFO_OBJID, 1);
 	idc.data->value = value;
 	idc.messageDigest->digestAlgorithm->algorithm = OBJ_nid2obj(NID_sha256);
 	idc.messageDigest->digestAlgorithm->parameter = algorithmParameter;
@@ -1003,7 +1029,7 @@ Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
 
 	if (!PKCS7_add_signed_attribute(
 		p_signer_info,
-		OBJ_txt2nid((const char*)SPC_SP_OPUS_INFO_OBJID.c_str()),
+		OBJ_txt2nid(SPC_SP_OPUS_INFO_OBJID),
 		V_ASN1_SEQUENCE,
 		opus_value)) {
 
@@ -1026,7 +1052,7 @@ Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
 
 	if (!PKCS7_add_signed_attribute(
 		p_signer_info,
-		OBJ_txt2nid((const char*)SPC_STATEMENT_TYPE_OBJID.c_str()),
+		OBJ_txt2nid(SPC_STATEMENT_TYPE_OBJID),
 		V_ASN1_SEQUENCE,
 		statement_type_value
 	)) {
@@ -1040,63 +1066,67 @@ Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
 
 }
 
+void AppxPackager::make_digests() {
+
+	// AXPC
+	sha256_done(&axpc_context, digests.axpc);
+
+	// AXCD
+	sha256_done(&axcd_context, digests.axcd);
+
+	// AXCI
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+		digests.axci[i] = 0;
+
+}
+
 void AppxPackager::write_digest(Vector<uint8_t>& p_out_buffer) {
 
-	// Size of digests plus magic numbers
-	p_out_buffer.resize(digests.len() + (6 * 4));
+	// Size of digests plus 6 32-bit magic numbers
+	p_out_buffer.resize((SHA256_DIGEST_LENGTH * 5) + (6 * 4));
 
 	int offs = 0;
 
 	// APPX
 	uint32_t sig = 0x58505041;
-	for (int i = 0; i < 4; i++) {
-		p_out_buffer[offs++] = (sig >> (i * 8)) & 0xFF;
-	}
+	offs += buf_put_int32(sig, &p_out_buffer[offs]);
 
 	// AXPC
 	uint32_t axpc_sig = 0x43505841;
-	for (int i = 0; i < 4; i++) {
-		p_out_buffer[offs++] = (axpc_sig >> (i * 8)) & 0xFF;
-	}
-	for (int i = 0; i < digests.axpc.utf8().size(); i++) {
-		p_out_buffer[offs++] = digests.axpc.utf8().get(i) & 0xFF;
+	offs += buf_put_int32(axpc_sig, &p_out_buffer[offs]);
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+		p_out_buffer[offs++] = digests.axpc[i];
 	}
 
 	// AXCD
 	uint32_t axcd_sig = 0x44435841;
-	for (int i = 0; i < 4; i++) {
-		p_out_buffer[offs++] = (axcd_sig >> (i * 8)) & 0xFF;
-	}
-	for (int i = 0; i < digests.axcd.utf8().size(); i++) {
-		p_out_buffer[offs++] = digests.axcd.utf8().get(i) & 0xFF;
+	offs += buf_put_int32(axcd_sig, &p_out_buffer[offs]);
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+		p_out_buffer[offs++] = digests.axcd[i];
 	}
 
 	// AXCT
 	uint32_t axct_sig = 0x54435841;
-	for (int i = 0; i < 4; i++) {
-		p_out_buffer[offs++] = (axct_sig >> (i * 8)) & 0xFF;
-	}
-	for (int i = 0; i < digests.axct.utf8().size(); i++) {
-		p_out_buffer[offs++] = digests.axct.utf8().get(i) & 0xFF;
+	offs += buf_put_int32(axct_sig, &p_out_buffer[offs]);
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+		p_out_buffer[offs++] = digests.axct[i];
 	}
 
 	// AXBM
 	uint32_t axbm_sig = 0x4D425841;
-	for (int i = 0; i < 4; i++) {
-		p_out_buffer[offs++] = (axbm_sig >> (i * 8)) & 0xFF;
-	}
-	for (int i = 0; i < digests.axbm.utf8().size(); i++) {
-		p_out_buffer[offs++] = digests.axbm.utf8().get(i) & 0xFF;
+	offs += buf_put_int32(axbm_sig, &p_out_buffer[offs]);
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+		p_out_buffer[offs++] = digests.axbm[i];
 	}
 
 	// AXCI
 	uint32_t axci_sig = 0x49435841;
-	for (int i = 0; i < 4; i++) {
-		p_out_buffer[offs++] = (axci_sig >> (i * 8)) & 0xFF;
+	offs += buf_put_int32(axci_sig, &p_out_buffer[offs]);
+	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+		p_out_buffer[offs++] = digests.axci[i];
 	}
-	for (int i = 0; i < digests.axci.utf8().size(); i++) {
-		p_out_buffer[offs++] = digests.axci.utf8().get(i) & 0xFF;
-	}
+
+	// Done!
 }
 
 
@@ -1144,10 +1174,10 @@ Error AppxPackager::sign(const CertFile & p_cert, const AppxDigests & digests, P
 	OpenSSL_add_all_algorithms();
 
 	// Register object IDs
-	OBJ_create_and_add_object((const char*)SPC_INDIRECT_DATA_OBJID.c_str(), NULL, NULL);
-	OBJ_create_and_add_object((const char*)SPC_STATEMENT_TYPE_OBJID.c_str(), NULL, NULL);
-	OBJ_create_and_add_object((const char*)SPC_SP_OPUS_INFO_OBJID.c_str(), NULL, NULL);
-	OBJ_create_and_add_object((const char*)SPC_SIPINFO_OBJID.c_str(), NULL, NULL);
+	OBJ_create_and_add_object(SPC_INDIRECT_DATA_OBJID, NULL, NULL);
+	OBJ_create_and_add_object(SPC_STATEMENT_TYPE_OBJID, NULL, NULL);
+	OBJ_create_and_add_object(SPC_SP_OPUS_INFO_OBJID, NULL, NULL);
+	OBJ_create_and_add_object(SPC_SIPINFO_OBJID, NULL, NULL);
 
 	if (!PKCS7_set_type(p_out_signature, NID_pkcs7_signed)) {
 
@@ -1212,7 +1242,7 @@ Error AppxPackager::sign(const CertFile & p_cert, const AppxDigests & digests, P
 		return openssl_error(ERR_peek_last_error());
 	}
 
-	content->type = OBJ_txt2obj((const char*)SPC_INDIRECT_DATA_OBJID.c_str(), 1);
+	content->type = OBJ_txt2obj(SPC_INDIRECT_DATA_OBJID, 1);
 
 	ASN1_TYPE* idc_sequence = idc_encoded.ToSequenceType();
 	content->d.other = idc_sequence;
