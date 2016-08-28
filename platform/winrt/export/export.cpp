@@ -330,7 +330,7 @@ class AppxPackager {
 	}
 
 	int write_file_header(String p_name, bool p_compress, bool p_do_hash = true);
-	int write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size);
+	int write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size, bool p_do_hash = true);
 	void store_central_dir_header(const FileMeta p_file, bool p_do_hash = true);
 	void write_zip64_end_of_central_record();
 	void write_end_of_central_record();
@@ -351,12 +351,12 @@ class AppxPackager {
 		X509* certificate;
 	};
 
-	SHA256_CTX axpc_context; // SHA256 context for ZIP file headers
+	SHA256_CTX axpc_context; // SHA256 context for ZIP file entries
 	SHA256_CTX axcd_context; // SHA256 context for ZIP directory entries
 
 	struct AppxDigests {
 
-		uint8_t axpc[SHA256_DIGEST_LENGTH]; // ZIP file header
+		uint8_t axpc[SHA256_DIGEST_LENGTH]; // ZIP file entries
 		uint8_t axcd[SHA256_DIGEST_LENGTH]; // ZIP directory entry
 		uint8_t axct[SHA256_DIGEST_LENGTH]; // Content types XML
 		uint8_t axbm[SHA256_DIGEST_LENGTH]; // Block map XML
@@ -588,7 +588,7 @@ int AppxPackager::write_file_header(String p_name, bool p_compress, bool p_do_ha
 	return buf.size();
 }
 
-int AppxPackager::write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size) {
+int AppxPackager::write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size, bool p_do_hash) {
 
 	Vector<uint8_t> buf;
 	buf.resize(DATA_DESCRIPTOR_SIZE);
@@ -606,6 +606,12 @@ int AppxPackager::write_file_descriptor(uint32_t p_crc32, size_t p_compressed_si
 
 	// Uncompressed size
 	offs += buf_put_int64(p_uncompressed_size, &buf[offs]);
+
+#ifdef OPENSSL_ENABLED
+	// Calculate the hash for signing
+	if (p_do_hash)
+		SHA256_Update(&axpc_context, buf.ptr(), buf.size());
+#endif // OPENSSL_ENABLED
 
 	// Done!
 	package->store_buffer(buf.ptr(), buf.size());
@@ -784,6 +790,8 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 		progress->step("File: " + p_file_name, 3 + p_file_no * 100 / p_total_files);
 	}
 
+	bool do_hash = p_file_name != "AppxSignature.p7x";
+
 	FileMeta meta;
 	meta.name = p_file_name;
 	meta.uncompressed_size = p_len;
@@ -793,7 +801,7 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 
 
 	// Create file header
-	meta.lfh_size = write_file_header(p_file_name, p_compress, p_file_name != "AppxSignature.p7x");
+	meta.lfh_size = write_file_header(p_file_name, p_compress, do_hash);
 
 	// Data for compression
 	z_stream strm;
@@ -839,10 +847,18 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 			bh.compressed_size = strm.total_out - total_out_before;
 
 			package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
+#ifdef OPENSSL_ENABLED
+			if (do_hash)
+				SHA256_Update(&axpc_context, strm_out.ptr(), strm.total_out - total_out_before);
+#endif // OPENSSL_ENABLED
 
 		} else {
 			bh.compressed_size = block_size;
 			package->store_buffer(strm_in.ptr(), block_size);
+#ifdef OPENSSL_ENABLED
+			if (do_hash)
+				SHA256_Update(&axpc_context, strm_in.ptr(), block_size);
+#endif // OPENSSL_ENABLED
 		}
 
 		meta.hashes.push_back(bh);
@@ -862,6 +878,10 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 		deflate(&strm, Z_FINISH);
 
 		package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
+#ifdef OPENSSL_ENABLED
+		if (do_hash)
+			SHA256_Update(&axpc_context, strm_out.ptr(), strm.total_out - total_out_before);
+#endif // OPENSSL_ENABLED
 
 		deflateEnd(&strm);
 		meta.compressed_size = strm.total_out;
@@ -877,7 +897,7 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	meta.file_crc32 = crc;
 
 	// Create data descriptor
-	write_file_descriptor(crc, meta.compressed_size, meta.uncompressed_size);
+	write_file_descriptor(crc, meta.compressed_size, meta.uncompressed_size, do_hash);
 
 	file_metadata.push_back(meta);
 }
@@ -1425,9 +1445,9 @@ bool EditorExportPlatformWinrt::_set(const StringName& p_name, const Variant& p_
 		custom_release_package = p_value;
 	else if (n == "signing/sign")
 		sign_package = p_value;
-	else if (n == "signing/certificates_file")
+	else if (n == "signing/certificate_file")
 		certificate_path = p_value;
-	else if (n == "signing/certificates_password")
+	else if (n == "signing/certificate_password")
 		certificate_pass = p_value;
 	else return false;
 
