@@ -27,6 +27,45 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
+/*************************************************************************
+ * The code for signing the package was ported from fb-util-for-appx
+ * available at https://github.com/facebook/fb-util-for-appx
+ * and distributed also under the following license:
+
+BSD License
+
+For fb-util-for-appx software
+
+Copyright (c) 2016, Facebook, Inc. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name Facebook nor the names of its contributors may be used to
+   endorse or promote products derived from this software without specific
+   prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+*************************************************************************/
+
+
 #include "version.h"
 #include "export.h"
 #include "object.h"
@@ -42,6 +81,7 @@
 #include "bind/core_bind.h"
 #include <zlib.h>
 
+#ifdef OPENSSL_ENABLED
 #include <openssl/bio.h>
 #include <openssl/asn1.h>
 #include <openssl/pkcs7.h>
@@ -199,6 +239,8 @@ public:
 
 };
 
+#endif // OPENSSL_ENABLED
+
 class AppxPackager {
 
 	enum {
@@ -287,13 +329,15 @@ class AppxPackager {
 		return p_val.length();
 	}
 
-	int write_file_header(String p_name, bool p_compress);
+	int write_file_header(String p_name, bool p_compress, bool p_do_hash = true);
 	int write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size);
-	void store_central_dir_header(const FileMeta p_file);
+	void store_central_dir_header(const FileMeta p_file, bool p_do_hash = true);
 	void write_zip64_end_of_central_record();
 	void write_end_of_central_record();
 
 	String content_type(String p_extension);
+
+#ifdef OPENSSL_ENABLED
 
 	// Signing methods and structs:
 
@@ -307,16 +351,16 @@ class AppxPackager {
 		X509* certificate;
 	};
 
-	sha256_context axpc_context; // SHA256 context for ZIP file headers
-	sha256_context axcd_context; // SHA256 context for ZIP directory entries
+	SHA256_CTX axpc_context; // SHA256 context for ZIP file headers
+	SHA256_CTX axcd_context; // SHA256 context for ZIP directory entries
 
 	struct AppxDigests {
 
-		uint8_t axpc[32]; // ZIP file header
-		uint8_t axcd[32]; // ZIP directory entry
-		uint8_t axct[32]; // Content types XML
-		uint8_t axbm[32]; // Block map XML
-		uint8_t axci[32]; // Code Integrity file (optional)
+		uint8_t axpc[SHA256_DIGEST_LENGTH]; // ZIP file header
+		uint8_t axcd[SHA256_DIGEST_LENGTH]; // ZIP directory entry
+		uint8_t axct[SHA256_DIGEST_LENGTH]; // Content types XML
+		uint8_t axbm[SHA256_DIGEST_LENGTH]; // Block map XML
+		uint8_t axci[SHA256_DIGEST_LENGTH]; // Code Integrity file (optional)
 	};
 
 	CertFile cert_file;
@@ -331,6 +375,8 @@ class AppxPackager {
 	Error openssl_error(unsigned long p_err);
 	Error read_cert_file(const String &p_path, const String &p_password, CertFile* p_out_cf);
 	Error sign(const CertFile &p_cert, const AppxDigests &digests, PKCS7* p_out_signature);
+
+#endif // OPENSSL_ENABLED
 
 public:
 
@@ -363,6 +409,7 @@ class EditorExportPlatformWinrt : public EditorExportPlatform {
 	String custom_release_package;
 	String custom_debug_package;
 
+	bool sign_package;
 	String certificate_path;
 	String certificate_pass;
 
@@ -481,9 +528,14 @@ void AppxPackager::make_content_types() {
 			+ types[ext] + "\" />");
 	}
 
-	// Override for manifest and block map
+	// Appx signature file
+	tmp_file->store_string("<Default Extension=\"p7x\" ContentType=\"application/octet-stream\" />");
+
+	// Override for package files
 	tmp_file->store_string("<Override PartName=\"/AppxManifest.xml\" ContentType=\"application/vnd.ms-appx.manifest+xml\" />");
 	tmp_file->store_string("<Override PartName=\"/AppxBlockMap.xml\" ContentType=\"application/vnd.ms-appx.blockmap+xml\" />");
+	tmp_file->store_string("<Override PartName=\"/AppxSignature.p7x\" ContentType=\"application/vnd.ms-appx.signature\" />");
+	tmp_file->store_string("<Override PartName=\"/AppxMetadata/CodeIntegrity.cat\" ContentType=\"application/vnd.ms-pkiseccat\" />");
 
 	tmp_file->store_string("</Types>");
 
@@ -492,7 +544,7 @@ void AppxPackager::make_content_types() {
 	tmp_file = NULL;
 }
 
-int AppxPackager::write_file_header(String p_name, bool p_compress) {
+int AppxPackager::write_file_header(String p_name, bool p_compress, bool p_do_hash) {
 
 	Vector<uint8_t> buf;
 	buf.resize(BASE_FILE_HEADER_SIZE + p_name.length());
@@ -524,8 +576,11 @@ int AppxPackager::write_file_header(String p_name, bool p_compress) {
 	// File name
 	offs += buf_put_string(p_name, &buf[offs]);
 
+#ifdef OPENSSL_ENABLED
 	// Calculate the hash for signing
-	sha256_hash(&axpc_context, buf.ptr(), buf.size());
+	if (p_do_hash)
+		SHA256_Update(&axpc_context, buf.ptr(), buf.size());
+#endif // OPENSSL_ENABLED
 
 	// Done!
 	package->store_buffer(buf.ptr(), buf.size());
@@ -558,7 +613,7 @@ int AppxPackager::write_file_descriptor(uint32_t p_crc32, size_t p_compressed_si
 	return buf.size();
 }
 
-void AppxPackager::store_central_dir_header(const FileMeta p_file) {
+void AppxPackager::store_central_dir_header(const FileMeta p_file, bool p_do_hash) {
 
 	Vector<uint8_t> &buf = central_dir_data;
 	int offs = buf.size();
@@ -624,8 +679,11 @@ void AppxPackager::store_central_dir_header(const FileMeta p_file) {
 	// File offset
 	offs += buf_put_int64(p_file.zip_offset, &buf[offs]);
 
+#ifdef OPENSSL_ENABLED
 	// Calculate the hash for signing
-	sha256_hash(&axcd_context, buf.ptr(), buf.size());
+	if (p_do_hash)
+		SHA256_Update(&axcd_context, buf.ptr(), buf.size());
+#endif // OPENSSL_ENABLED
 
 	// Done!
 }
@@ -711,11 +769,13 @@ void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress, SignOptio
 	end_of_central_dir_offset = 0;
 	tmp_blockmap_file_path = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpblockmap.xml";
 	tmp_content_types_file_path = EditorSettings::get_singleton()->get_settings_path() + "/tmp/tmpcontenttypes.xml";
+#ifdef OPENSSL_ENABLED
 	certificate_path = p_certificate_path;
 	certificate_pass = p_certificate_password;
 	sign_package = p_sign == SignOption::SIGN;
-	sha256_init(&axpc_context);
-	sha256_init(&axcd_context);
+	SHA256_Init(&axpc_context);
+	SHA256_Init(&axcd_context);
+#endif // OPENSSL_ENABLED
 }
 
 void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress) {
@@ -733,7 +793,7 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 
 
 	// Create file header
-	meta.lfh_size = write_file_header(p_file_name, p_compress);
+	meta.lfh_size = write_file_header(p_file_name, p_compress, p_file_name != "AppxSignature.p7x");
 
 	// Data for compression
 	z_stream strm;
@@ -833,11 +893,15 @@ void AppxPackager::finish() {
 
 	blockmap_file->get_buffer(blockmap_buffer.ptr(), blockmap_buffer.size());
 
+#ifdef OPENSSL_ENABLED
 	// Hash the file for signing
-	sha256_context axbm_context;
-	sha256_init(&axbm_context);
-	sha256_hash(&axbm_context, blockmap_buffer.ptr(), blockmap_buffer.size());
-	sha256_done(&axbm_context, digests.axbm);
+	if (sign_package) {
+		SHA256_CTX axbm_context;
+		SHA256_Init(&axbm_context);
+		SHA256_Update(&axbm_context, blockmap_buffer.ptr(), blockmap_buffer.size());
+		SHA256_Final(digests.axbm, &axbm_context);
+	}
+#endif // OPENSSL_ENABLED
 
 	add_file("AppxBlockMap.xml", blockmap_buffer.ptr(), blockmap_buffer.size(), -1, -1, true);
 
@@ -855,11 +919,15 @@ void AppxPackager::finish() {
 
 	types_file->get_buffer(types_buffer.ptr(), types_buffer.size());
 
-	// Hash the file for signing
-	sha256_context axct_context;
-	sha256_init(&axct_context);
-	sha256_hash(&axct_context, types_buffer.ptr(), types_buffer.size());
-	sha256_done(&axct_context, digests.axct);
+#ifdef OPENSSL_ENABLED
+	if (sign_package) {
+		// Hash the file for signing
+		SHA256_CTX axct_context;
+		SHA256_Init(&axct_context);
+		SHA256_Update(&axct_context, types_buffer.ptr(), types_buffer.size());
+		SHA256_Final(digests.axct, &axct_context);
+	}
+#endif // OPENSSL_ENABLED
 
 	add_file("[Content_Types].xml", types_buffer.ptr(), types_buffer.size(), -1, -1, true);
 
@@ -872,6 +940,7 @@ void AppxPackager::finish() {
 		store_central_dir_header(file_metadata[i]);
 	}
 
+#ifdef OPENSSL_ENABLED
 	// Create the signature file
 	if (sign_package) {
 
@@ -887,8 +956,16 @@ void AppxPackager::finish() {
 
 		make_digests();
 
-		PKCS7 signature;
-		err = sign(cert_file, digests, &signature);
+		PKCS7* signature = PKCS7_new();
+		if (!signature) {
+			EditorNode::add_io_error(TTR("Error creating the signature object."));
+			package->close();
+			memdelete(package);
+			package = NULL;
+			return;
+		}
+
+		err = sign(cert_file, digests, signature);
 
 		if (err != OK) {
 			EditorNode::add_io_error(TTR("Error creating the package signature."));
@@ -900,7 +977,7 @@ void AppxPackager::finish() {
 
 		// Read the signature as bytes
 		BIO* bio_out = BIO_new(BIO_s_mem());
-		i2d_PKCS7_bio(bio_out, &signature);
+		i2d_PKCS7_bio(bio_out, signature);
 
 		BIO_flush(bio_out);
 
@@ -918,8 +995,9 @@ void AppxPackager::finish() {
 		add_file("AppxSignature.p7x", signature_file.ptr(), signature_file.size(), -1, -1, true);
 
 		// Add central directory entry
-		store_central_dir_header(file_metadata[file_metadata.size() - 1]);
+		store_central_dir_header(file_metadata[file_metadata.size() - 1], false);
 	}
+#endif // OPENSSL_ENABLED
 
 
 	// Write central directory
@@ -937,11 +1015,13 @@ void AppxPackager::finish() {
 	package = NULL;
 }
 
+#ifdef OPENSSL_ENABLED
 // https://support.microsoft.com/en-us/kb/287547
 const char SPC_INDIRECT_DATA_OBJID[] = "1.3.6.1.4.1.311.2.1.4";
 const char SPC_STATEMENT_TYPE_OBJID[] = "1.3.6.1.4.1.311.2.1.11";
 const char SPC_SP_OPUS_INFO_OBJID[] = "1.3.6.1.4.1.311.2.1.12";
 const char SPC_SIPINFO_OBJID[] = "1.3.6.1.4.1.311.2.1.30";
+#endif // OPENSSL_ENABLED
 
 AppxPackager::AppxPackager() {}
 
@@ -950,7 +1030,7 @@ AppxPackager::~AppxPackager() {}
 
 ////////////////////////////////////////////////////////////////////
 
-
+#ifdef OPENSSL_ENABLED
 Error AppxPackager::openssl_error(unsigned long p_err) {
 
 	ERR_load_crypto_strings();
@@ -963,7 +1043,6 @@ Error AppxPackager::openssl_error(unsigned long p_err) {
 	ERR_EXPLAIN(err);
 	ERR_FAIL_V(FAILED);
 }
-
 
 void AppxPackager::MakeSPCInfoValue(asn1::SPCInfoValue &info) {
 
@@ -1031,7 +1110,8 @@ Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
 		p_signer_info,
 		OBJ_txt2nid(SPC_SP_OPUS_INFO_OBJID),
 		V_ASN1_SEQUENCE,
-		opus_value)) {
+		opus_value
+	)) {
 
 		asn1::SPCSpOpusInfo_free(opus);
 
@@ -1039,7 +1119,18 @@ Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
 		return openssl_error(ERR_peek_last_error());
 	}
 
-	asn1::SPCSpOpusInfo_free(opus);
+	// Add content type attribute
+	if (!PKCS7_add_signed_attribute(
+		p_signer_info,
+		NID_pkcs9_contentType,
+		V_ASN1_OBJECT,
+		OBJ_txt2obj(SPC_INDIRECT_DATA_OBJID, 1)
+	)) {
+
+		asn1::SPCSpOpusInfo_free(opus);
+		ASN1_STRING_free(opus_value);
+		return openssl_error(ERR_peek_last_error());
+	}
 
 	// Add statement type attribute
 	asn1::SPCStatementType* statement_type = asn1::SPCStatementType_new();
@@ -1069,10 +1160,10 @@ Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
 void AppxPackager::make_digests() {
 
 	// AXPC
-	sha256_done(&axpc_context, digests.axpc);
+	SHA256_Final(digests.axpc, &axpc_context);
 
 	// AXCD
-	sha256_done(&axcd_context, digests.axcd);
+	SHA256_Final(digests.axcd, &axcd_context);
 
 	// AXCI
 	for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
@@ -1129,7 +1220,6 @@ void AppxPackager::write_digest(Vector<uint8_t>& p_out_buffer) {
 	// Done!
 }
 
-
 Error AppxPackager::read_cert_file(const String & p_path, const String &p_password, CertFile* p_out_cf) {
 
 	ERR_FAIL_COND_V(!p_out_cf, ERR_INVALID_PARAMETER);
@@ -1175,9 +1265,9 @@ Error AppxPackager::sign(const CertFile & p_cert, const AppxDigests & digests, P
 
 	// Register object IDs
 	OBJ_create_and_add_object(SPC_INDIRECT_DATA_OBJID, NULL, NULL);
-	OBJ_create_and_add_object(SPC_STATEMENT_TYPE_OBJID, NULL, NULL);
-	OBJ_create_and_add_object(SPC_SP_OPUS_INFO_OBJID, NULL, NULL);
 	OBJ_create_and_add_object(SPC_SIPINFO_OBJID, NULL, NULL);
+	OBJ_create_and_add_object(SPC_SP_OPUS_INFO_OBJID, NULL, NULL);
+	OBJ_create_and_add_object(SPC_STATEMENT_TYPE_OBJID, NULL, NULL);
 
 	if (!PKCS7_set_type(p_out_signature, NID_pkcs7_signed)) {
 
@@ -1213,11 +1303,11 @@ Error AppxPackager::sign(const CertFile & p_cert, const AppxDigests & digests, P
 		ERR_FAIL_V(FAILED);
 	}
 
-	/*if ((idc_encoded.data()[1] & 0x80) == 0x00) {
+	if ((idc_encoded.data()[1] & 0x80) == 0x00) {
 
 		ERR_EXPLAIN("Invalid encoded data");
 		ERR_FAIL_V(FAILED);
-	}*/
+	}
 
 	size_t skip = 4;
 
@@ -1247,9 +1337,15 @@ Error AppxPackager::sign(const CertFile & p_cert, const AppxDigests & digests, P
 	ASN1_TYPE* idc_sequence = idc_encoded.ToSequenceType();
 	content->d.other = idc_sequence;
 
+	if (!PKCS7_set_content(p_out_signature, content)) {
+
+		return openssl_error(ERR_peek_last_error());
+	}
+
 	return OK;
 }
 
+#endif // OPENSSL_ENABLED
 
 ////////////////////////////////////////////////////////////////////
 
@@ -1327,9 +1423,11 @@ bool EditorExportPlatformWinrt::_set(const StringName& p_name, const Variant& p_
 		custom_debug_package = p_value;
 	else if (n == "custom_package/release")
 		custom_release_package = p_value;
-	else if (n == "certificates/cert_file")
+	else if (n == "signing/sign")
+		sign_package = p_value;
+	else if (n == "signing/certificates_file")
 		certificate_path = p_value;
-	else if (n == "certificates/cert_password")
+	else if (n == "signing/certificates_password")
 		certificate_pass = p_value;
 	else return false;
 
@@ -1350,9 +1448,11 @@ bool EditorExportPlatformWinrt::_get(const StringName& p_name, Variant &r_ret) c
 		r_ret = custom_debug_package;
 	else if (n == "custom_package/release")
 		r_ret = custom_release_package;
-	else if (n == "certificates/cert_file")
+	else if (n == "signing/sign")
+		r_ret = sign_package;
+	else if (n == "signing/certificate_file")
 		r_ret = certificate_path;
-	else if (n == "certificates/cert_password")
+	else if (n == "signing/certificate_password")
 		r_ret = certificate_pass;
 	else return false;
 
@@ -1368,8 +1468,11 @@ void EditorExportPlatformWinrt::_get_property_list(List<PropertyInfo>* p_list) c
 	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/x86"));
 	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/x64"));
 
-	p_list->push_back(PropertyInfo(Variant::STRING, "certificates/cert_file", PROPERTY_HINT_GLOBAL_FILE, "pfx"));
-	p_list->push_back(PropertyInfo(Variant::STRING, "certificates/cert_password"));
+#if 0 // Signing does not work :( disabling for now
+	p_list->push_back(PropertyInfo(Variant::BOOL, "signing/sign"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "signing/certificate_file", PROPERTY_HINT_GLOBAL_FILE, "pfx"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "signing/certificate_password"));
+#endif
 }
 
 bool EditorExportPlatformWinrt::can_export(String * r_error) const {
@@ -1432,7 +1535,7 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 	ERR_FAIL_COND_V(err != OK, ERR_CANT_CREATE);
 
 	AppxPackager packager;
-	packager.init(fa_pack, &ep, AppxPackager::SIGN, certificate_path, certificate_pass);
+	packager.init(fa_pack, &ep, sign_package ? AppxPackager::SIGN : AppxPackager::DONT_SIGN, certificate_path, certificate_pass);
 
 	FileAccess *src_f = NULL;
 	zlib_filefunc_def io = zipio_create_io_from_file(&src_f);
@@ -1498,6 +1601,8 @@ EditorExportPlatformWinrt::EditorExportPlatformWinrt() {
 	Image img(_winrt_logo);
 	logo = Ref<ImageTexture>(memnew(ImageTexture));
 	logo->create_from_image(img);
+
+	sign_package = false;
 }
 
 EditorExportPlatformWinrt::~EditorExportPlatformWinrt() {}
