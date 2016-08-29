@@ -252,14 +252,15 @@ class AppxPackager {
 		ZIP64_END_DIR_LOCATOR_MAGIC = 0x07064b50,
 		P7X_SIGNATURE= 0x58434b50,
 		ZIP64_HEADER_ID = 0x0001,
-		ZIP_VERSION = 45,
-		GENERAL_PURPOSE = 0x08,
+		ZIP_VERSION = 20,
+		ZIP_ARCHIVE_VERSION = 45,
+		GENERAL_PURPOSE = 0x00,
 		BASE_FILE_HEADER_SIZE = 30,
 		DATA_DESCRIPTOR_SIZE = 24,
 		BASE_CENTRAL_DIR_SIZE = 46,
 		EXTRA_FIELD_LENGTH = 28,
 		ZIP64_HEADER_SIZE = 24,
-		ZIP64_END_OF_CENTRAL_DIR_SIZE = 44,
+		ZIP64_END_OF_CENTRAL_DIR_SIZE = (56 - 12),
 		END_OF_CENTRAL_DIR_SIZE = 42,
 		BLOCK_SIZE = 65536,
 	};
@@ -329,11 +330,9 @@ class AppxPackager {
 		return p_val.length();
 	}
 
-	int write_file_header(String p_name, bool p_compress, bool p_do_hash = true);
-	int write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size, bool p_do_hash = true);
+	Vector<uint8_t> make_file_header(FileMeta p_file_meta);
 	void store_central_dir_header(const FileMeta p_file, bool p_do_hash = true);
-	void write_zip64_end_of_central_record();
-	void write_end_of_central_record();
+	Vector<uint8_t> make_end_of_central_record();
 
 	String content_type(String p_extension);
 
@@ -544,10 +543,10 @@ void AppxPackager::make_content_types() {
 	tmp_file = NULL;
 }
 
-int AppxPackager::write_file_header(String p_name, bool p_compress, bool p_do_hash) {
+Vector<uint8_t> AppxPackager::make_file_header(FileMeta p_file_meta) {
 
 	Vector<uint8_t> buf;
-	buf.resize(BASE_FILE_HEADER_SIZE + p_name.length());
+	buf.resize(BASE_FILE_HEADER_SIZE + p_file_meta.name.length());
 
 	int offs = 0;
 	// Write magic
@@ -560,77 +559,45 @@ int AppxPackager::write_file_header(String p_name, bool p_compress, bool p_do_ha
 	offs += buf_put_int16(GENERAL_PURPOSE, &buf[offs]);
 
 	// Compression
-	offs += buf_put_int16(p_compress ? Z_DEFLATED : 0, &buf[offs]);
+	offs += buf_put_int16(p_file_meta.compressed ? Z_DEFLATED : 0, &buf[offs]);
 
-	// Empty header data
-	for (int i = 0; i < 16; i++) {
-		buf[offs++] = 0;
-	}
+	// File date and time
+	offs += buf_put_int32(0, &buf[offs]);
+
+	// CRC-32
+	offs += buf_put_int32(p_file_meta.file_crc32, &buf[offs]);
+
+	// Compressed size
+	offs += buf_put_int32(p_file_meta.compressed_size, &buf[offs]);
+
+	// Uncompressed size
+	offs += buf_put_int32(p_file_meta.uncompressed_size, &buf[offs]);
 
 	// File name length
-	offs += buf_put_int16(p_name.length(), &buf[offs]);
+	offs += buf_put_int16(p_file_meta.name.length(), &buf[offs]);
 
 	// Extra data length
 	offs += buf_put_int16(0, &buf[offs]);
 
 	// File name
-	offs += buf_put_string(p_name, &buf[offs]);
-
-#ifdef OPENSSL_ENABLED
-	// Calculate the hash for signing
-	if (p_do_hash)
-		SHA256_Update(&axpc_context, buf.ptr(), buf.size());
-#endif // OPENSSL_ENABLED
+	offs += buf_put_string(p_file_meta.name, &buf[offs]);
 
 	// Done!
-	package->store_buffer(buf.ptr(), buf.size());
-
-	return buf.size();
-}
-
-int AppxPackager::write_file_descriptor(uint32_t p_crc32, size_t p_compressed_size, size_t p_uncompressed_size, bool p_do_hash) {
-
-	Vector<uint8_t> buf;
-	buf.resize(DATA_DESCRIPTOR_SIZE);
-
-	int offs = 0;
-
-	// Write magic
-	offs += buf_put_int32(DATA_DESCRIPTOR_MAGIC, &buf[offs]);
-
-	// CRC
-	offs += buf_put_int32(p_crc32, &buf[offs]);
-
-	// Compressed size
-	offs += buf_put_int64(p_compressed_size, &buf[offs]);
-
-	// Uncompressed size
-	offs += buf_put_int64(p_uncompressed_size, &buf[offs]);
-
-#ifdef OPENSSL_ENABLED
-	// Calculate the hash for signing
-	if (p_do_hash)
-		SHA256_Update(&axpc_context, buf.ptr(), buf.size());
-#endif // OPENSSL_ENABLED
-
-	// Done!
-	package->store_buffer(buf.ptr(), buf.size());
-
-	return buf.size();
+	return buf;
 }
 
 void AppxPackager::store_central_dir_header(const FileMeta p_file, bool p_do_hash) {
 
 	Vector<uint8_t> &buf = central_dir_data;
 	int offs = buf.size();
-	buf.resize(buf.size() + BASE_CENTRAL_DIR_SIZE + p_file.name.length() + EXTRA_FIELD_LENGTH);
+	buf.resize(buf.size() + BASE_CENTRAL_DIR_SIZE + p_file.name.length());
 
 
 	// Write magic
 	offs += buf_put_int32(CENTRAL_DIR_MAGIC, &buf[offs]);
 
-	// Version (twice)
-	offs += buf_put_int16(ZIP_VERSION, &buf[offs]);
+	// ZIP versions
+	offs += buf_put_int16(ZIP_ARCHIVE_VERSION, &buf[offs]);
 	offs += buf_put_int16(ZIP_VERSION, &buf[offs]);
 
 	// General purpose flag
@@ -645,16 +612,15 @@ void AppxPackager::store_central_dir_header(const FileMeta p_file, bool p_do_has
 	// Crc-32
 	offs += buf_put_int32(p_file.file_crc32, &buf[offs]);
 
-	// File sizes (will be in extra field)
-	for (int i = 0; i < 8; i++) {
-		buf[offs++] = 0xFF;
-	}
+	// File sizes
+	offs += buf_put_int32(p_file.compressed_size, &buf[offs]);
+	offs += buf_put_int32(p_file.uncompressed_size, &buf[offs]);
 
 	// File name length
 	offs += buf_put_int16(p_file.name.length(), &buf[offs]);
 
 	// Extra field length
-	offs += buf_put_int16(EXTRA_FIELD_LENGTH, &buf[offs]);
+	offs += buf_put_int16(0, &buf[offs]);
 
 	// Comment length
 	offs += buf_put_int16(0, &buf[offs]);
@@ -664,26 +630,11 @@ void AppxPackager::store_central_dir_header(const FileMeta p_file, bool p_do_has
 		buf[offs++] = 0;
 	}
 
-	// Relative offset (will be on extra field)
-	for (int i = 0; i < 4; i++) {
-		buf[offs++] = 0xFF;
-	}
+	// Relative offset
+	offs += buf_put_int32(p_file.zip_offset, &buf[offs]);
 
 	// File name
 	offs += buf_put_string(p_file.name, &buf[offs]);
-
-	// Zip64 extra field
-	offs += buf_put_int16(ZIP64_HEADER_ID, &buf[offs]);
-	offs += buf_put_int16(ZIP64_HEADER_SIZE, &buf[offs]);
-
-	// Original size
-	offs += buf_put_int64(p_file.uncompressed_size, &buf[offs]);
-
-	// Compressed size
-	offs += buf_put_int64(p_file.compressed_size, &buf[offs]);
-
-	// File offset
-	offs += buf_put_int64(p_file.zip_offset, &buf[offs]);
 
 #ifdef OPENSSL_ENABLED
 	// Calculate the hash for signing
@@ -694,10 +645,10 @@ void AppxPackager::store_central_dir_header(const FileMeta p_file, bool p_do_has
 	// Done!
 }
 
-void AppxPackager::write_zip64_end_of_central_record() {
+Vector<uint8_t> AppxPackager::make_end_of_central_record() {
 
 	Vector<uint8_t> buf;
-	buf.resize(ZIP64_END_OF_CENTRAL_DIR_SIZE + 12); // Size plus magic
+	buf.resize(ZIP64_END_OF_CENTRAL_DIR_SIZE + 12 + END_OF_CENTRAL_DIR_SIZE); // Size plus magic
 
 	int offs = 0;
 
@@ -708,8 +659,8 @@ void AppxPackager::write_zip64_end_of_central_record() {
 	offs += buf_put_int64(ZIP64_END_OF_CENTRAL_DIR_SIZE, &buf[offs]);
 
 	// Version (yes, twice)
-	offs += buf_put_int16(ZIP_VERSION, &buf[offs]);
-	offs += buf_put_int16(ZIP_VERSION, &buf[offs]);
+	offs += buf_put_int16(ZIP_ARCHIVE_VERSION, &buf[offs]);
+	offs += buf_put_int16(ZIP_ARCHIVE_VERSION, &buf[offs]);
 
 	// Disk number
 	for (int i = 0; i < 8; i++) {
@@ -726,16 +677,7 @@ void AppxPackager::write_zip64_end_of_central_record() {
 	// Central dir offset
 	offs += buf_put_int64(central_dir_offset, &buf[offs]);
 
-	// Done!
-	package->store_buffer(buf.ptr(), buf.size());
-}
-
-void AppxPackager::write_end_of_central_record() {
-
-	Vector<uint8_t> buf;
-	buf.resize(END_OF_CENTRAL_DIR_SIZE);
-
-	int offs = 0;
+	////// ZIP64 locator
 
 	// Write magic for zip64 central dir locator
 	offs += buf_put_int32(ZIP64_END_DIR_LOCATOR_MAGIC, &buf[offs]);
@@ -751,20 +693,26 @@ void AppxPackager::write_end_of_central_record() {
 	// Number of disks
 	offs += buf_put_int32(1, &buf[offs]);
 
+	/////// End of zip directory
+
 	// Write magic for end central dir
 	offs += buf_put_int32(END_OF_CENTRAL_DIR_MAGIC, &buf[offs]);
 
 	// Dummy stuff for Zip64
-	for (int i = 0; i < 16; i++) {
+	for (int i = 0; i < 4; i++) {
+		buf[offs++] = 0x0;
+	}
+	for (int i = 0; i < 12; i++) {
 		buf[offs++] = 0xFF;
 	}
+
 	// Size of comments
 	for (int i = 0; i < 2; i++) {
 		buf[offs++] = 0;
 	}
 
 	// Done!
-	package->store_buffer(buf.ptr(), buf.size());
+	return buf;
 }
 
 void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress, SignOption p_sign, String &p_certificate_path, String &p_certificate_password) {
@@ -799,9 +747,7 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	meta.compressed = p_compress;
 	meta.zip_offset = package->get_pos();
 
-
-	// Create file header
-	meta.lfh_size = write_file_header(p_file_name, p_compress, do_hash);
+	Vector<uint8_t> file_buffer;
 
 	// Data for compression
 	z_stream strm;
@@ -846,7 +792,11 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 			deflate(&strm, Z_FULL_FLUSH);
 			bh.compressed_size = strm.total_out - total_out_before;
 
-			package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
+			//package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
+			int start = file_buffer.size();
+			file_buffer.resize(file_buffer.size() + bh.compressed_size);
+			for (int i = 0; i < bh.compressed_size; i++)
+				file_buffer[start + i] = strm_out[i];
 #ifdef OPENSSL_ENABLED
 			if (do_hash)
 				SHA256_Update(&axpc_context, strm_out.ptr(), strm.total_out - total_out_before);
@@ -854,7 +804,11 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 
 		} else {
 			bh.compressed_size = block_size;
-			package->store_buffer(strm_in.ptr(), block_size);
+			//package->store_buffer(strm_in.ptr(), block_size);
+			int start = file_buffer.size();
+			file_buffer.resize(file_buffer.size() + block_size);
+			for (int i = 0; i < bh.compressed_size; i++)
+				file_buffer[start + i] = strm_in[i];
 #ifdef OPENSSL_ENABLED
 			if (do_hash)
 				SHA256_Update(&axpc_context, strm_in.ptr(), block_size);
@@ -877,7 +831,11 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 
 		deflate(&strm, Z_FINISH);
 
-		package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
+		//package->store_buffer(strm_out.ptr(), strm.total_out - total_out_before);
+		int start = file_buffer.size();
+		file_buffer.resize(file_buffer.size() + (strm.total_out - total_out_before));
+		for (int i = 0; i < (strm.total_out - total_out_before); i++)
+			file_buffer[start + i] = strm_out[i];
 #ifdef OPENSSL_ENABLED
 		if (do_hash)
 			SHA256_Update(&axpc_context, strm_out.ptr(), strm.total_out - total_out_before);
@@ -896,8 +854,21 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 	crc = crc32(crc, p_buffer, p_len);
 	meta.file_crc32 = crc;
 
-	// Create data descriptor
-	write_file_descriptor(crc, meta.compressed_size, meta.uncompressed_size, do_hash);
+	// Create file header
+	Vector<uint8_t> &file_header = make_file_header(meta);
+	meta.lfh_size = file_header.size();
+
+#ifdef OPENSSL_ENABLED
+	// Hash the data for signing
+	if (do_hash) {
+		SHA256_Update(&axpc_context, file_header.ptr(), file_header.size());
+		SHA256_Update(&axpc_context, file_buffer.ptr(), file_buffer.size());
+	}
+#endif // OPENSSL_ENABLED
+
+	// Store the header and file;
+	package->store_buffer(file_header.ptr(), file_header.size());
+	package->store_buffer(file_buffer.ptr(), file_buffer.size());
 
 	file_metadata.push_back(meta);
 }
@@ -974,6 +945,16 @@ void AppxPackager::finish() {
 			return;
 		}
 
+
+		// Make a temp end of the zip for hashing
+		central_dir_offset = package->get_pos();
+		end_of_central_dir_offset = central_dir_offset + central_dir_data.size();
+		Vector<uint8_t> &zip_end_dir = make_end_of_central_record();
+
+		// Hash the end directory
+		SHA256_Update(&axcd_context, zip_end_dir.ptr(), zip_end_dir.size());
+
+		// Finish the hashes
 		make_digests();
 
 		PKCS7* signature = PKCS7_new();
@@ -1027,8 +1008,8 @@ void AppxPackager::finish() {
 
 	// End record
 	end_of_central_dir_offset = package->get_pos();
-	write_zip64_end_of_central_record();
-	write_end_of_central_record();
+	Vector<uint8_t> &end_record = make_end_of_central_record();
+	package->store_buffer(end_record.ptr(), end_record.size());
 
 	package->close();
 	memdelete(package);
