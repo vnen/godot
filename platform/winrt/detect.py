@@ -50,22 +50,24 @@ def configure(env):
 
 		arch = "arm"
 
-		env.Append(LINKFLAGS=['/INCREMENTAL:NO', '/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "WindowsPhoneCore.lib", "RuntimeObject.lib", "PhoneAppModelHost.lib", "/DEBUG", "/MACHINE:ARM", '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
+		env.Append(LINKFLAGS=['/INCREMENTAL:NO', '/MANIFEST', '/NXCOMPAT', '/DYNAMICBASE', "/DEBUG", "/MACHINE:ARM", '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"', '/NODEFAULTLIB:"LIBCMT.lib"', '/WINMD', '/APPCONTAINER', '/MANIFESTUAC:NO', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1'])
 		env.Append(LIBPATH=['#platform/winrt/ARM/lib'])
 
-		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /analyze- /Zc:wchar_t /Zi /Gm- /Od /fp:precise /fp:precise /D "PSAPI_VERSION=2" /D "WINAPI_FAMILY=WINAPI_FAMILY_PHONE_APP" /DWINDOWSPHONE_ENABLED /D "_UITHREADCTXT_SUPPORT=0" /D "_UNICODE" /D "UNICODE" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy- /Oi /Gd /EHsc /nologo'))
+		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /wd"4291" /analyze- /Zc:wchar_t /Zi /Gm- /Od /fp:precise /fp:precise /D "PSAPI_VERSION=2" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /DWINDOWSPHONE_ENABLED /D "_UITHREADCTXT_SUPPORT=0" /D "_UNICODE" /D "UNICODE" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy- /Oi /Gd /EHsc /nologo'))
 		env.Append(CXXFLAGS=string.split('/ZW /FS'))
 		#env.Append(CPPFLAGS=['/FU', 'C:/Program Files (x86)/Windows Phone Kits/8.1/References/CommonConfiguration/Neutral/Windows.winmd'])
 		#env.Append(CPPFLAGS=['/FU', 'platform.winmd'])
+
+		env.Append(CPPFLAGS=['/AI', os.environ['VCINSTALLDIR'] + 'lib/store/references'])
 
 		if (env["target"]=="release"):
 
 			env.Append(CCFLAGS=['/O2'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:WINDOWS'])
 
-		elif (env["target"]=="test"):
+		elif (env["target"]=="release_debug"):
 
-			env.Append(CCFLAGS=['/O2','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO'])
+			env.Append(CCFLAGS=['/O2', '/Zi', '/DDEBUG_ENABLED'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 
 		elif (env["target"]=="debug"):
@@ -74,19 +76,14 @@ def configure(env):
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 			env.Append(LINKFLAGS=['/DEBUG'])
 
-		elif (env["target"]=="profile"):
-
-			env.Append(CCFLAGS=['-g','-pg'])
-			env.Append(LINKFLAGS=['-pg'])
-
 
 		env['ENV'] = os.environ;
 		# fix environment for windows phone 8.1
-		env['ENV']['WINDOWSPHONEKITDIR'] = env['ENV']['WINDOWSPHONEKITDIR'].replace("8.0", "8.1") # wtf
-		env['ENV']['INCLUDE'] = env['ENV']['INCLUDE'].replace("8.0", "8.1")
-		env['ENV']['LIB'] = env['ENV']['LIB'].replace("8.0", "8.1")
-		env['ENV']['PATH'] = env['ENV']['PATH'].replace("8.0", "8.1")
-		env['ENV']['LIBPATH'] = env['ENV']['LIBPATH'].replace("8.0\\Windows Metadata", "8.1\\References\\CommonConfiguration\\Neutral")
+		#env['ENV']['WINDOWSPHONEKITDIR'] = env['ENV']['WINDOWSPHONEKITDIR'].replace("8.0", "8.1") # wtf
+		#env['ENV']['INCLUDE'] = env['ENV']['INCLUDE'].replace("8.0", "8.1")
+		#nv['ENV']['LIB'] = env['ENV']['LIB'].replace("8.0", "8.1")
+		#env['ENV']['PATH'] = env['ENV']['PATH'].replace("8.0", "8.1")
+		#env['ENV']['LIBPATH'] = env['ENV']['LIBPATH'].replace("8.0\\Windows Metadata", "8.1\\References\\CommonConfiguration\\Neutral")
 
 	else:
 
@@ -114,9 +111,10 @@ def configure(env):
 			env.Append(CPPFLAGS=['/MD'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:WINDOWS', '/LTCG'])
 
-		elif (env["target"]=="test"):
+		elif (env["target"]=="release_debug"):
 
-			env.Append(CCFLAGS=['/O2','/DDEBUG_ENABLED','/DD3D_DEBUG_INFO'])
+			env.Append(CCFLAGS=['/O2','/Zi','/DDEBUG_ENABLED'])
+			env.Append(CPPFLAGS=['/MD'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 
 		elif (env["target"]=="debug"):
@@ -125,11 +123,6 @@ def configure(env):
 			env.Append(CPPFLAGS=['/MDd'])
 			env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
 			env.Append(LINKFLAGS=['/DEBUG'])
-
-		elif (env["target"]=="profile"):
-
-			env.Append(CCFLAGS=['-g','-pg'])
-			env.Append(LINKFLAGS=['-pg'])
 
 
 		env.Append(CCFLAGS=string.split('/FS /MP /GS /wd"4453" /wd"28204" /wd"4291" /Zc:wchar_t /Gm- /fp:precise /D "_UNICODE" /D "UNICODE" /D "WINAPI_FAMILY=WINAPI_FAMILY_APP" /errorReport:prompt /WX- /Zc:forScope /Gd /EHsc /nologo'))
