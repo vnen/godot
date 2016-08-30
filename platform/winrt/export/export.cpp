@@ -79,6 +79,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "io/sha256.h"
 #include "io/base64.h"
 #include "bind/core_bind.h"
+#include "globals.h"
+
 #include <zlib.h>
 
 #ifdef OPENSSL_ENABLED
@@ -90,6 +92,41 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <openssl/asn1t.h>
 #include <openssl/x509.h>
 #include <openssl/ossl_typ.h>
+
+// Capabilities
+static const char* uwp_capabilities[] = {
+	"allJoyn",
+	"codeGeneration",
+	"internetClient",
+	"internetClientServer",
+	"privateNetworkClientServer",
+	NULL
+};
+static const char* uwp_uap_capabilities[] = {
+	"appointments",
+	"blockedChatMessages",
+	"chat",
+	"contacts",
+	"enterpriseAuthentication",
+	"musicLibrary",
+	"objects3D",
+	"picturesLibrary",
+	"phoneCall",
+	"removableStorage",
+	"sharedUserCertificates",
+	"userAccountInformation",
+	"videosLibrary",
+	"voipCall",
+	NULL
+};
+static const char* uwp_device_capabilites[] = {
+	"bluetooth",
+	"location",
+	"microphone",
+	"proximity",
+	"webcam",
+	NULL
+};
 
 namespace asn1 {
 	// https://msdn.microsoft.com/en-us/gg463180.aspx
@@ -399,18 +436,73 @@ class EditorExportPlatformWinrt : public EditorExportPlatform {
 
 	Ref<ImageTexture> logo;
 
-	bool export_x86;
-	bool export_x64;
-	bool export_arm;
+	enum Platform {
+		ARM,
+		X86,
+		X64
+	} arch;
 
 	bool is_debug;
 
 	String custom_release_package;
 	String custom_debug_package;
 
+	String display_name;
+	String short_name;
+	String unique_name;
+	String description;
+	String publisher;
+	String publisher_display_name;
+
+	String product_guid;
+	String publisher_guid;
+
+	int version_major;
+	int version_minor;
+	int version_build;
+	int version_revision;
+
+	bool orientation_landscape;
+	bool orientation_portrait;
+	bool orientation_landscape_flipped;
+	bool orientation_portrait_flipped;
+
+	String background_color;
+	Ref<ImageTexture> store_logo;
+	Ref<ImageTexture> square44;
+	Ref<ImageTexture> square71;
+	Ref<ImageTexture> square150;
+	Ref<ImageTexture> square310;
+	Ref<ImageTexture> wide310;
+	Ref<ImageTexture> splash;
+
+	bool name_on_square150;
+	bool name_on_square310;
+	bool name_on_wide;
+
+	Set<String> capabilities;
+	Set<String> uap_capabilities;
+	Set<String> device_capabilities;
+
 	bool sign_package;
 	String certificate_path;
 	String certificate_pass;
+
+	_FORCE_INLINE_ bool array_has(const char** p_array, const char* p_value) const {
+		while (*p_array) {
+			if (String(*p_array) == String(p_value)) return true;
+			p_array++;
+		}
+		return false;
+	}
+
+	bool _valid_resource_name(const String &p_name) const;
+	bool _valid_guid(const String &p_guid) const;
+	bool _valid_bgcolor(const String &p_color) const;
+	bool _valid_image(const Ref<ImageTexture> p_image, int p_width, int p_height) const;
+
+	Vector<uint8_t> _fix_manifest(const Vector<uint8_t> &p_template, bool p_give_internet) const;
+	Vector<uint8_t> _get_image_data(const String &p_path);
 
 	static Error save_appx_file(void *p_userdata, const String& p_path, const Vector<uint8_t>& p_data, int p_file, int p_total);
 	static bool _should_compress_asset(const String& p_path, const Vector<uint8_t>& p_data);
@@ -1096,6 +1188,8 @@ Error AppxPackager::MakeIndirectDataContent(asn1::SPCIndirectDataContent &idc) {
 	idc.data->value = value;
 	idc.messageDigest->digestAlgorithm->algorithm = OBJ_nid2obj(NID_sha256);
 	idc.messageDigest->digestAlgorithm->parameter = algorithmParameter;
+
+	return OK;
 }
 
 Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
@@ -1155,6 +1249,8 @@ Error AppxPackager::add_attributes(PKCS7_SIGNER_INFO * p_signer_info) {
 
 		return openssl_error(ERR_peek_last_error());
 	}
+
+	return OK;
 
 }
 
@@ -1351,6 +1447,290 @@ Error AppxPackager::sign(const CertFile & p_cert, const AppxDigests & digests, P
 ////////////////////////////////////////////////////////////////////
 
 
+bool EditorExportPlatformWinrt::_valid_resource_name(const String &p_name) const {
+
+	if (p_name.empty()) return false;
+	if (p_name.ends_with(".")) return false;
+
+	static const char* invalid_names[] = {
+		"CON","PRN","AUX","NUL","COM1","COM2","COM3","COM4","COM5","COM6","COM7",
+		"COM8","COM9","LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9",
+		NULL
+	};
+
+	const char** t = invalid_names;
+	while (*t) {
+		if (p_name == *t) return false;
+		t++;
+	}
+
+	return true;
+}
+
+bool EditorExportPlatformWinrt::_valid_guid(const String & p_guid) const {
+
+	Vector<String> &parts = p_guid.split("-");
+
+	if (parts.size() != 5) return false;
+	if (parts[0].length() != 8) return false;
+	for (int i = 1; i < 4; i++)
+		if (parts[i].length() != 4) return false;
+	if (parts[4].length() != 12) return false;
+
+	return true;
+}
+
+bool EditorExportPlatformWinrt::_valid_bgcolor(const String & p_color) const {
+
+	if (p_color.empty()) return true;
+	if (p_color.begins_with("#") && p_color.is_valid_html_color()) return true;
+
+	// Colors from https://msdn.microsoft.com/en-us/library/windows/apps/dn934817.aspx
+	static const char* valid_colors[] = {
+		"aliceBlue","antiqueWhite","aqua","aquamarine","azure","beige",
+		"bisque","black","blanchedAlmond","blue","blueViolet","brown",
+		"burlyWood","cadetBlue","chartreuse","chocolate","coral","cornflowerBlue",
+		"cornsilk","crimson","cyan","darkBlue","darkCyan","darkGoldenrod",
+		"darkGray","darkGreen","darkKhaki","darkMagenta","darkOliveGreen","darkOrange",
+		"darkOrchid","darkRed","darkSalmon","darkSeaGreen","darkSlateBlue","darkSlateGray",
+		"darkTurquoise","darkViolet","deepPink","deepSkyBlue","dimGray","dodgerBlue",
+		"firebrick","floralWhite","forestGreen","fuchsia","gainsboro","ghostWhite",
+		"gold","goldenrod","gray","green","greenYellow","honeydew",
+		"hotPink","indianRed","indigo","ivory","khaki","lavender",
+		"lavenderBlush","lawnGreen","lemonChiffon","lightBlue","lightCoral","lightCyan",
+		"lightGoldenrodYellow","lightGreen","lightGray","lightPink","lightSalmon","lightSeaGreen",
+		"lightSkyBlue","lightSlateGray","lightSteelBlue","lightYellow","lime","limeGreen",
+		"linen","magenta","maroon","mediumAquamarine","mediumBlue","mediumOrchid",
+		"mediumPurple","mediumSeaGreen","mediumSlateBlue","mediumSpringGreen","mediumTurquoise","mediumVioletRed",
+		"midnightBlue","mintCream","mistyRose","moccasin","navajoWhite","navy",
+		"oldLace","olive","oliveDrab","orange","orangeRed","orchid",
+		"paleGoldenrod","paleGreen","paleTurquoise","paleVioletRed","papayaWhip","peachPuff",
+		"peru","pink","plum","powderBlue","purple","red",
+		"rosyBrown","royalBlue","saddleBrown","salmon","sandyBrown","seaGreen",
+		"seaShell","sienna","silver","skyBlue","slateBlue","slateGray",
+		"snow","springGreen","steelBlue","tan","teal","thistle",
+		"tomato","transparent","turquoise","violet","wheat","white",
+		"whiteSmoke","yellow","yellowGreen",
+	};
+
+	for (int i = 0; i < sizeof(valid_colors); i++) {
+
+		if (p_color == valid_colors[i]) return true;
+	}
+
+	return false;
+}
+
+bool EditorExportPlatformWinrt::_valid_image(const Ref<ImageTexture> p_image, int p_width, int p_height) const {
+
+	if (!p_image.is_valid()) return false;
+
+	real_t scales[] = { 1.0, 1.25, 1.5, 2.0 };
+	bool valid_w = false;
+	bool valid_h = false;
+
+	for (int i = 0; i < 4; i++) {
+
+		int w = ceil(p_width * scales[i]);
+		int h = ceil(p_height * scales[i]);
+
+		if (w == p_image->get_width())
+			valid_w = true;
+		if (h == p_image->get_height())
+			valid_h = true;
+	}
+
+	return valid_w && valid_h;
+}
+
+Vector<uint8_t> EditorExportPlatformWinrt::_fix_manifest(const Vector<uint8_t> &p_template, bool p_give_internet) const {
+
+	String result = String::utf8((const char*)p_template.ptr(), p_template.size());
+
+	result = result.replace("$godot_version$", VERSION_FULL_NAME);
+
+	result = result.replace("$identity_name$", unique_name);
+	result = result.replace("$publisher$", publisher);
+
+	result = result.replace("$product_guid$", product_guid);
+	result = result.replace("$publisher_guid$", publisher_guid);
+
+	String version = itos(version_major) + "." + itos(version_minor) + "." + itos(version_build) + "." + itos(version_revision);
+	result = result.replace("$version_string$", version);
+
+	String architecture = arch == ARM ? "ARM" : arch == X86 ? "x86" : "x64";
+	result = result.replace("$architecture$", architecture);
+
+	result = result.replace("$display_name$", display_name.empty() ? Globals::get_singleton()->get("application/name") : display_name);
+	result = result.replace("$publisher_display_name$", publisher_display_name);
+	result = result.replace("$app_description$", description);
+	result = result.replace("$bg_color$", background_color);
+	result = result.replace("$short_name$", short_name);
+
+	String name_on_tiles = "";
+	if (name_on_square150) {
+		name_on_tiles += "          <uap:ShowOn Tile=\"square150x150Logo\" />\n";
+	}
+	if (name_on_wide) {
+		name_on_tiles += "          <uap:ShowOn Tile=\"wide310x150Logo\" />\n";
+	}
+	if (name_on_square310) {
+		name_on_tiles += "          <uap:ShowOn Tile=\"square310x310Logo\" />\n";
+	}
+
+	String show_name_on_tiles = "";
+	if (!name_on_tiles.empty()) {
+		show_name_on_tiles = "<uap:ShowNameOnTiles>\n" + name_on_tiles + "        </uap:ShowNameOnTiles>";
+	}
+
+	result = result.replace("$name_on_tiles$", name_on_tiles);
+
+	String rotations = "";
+	if (orientation_landscape) {
+		rotations += "          <uap:Rotation Preference=\"landscape\" />\n";
+	}
+	if (orientation_portrait) {
+		rotations += "          <uap:Rotation Preference=\"portrait\" />\n";
+	}
+	if (orientation_landscape_flipped) {
+		rotations += "          <uap:Rotation Preference=\"landscapeFlipped\" />\n";
+	}
+	if (orientation_portrait_flipped) {
+		rotations += "          <uap:Rotation Preference=\"portraitFlipped\" />\n";
+	}
+
+	String rotation_preference = "";
+	if (!rotations.empty()) {
+		rotation_preference = "<uap:InitialRotationPreference>\n" + rotations + "        </uap:InitialRotationPreference>";
+	}
+
+	result = result.replace("$rotation_preference$", rotation_preference);
+
+	String capabilities_elements = "";
+	const char **basic = uwp_capabilities;
+	while (*basic) {
+		if (capabilities.has(*basic)) {
+			capabilities_elements += "    <Capability Name=\"" + String(*basic) + "\" />\n";
+		}
+		basic++;
+	}
+	const char **uap = uwp_uap_capabilities;
+	while (*uap) {
+		if (uap_capabilities.has(*uap)) {
+			capabilities_elements += "    <uap:Capability Name=\"" + String(*uap) + "\" />\n";
+		}
+		uap++;
+	}
+	const char **device = uwp_device_capabilites;
+	while (*device) {
+		if (uap_capabilities.has(*device)) {
+			capabilities_elements += "    <DeviceCapability Name=\"" + String(*device) + "\" />\n";
+		}
+		device++;
+	}
+
+	if (!capabilities.has("internetClient") && p_give_internet) {
+		capabilities_elements += "    <Capability Name=\"internetClient\" />\n";
+	}
+
+	String capabilities_string = "<Capabilities />";
+	if (!capabilities_elements.empty()) {
+		capabilities_string = "<Capabilities>\n" + capabilities_elements + "  </Capabilities>";
+	}
+
+	result = result.replace("$capabilities_place$", capabilities_string);
+
+	Vector<uint8_t> r_ret;
+	r_ret.resize(result.length());
+
+	for (int i = 0; i < result.length(); i++)
+		r_ret[i] = result.utf8().get(i);
+
+	return r_ret;
+}
+
+Vector<uint8_t> EditorExportPlatformWinrt::_get_image_data(const String & p_path) {
+
+	Vector<uint8_t> data;
+	Ref<ImageTexture> ref;
+
+	if (p_path.find("StoreLogo") != -1) {
+		ref = store_logo;
+	} else if (p_path.find("Square44x44Logo") != -1) {
+		ref = square44;
+	} else if (p_path.find("Square71x71Logo") != -1) {
+		ref = square71;
+	} else if (p_path.find("Square150x150Logo") != -1) {
+		ref = square150;
+	} else if (p_path.find("Square310x310Logo") != -1) {
+		ref = square310;
+	} else if (p_path.find("Wide310x150Logo") != -1) {
+		ref = wide310;
+	} else if (p_path.find("SplashScreen") != -1) {
+		ref = splash;
+	}
+
+	if (!ref.is_valid()) return data;
+
+
+	String tmp_path = EditorSettings::get_singleton()->get_settings_path().plus_file("tmp/uwp_tmp_logo.png");
+
+	Error err = ref->get_data().save_png(tmp_path);
+
+	if (err != OK) {
+
+		String err_string = "Couldn't save temp logo file.";
+
+		EditorNode::add_io_error(err_string);
+		ERR_EXPLAIN(err_string);
+		ERR_FAIL_V(data);
+	}
+
+	FileAccess* f = FileAccess::open(tmp_path, FileAccess::READ, &err);
+
+	if (err != OK) {
+
+		String err_string = "Couldn't open temp logo file.";
+
+		EditorNode::add_io_error(err_string);
+		ERR_EXPLAIN(err_string);
+		ERR_FAIL_V(data);
+	}
+
+	data.resize(f->get_len());
+	f->get_buffer(data.ptr(), data.size());
+
+	f->close();
+	memdelete(f);
+
+	// Delete temp file
+	DirAccess* dir = DirAccess::open(tmp_path.get_base_dir(), &err);
+
+	if (err != OK) {
+
+		String err_string = "Couldn't open temp path to remove temp logo file.";
+
+		EditorNode::add_io_error(err_string);
+		ERR_EXPLAIN(err_string);
+		ERR_FAIL_V(data);
+	}
+
+	err = dir->remove(tmp_path);
+
+	memdelete(dir);
+
+	if (err != OK) {
+
+		String err_string = "Couldn't remove temp logo file.";
+
+		EditorNode::add_io_error(err_string);
+		ERR_EXPLAIN(err_string);
+		ERR_FAIL_V(data);
+	}
+
+	return data;
+}
+
 Error EditorExportPlatformWinrt::save_appx_file(void * p_userdata, const String & p_path, const Vector<uint8_t>& p_data, int p_file, int p_total) {
 
 	AppxPackager *packager = (AppxPackager*)p_userdata;
@@ -1414,22 +1794,102 @@ bool EditorExportPlatformWinrt::_set(const StringName& p_name, const Variant& p_
 
 	String n = p_name;
 
-	if (n == "architecture/arm")
-		export_arm = p_value;
-	else if (n == "architecture/x86")
-		export_x86 = p_value;
-	else if (n == "architecture/x64")
-		export_x64 = p_value;
+	if (n == "architecture/target")
+		arch = (Platform)((int)p_value);
 	else if (n == "custom_package/debug")
 		custom_debug_package = p_value;
 	else if (n == "custom_package/release")
 		custom_release_package = p_value;
+	else if (n == "package/display_name")
+		display_name = p_value;
+	else if (n == "package/short_name")
+		short_name = p_value;
+	else if (n == "package/unique_name")
+		unique_name = p_value;
+	else if (n == "package/description")
+		description = p_value;
+	else if (n == "package/publisher")
+		publisher = p_value;
+	else if (n == "package/publisher_display_name")
+		publisher_display_name = p_value;
+	else if (n == "identity/product_guid")
+		product_guid = p_value;
+	else if (n == "identity/publisher_guid")
+		publisher_guid = p_value;
+	else if (n == "version/major")
+		version_major = p_value;
+	else if (n == "version/minor")
+		version_minor = p_value;
+	else if (n == "version/build")
+		version_build = p_value;
+	else if (n == "version/revision")
+		version_revision = p_value;
+	else if (n == "orientation/landscape")
+		orientation_landscape = p_value;
+	else if (n == "orientation/portrait")
+		orientation_portrait = p_value;
+	else if (n == "orientation/landscape_flipped")
+		orientation_landscape_flipped = p_value;
+	else if (n == "orientation/portrait_flipped")
+		orientation_portrait_flipped = p_value;
+	else if (n == "images/background_color")
+		background_color = p_value;
+	else if (n == "images/store_logo")
+		store_logo = p_value;
+	else if (n == "images/square44x44_logo")
+		square44 = p_value;
+	else if (n == "images/square71x71_logo")
+		square71 = p_value;
+	else if (n == "images/square150x150_logo")
+		square150 = p_value;
+	else if (n == "images/square310x310_logo")
+		square310 = p_value;
+	else if (n == "images/wide310x150_logo")
+		wide310 = p_value;
+	else if (n == "images/splash_screen")
+		splash = p_value;
+	else if (n == "tiles/show_name_on_square150x150")
+		name_on_square150 = p_value;
+	else if (n == "tiles/show_name_on_wide310x150")
+		name_on_wide = p_value;
+	else if (n == "tiles/show_name_on_square310x310")
+		name_on_square310 = p_value;
+
+#if 0 // Signing disabled
 	else if (n == "signing/sign")
 		sign_package = p_value;
 	else if (n == "signing/certificate_file")
 		certificate_path = p_value;
 	else if (n == "signing/certificate_password")
 		certificate_pass = p_value;
+#endif
+	else if (n.begins_with("capabilities/")) {
+
+		String what = n.get_slice("/", 1).replace("_", "");
+		bool enable = p_value;
+
+		if (array_has(uwp_capabilities, what.utf8().get_data())) {
+
+			if (enable)
+				capabilities.insert(what);
+			else
+				capabilities.erase(what);
+
+		} else if (array_has(uwp_uap_capabilities, what.utf8().get_data())) {
+
+			if (enable)
+				uap_capabilities.insert(what);
+			else
+				uap_capabilities.erase(what);
+
+		} else if (array_has(uwp_device_capabilites, what.utf8().get_data())) {
+
+			if (enable)
+				device_capabilities.insert(what);
+			else
+				device_capabilities.erase(what);
+		}
+	}
 	else return false;
 
 	return true;
@@ -1439,22 +1899,92 @@ bool EditorExportPlatformWinrt::_get(const StringName& p_name, Variant &r_ret) c
 
 	String n = p_name;
 
-	if (n == "architecture/arm")
-		r_ret = export_arm;
-	else if (n == "architecture/x86")
-		r_ret = export_x86;
-	else if (n == "architecture/x64")
-		r_ret = export_x64;
+	if (n == "architecture/target")
+		r_ret = (int)arch;
 	else if (n == "custom_package/debug")
 		r_ret = custom_debug_package;
 	else if (n == "custom_package/release")
 		r_ret = custom_release_package;
+	else if (n == "package/display_name")
+		r_ret = display_name;
+	else if (n == "package/short_name")
+		r_ret = short_name;
+	else if (n == "package/unique_name")
+		r_ret = unique_name;
+	else if (n == "package/description")
+		r_ret = description;
+	else if (n == "package/publisher")
+		r_ret = publisher;
+	else if (n == "package/publisher_display_name")
+		r_ret = publisher_display_name;
+	else if (n == "identity/product_guid")
+		r_ret = product_guid;
+	else if (n == "identity/publisher_guid")
+		r_ret = publisher_guid;
+	else if (n == "version/major")
+		r_ret = version_major;
+	else if (n == "version/minor")
+		r_ret = version_minor;
+	else if (n == "version/build")
+		r_ret = version_build;
+	else if (n == "version/revision")
+		r_ret = version_revision;
+	else if (n == "orientation/landscape")
+		r_ret = orientation_landscape;
+	else if (n == "orientation/portrait")
+		r_ret = orientation_portrait;
+	else if (n == "orientation/landscape_flipped")
+		r_ret = orientation_landscape_flipped;
+	else if (n == "orientation/portrait_flipped")
+		r_ret = orientation_portrait_flipped;
+	else if (n == "images/background_color")
+		r_ret = background_color;
+	else if (n == "images/store_logo")
+		r_ret = store_logo;
+	else if (n == "images/square44x44_logo")
+		r_ret = square44;
+	else if (n == "images/square71x71_logo")
+		r_ret = square71;
+	else if (n == "images/square150x150_logo")
+		r_ret = square150;
+	else if (n == "images/square310x310_logo")
+		r_ret = square310;
+	else if (n == "images/wide310x150_logo")
+		r_ret = wide310;
+	else if (n == "images/splash_screen")
+		r_ret = splash;
+	else if (n == "tiles/show_name_on_square150x150")
+		r_ret = name_on_square150;
+	else if (n == "tiles/show_name_on_wide310x150")
+		r_ret = name_on_wide;
+	else if (n == "tiles/show_name_on_square310x310")
+		r_ret = name_on_square310;
+
+#if 0 // Signing disabled
 	else if (n == "signing/sign")
 		r_ret = sign_package;
 	else if (n == "signing/certificate_file")
 		r_ret = certificate_path;
 	else if (n == "signing/certificate_password")
 		r_ret = certificate_pass;
+#endif
+	else if (n.begins_with("capabilities/")) {
+
+		String what = n.get_slice("/", 1).replace("_", "");
+
+		if (array_has(uwp_capabilities, what.utf8().get_data())) {
+
+			r_ret = capabilities.has(what);
+
+		} else if (array_has(uwp_uap_capabilities, what.utf8().get_data())) {
+
+			r_ret = uap_capabilities.has(what);
+
+		} else if (array_has(uwp_device_capabilites, what.utf8().get_data())) {
+
+			r_ret = device_capabilities.has(what);
+		}
+	}
 	else return false;
 
 	return true;
@@ -1465,15 +1995,66 @@ void EditorExportPlatformWinrt::_get_property_list(List<PropertyInfo>* p_list) c
 	p_list->push_back(PropertyInfo(Variant::STRING, "custom_package/debug", PROPERTY_HINT_GLOBAL_FILE, "appx"));
 	p_list->push_back(PropertyInfo(Variant::STRING, "custom_package/release", PROPERTY_HINT_GLOBAL_FILE, "appx"));
 
-	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/arm"));
-	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/x86"));
-	p_list->push_back(PropertyInfo(Variant::BOOL, "architecture/x64"));
+	p_list->push_back(PropertyInfo(Variant::INT, "architecture/target", PROPERTY_HINT_ENUM, "ARM,x64,x86"));
+
+	p_list->push_back(PropertyInfo(Variant::STRING, "package/display_name"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "package/short_name"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "package/unique_name"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "package/description"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "package/publisher"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "package/publisher_display_name"));
+
+	p_list->push_back(PropertyInfo(Variant::STRING, "identity/product_guid"));
+	p_list->push_back(PropertyInfo(Variant::STRING, "identity/publisher_guid"));
+
+	p_list->push_back(PropertyInfo(Variant::INT, "version/major"));
+	p_list->push_back(PropertyInfo(Variant::INT, "version/minor"));
+	p_list->push_back(PropertyInfo(Variant::INT, "version/build"));
+	p_list->push_back(PropertyInfo(Variant::INT, "version/revision"));
+
+	p_list->push_back(PropertyInfo(Variant::BOOL, "orientation/landscape"));
+	p_list->push_back(PropertyInfo(Variant::BOOL, "orientation/portrait"));
+	p_list->push_back(PropertyInfo(Variant::BOOL, "orientation/landscape_flipped"));
+	p_list->push_back(PropertyInfo(Variant::BOOL, "orientation/portrait_flipped"));
+
+	p_list->push_back(PropertyInfo(Variant::STRING, "images/background_color"));
+	p_list->push_back(PropertyInfo(Variant::OBJECT, "images/store_logo", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture"));
+	p_list->push_back(PropertyInfo(Variant::OBJECT, "images/square44x44_logo", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture"));
+	p_list->push_back(PropertyInfo(Variant::OBJECT, "images/square71x71_logo", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture"));
+	p_list->push_back(PropertyInfo(Variant::OBJECT, "images/square150x150_logo", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture"));
+	p_list->push_back(PropertyInfo(Variant::OBJECT, "images/square310x310_logo", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture"));
+	p_list->push_back(PropertyInfo(Variant::OBJECT, "images/wide310x150_logo", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture"));
+	p_list->push_back(PropertyInfo(Variant::OBJECT, "images/splash_screen", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture"));
+
+	p_list->push_back(PropertyInfo(Variant::BOOL, "tiles/show_name_on_square150x150"));
+	p_list->push_back(PropertyInfo(Variant::BOOL, "tiles/show_name_on_wide310x150"));
+	p_list->push_back(PropertyInfo(Variant::BOOL, "tiles/show_name_on_square310x310"));
 
 #if 0 // Signing does not work :( disabling for now
 	p_list->push_back(PropertyInfo(Variant::BOOL, "signing/sign"));
 	p_list->push_back(PropertyInfo(Variant::STRING, "signing/certificate_file", PROPERTY_HINT_GLOBAL_FILE, "pfx"));
 	p_list->push_back(PropertyInfo(Variant::STRING, "signing/certificate_password"));
 #endif
+
+	// Capabilites
+	const char **basic = uwp_capabilities;
+	while (*basic) {
+		p_list->push_back(PropertyInfo(Variant::BOOL, "capabilities/" + String(*basic).camelcase_to_underscore(false)));
+		basic++;
+	}
+
+	const char **uap = uwp_uap_capabilities;
+	while (*uap) {
+		p_list->push_back(PropertyInfo(Variant::BOOL, "capabilities/" + String(*uap).camelcase_to_underscore(false)));
+		uap++;
+	}
+
+	const char **device = uwp_device_capabilites;
+	while (*device) {
+		p_list->push_back(PropertyInfo(Variant::BOOL, "capabilities/" + String(*device).camelcase_to_underscore(false)));
+		device++;
+	}
+
 }
 
 bool EditorExportPlatformWinrt::can_export(String * r_error) const {
@@ -1483,17 +2064,72 @@ bool EditorExportPlatformWinrt::can_export(String * r_error) const {
 
 	if (!exists_export_template("winrt_x86_debug.zip") || !exists_export_template("winrt_x86_release.zip")) {
 		valid = false;
-		err += "No export templates found.\nDownload and install export templates.\n";
+		err += TTR("No export templates found.\nDownload and install export templates.") + "\n";
 	}
 
 	if (custom_debug_package != "" && !FileAccess::exists(custom_debug_package)) {
 		valid = false;
-		err += "Custom debug package not found.\n";
+		err += TTR("Custom debug package not found.") + "\n";
 	}
 
 	if (custom_release_package != "" && !FileAccess::exists(custom_release_package)) {
 		valid = false;
-		err += "Custom release package not found.\n";
+		err += TTR("Custom release package not found.") + "\n";
+	}
+
+	if (!_valid_resource_name(unique_name)) {
+		valid = false;
+		err += TTR("Invalid unique name.") + "\n";
+	}
+
+	if (!_valid_guid(product_guid)) {
+		valid = false;
+		err += TTR("Invalid product GUID.") + "\n";
+	}
+
+	if (!_valid_guid(publisher_guid)) {
+		valid = false;
+		err += TTR("Invalid publisher GUID.") + "\n";
+	}
+
+	if (!_valid_bgcolor(background_color)) {
+		valid = false;
+		err += TTR("Invalid background color.") + "\n";
+	}
+
+	if (store_logo.is_valid() && !_valid_image(store_logo, 50, 50)) {
+		valid = false;
+		err += TTR("Invalid Store Logo image dimensions (should be 50x50 or a multiple).") + "\n";
+	}
+
+	if (square44.is_valid() && !_valid_image(square44, 44, 44)) {
+		valid = false;
+		err += TTR("Invalid square 44x44 logo image dimensions (should be 44x44 or a multiple).") + "\n";
+	}
+
+	if (square71.is_valid() && !_valid_image(square71, 71, 71)) {
+		valid = false;
+		err += TTR("Invalid square 71x71 logo image dimensions (should be 71x71 or a multiple).") + "\n";
+	}
+
+	if (square150.is_valid() && !_valid_image(square150, 150, 150)) {
+		valid = false;
+		err += TTR("Invalid square 150x150 logo image dimensions (should be 150x150 or a multiple).") + "\n";
+	}
+
+	if (square310.is_valid() && !_valid_image(square310, 310, 310)) {
+		valid = false;
+		err += TTR("Invalid square 310x310 logo image dimensions (should be 310x310 or a multiple).") + "\n";
+	}
+
+	if (wide310.is_valid() && !_valid_image(wide310, 310, 150)) {
+		valid = false;
+		err += TTR("Invalid wide 310x150 logo image dimensions (should be 310x150 or a multiple).") + "\n";
+	}
+
+	if (splash.is_valid() && !_valid_image(splash, 620, 300)) {
+		valid = false;
+		err += TTR("Invalid splash screen image dimensions (should be 620x300 or a multiple).") + "\n";
 	}
 
 	if (r_error)
@@ -1569,12 +2205,28 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 		}
 
 		Vector<uint8_t> data;
-		data.resize(info.uncompressed_size);
+		bool do_read = true;
+
+		if (path.begins_with("Assets/")) {
+
+			path = path.replace(".scale-400", "");
+
+			data = _get_image_data(path);
+			if (data.size() > 0) do_read = false;
+		}
 
 		//read
-		unzOpenCurrentFile(pkg);
-		unzReadCurrentFile(pkg, data.ptr(), data.size());
-		unzCloseCurrentFile(pkg);
+		if (do_read) {
+			data.resize(info.uncompressed_size);
+			unzOpenCurrentFile(pkg);
+			unzReadCurrentFile(pkg, data.ptr(), data.size());
+			unzCloseCurrentFile(pkg);
+		}
+
+		if (path == "AppxManifest.xml") {
+
+			data = _fix_manifest(data, p_flags&(EXPORT_DUMB_CLIENT | EXPORT_REMOTE_DEBUG));
+		}
 
 		print_line("ADDING: " + path);
 
@@ -1603,7 +2255,42 @@ EditorExportPlatformWinrt::EditorExportPlatformWinrt() {
 	logo = Ref<ImageTexture>(memnew(ImageTexture));
 	logo->create_from_image(img);
 
+	is_debug = true;
+
+	custom_release_package = "";
+	custom_debug_package = "";
+
+	arch = X86;
+
+	display_name = "";
+	short_name = "Godot";
+	unique_name = "Godot.Engine";
+	description = "Godot Engine";
+	publisher = "CN=GodotEngine";
+	publisher_display_name = "Godot Engine";
+
+	product_guid = "00000000-0000-0000-0000-000000000000";
+	publisher_guid = "00000000-0000-0000-0000-000000000000";
+
+	version_major = 1;
+	version_minor = 0;
+	version_build = 0;
+	version_revision = 0;
+
+	orientation_landscape = true;
+	orientation_portrait = true;
+	orientation_landscape_flipped = true;
+	orientation_portrait_flipped = true;
+
+	background_color = "transparent";
+
+	name_on_square150 = false;
+	name_on_square310= false;
+	name_on_wide = false;
+
 	sign_package = false;
+	certificate_path = "";
+	certificate_pass = "";
 }
 
 EditorExportPlatformWinrt::~EditorExportPlatformWinrt() {}
