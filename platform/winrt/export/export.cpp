@@ -287,7 +287,7 @@ class AppxPackager {
 		END_OF_CENTRAL_DIR_MAGIC = 0x06054b50,
 		ZIP64_END_OF_CENTRAL_DIR_MAGIC = 0x06064b50,
 		ZIP64_END_DIR_LOCATOR_MAGIC = 0x07064b50,
-		P7X_SIGNATURE= 0x58434b50,
+		P7X_SIGNATURE = 0x58434b50,
 		ZIP64_HEADER_ID = 0x0001,
 		ZIP_VERSION = 20,
 		ZIP_ARCHIVE_VERSION = 45,
@@ -1889,8 +1889,7 @@ bool EditorExportPlatformWinrt::_set(const StringName& p_name, const Variant& p_
 			else
 				device_capabilities.erase(what);
 		}
-	}
-	else return false;
+	} else return false;
 
 	return true;
 }
@@ -1984,8 +1983,7 @@ bool EditorExportPlatformWinrt::_get(const StringName& p_name, Variant &r_ret) c
 
 			r_ret = device_capabilities.has(what);
 		}
-	}
-	else return false;
+	} else return false;
 
 	return true;
 }
@@ -1995,7 +1993,7 @@ void EditorExportPlatformWinrt::_get_property_list(List<PropertyInfo>* p_list) c
 	p_list->push_back(PropertyInfo(Variant::STRING, "custom_package/debug", PROPERTY_HINT_GLOBAL_FILE, "appx"));
 	p_list->push_back(PropertyInfo(Variant::STRING, "custom_package/release", PROPERTY_HINT_GLOBAL_FILE, "appx"));
 
-	p_list->push_back(PropertyInfo(Variant::INT, "architecture/target", PROPERTY_HINT_ENUM, "ARM,x64,x86"));
+	p_list->push_back(PropertyInfo(Variant::INT, "architecture/target", PROPERTY_HINT_ENUM, "ARM,x86,x64"));
 
 	p_list->push_back(PropertyInfo(Variant::STRING, "package/display_name"));
 	p_list->push_back(PropertyInfo(Variant::STRING, "package/short_name"));
@@ -2062,7 +2060,9 @@ bool EditorExportPlatformWinrt::can_export(String * r_error) const {
 	String err;
 	bool valid = true;
 
-	if (!exists_export_template("winrt_x86_debug.zip") || !exists_export_template("winrt_x86_release.zip")) {
+	if (!exists_export_template("winrt_x86_debug.zip") || !exists_export_template("winrt_x86_release.zip")
+		|| !exists_export_template("winrt_arm_debug.zip") || !exists_export_template("winrt_arm_release.zip")
+		|| !exists_export_template("winrt_x64_debug.zip") || !exists_export_template("winrt_x64_release.zip")) {
 		valid = false;
 		err += TTR("No export templates found.\nDownload and install export templates.") + "\n";
 	}
@@ -2152,9 +2152,35 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 	if (src_appx == "") {
 		String err;
 		if (p_debug) {
-			src_appx = find_export_template("winrt_x86_debug.zip", &err);
+			switch (arch) {
+				case X86: {
+					src_appx = find_export_template("winrt_x86_debug.zip", &err);
+					break;
+				}
+				case X64: {
+					src_appx = find_export_template("winrt_x64_debug.zip", &err);
+					break;
+				}
+				case ARM: {
+					src_appx = find_export_template("winrt_arm_debug.zip", &err);
+					break;
+				}
+			}
 		} else {
-			src_appx = find_export_template("winrt_x86_release.zip", &err);
+			switch (arch) {
+				case X86: {
+					src_appx = find_export_template("winrt_x86_release.zip", &err);
+					break;
+				}
+				case X64: {
+					src_appx = find_export_template("winrt_x64_release.zip", &err);
+					break;
+				}
+				case ARM: {
+					src_appx = find_export_template("winrt_arm_release.zip", &err);
+					break;
+				}
+			}
 		}
 		if (src_appx == "") {
 			EditorNode::add_io_error(err);
@@ -2285,7 +2311,7 @@ EditorExportPlatformWinrt::EditorExportPlatformWinrt() {
 	background_color = "transparent";
 
 	name_on_square150 = false;
-	name_on_square310= false;
+	name_on_square310 = false;
 	name_on_wide = false;
 
 	sign_package = false;
