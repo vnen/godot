@@ -89,11 +89,11 @@ extern "C"
 		{
 		return 0;
 		}
-	int WINAPI GetProcessWindowStation(void)
+	int __cdecl GetProcessWindowStation(void)
 		{
 		return NULL;
 		}
-	BOOL WINAPI GetUserObjectInformationW(
+	BOOL __cdecl GetUserObjectInformationW(
 										 _In_       HANDLE hObj,
 										 _In_       int nIndex,
 										 _Out_opt_  PVOID pvInfo,
@@ -103,9 +103,21 @@ extern "C"
 		{
 		return 0;
 		}
+	int __cdecl GetStdHandle(
+						   _In_  DWORD nStdHandle
+						   )
+		{
+		return 0;
+		}
 	BOOL DeregisterEventSource(
 							  _Inout_  HANDLE hEventLog
 							  )
+		{
+		return 0;
+		}
+	BOOL __cdecl FlushConsoleInputBuffer(
+									   _In_  HANDLE hConsoleInput
+									   )
 		{
 		return 0;
 		}
