@@ -39,6 +39,8 @@
 
 #include "platform/windows/key_mapping_win.h"
 
+#include <collection.h>
+
 using namespace Windows::ApplicationModel::Core;
 using namespace Windows::ApplicationModel::Activation;
 using namespace Windows::UI::Core;
@@ -148,8 +150,10 @@ void App::SetWindow(CoreWindow^ p_window)
 		ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(this, &App::OnKeyUp);
 
 
-	char* args[] = {"-path", "game", NULL};
-	Main::setup("winrt", 2, args, false);
+	unsigned int argc;
+	char** argv = get_command_line(&argc);
+
+	Main::setup("winrt", argc, argv, false);
 
 	// The CoreWindow has been created, so EGL can be initialized.
 	ContextEGL* context = memnew(ContextEGL(window));
@@ -516,4 +520,96 @@ void App::UpdateWindowSize(Size size)
 	vm.fullscreen = true;
 	vm.resizable = false;
 	os->set_video_mode(vm);
+}
+
+char** App::get_command_line(unsigned int* out_argc) {
+
+	static char* fail_cl[] = { "-path", "game", NULL };
+	*out_argc = 2;
+
+	FILE* f = _wfopen(L"__cl__.cl", L"rb");
+
+	if (f == NULL) {
+
+		wprintf(L"Couldn't open command line file.");
+		return fail_cl;
+	}
+
+#define READ_LE_4(v) ((int)(##v[3] & 0xFF) << 24) | ((int)(##v[2] & 0xFF) << 16) | ((int)(##v[1] & 0xFF) << 8) | ((int)(##v[0] & 0xFF))
+#define CMD_MAX_LEN 65535
+
+	uint8_t len[4];
+	int r = fread(len, sizeof(uint8_t), 4, f);
+
+	Platform::Collections::Vector<Platform::String^> cl;
+
+	if (r < 4) {
+		fclose(f);
+		wprintf(L"Wrong cmdline length.");
+		return(fail_cl);
+	}
+
+	int argc = READ_LE_4(len);
+
+	for (int i = 0; i < argc; i++) {
+
+		r = fread(len, sizeof(uint8_t), 4, f);
+
+		if (r < 4) {
+			fclose(f);
+			wprintf(L"Wrong cmdline param length.");
+			return(fail_cl);
+		}
+
+		int strlen = READ_LE_4(len);
+
+		if (strlen > CMD_MAX_LEN) {
+			fclose(f);
+			wprintf(L"Wrong command length.");
+			return(fail_cl);
+		}
+
+		char* arg = new char[strlen + 1];
+		r = fread(arg, sizeof(char), strlen, f);
+		arg[strlen] = '\0';
+
+		if (r == strlen) {
+
+			int warg_size = MultiByteToWideChar(CP_UTF8, 0, arg, -1, NULL, 0);
+			wchar_t* warg = new wchar_t[warg_size];
+
+			MultiByteToWideChar(CP_UTF8, 0, arg, -1, warg, warg_size);
+
+			cl.Append(ref new Platform::String(warg, warg_size));
+
+		} else {
+
+			delete[] arg;
+			fclose(f);
+			wprintf(L"Error reading command.");
+			return(fail_cl);
+		}
+	}
+
+#undef READ_LE_4
+#undef CMD_MAX_LEN
+
+	fclose(f);
+
+	char** ret = new char*[cl.Size + 1];
+
+	for (int i = 0; i < cl.Size; i++) {
+
+		int arg_size = WideCharToMultiByte(CP_UTF8, 0, cl.GetAt(i)->Data(), -1, NULL, 0, NULL, NULL);
+		char* arg = new char[arg_size];
+
+		WideCharToMultiByte(CP_UTF8, 0, cl.GetAt(i)->Data(), -1, arg, arg_size, NULL, NULL);
+
+		ret[i] = arg;
+
+	}
+	ret[cl.Size] = NULL;
+	*out_argc = cl.Size;
+
+	return ret;
 }

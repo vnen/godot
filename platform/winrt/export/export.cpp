@@ -80,6 +80,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "io/base64.h"
 #include "bind/core_bind.h"
 #include "globals.h"
+#include "io/marshalls.h"
 
 #include <zlib.h>
 
@@ -446,6 +447,8 @@ class EditorExportPlatformWinrt : public EditorExportPlatform {
 
 	String custom_release_package;
 	String custom_debug_package;
+
+	String cmdline;
 
 	String display_name;
 	String short_name;
@@ -1800,6 +1803,8 @@ bool EditorExportPlatformWinrt::_set(const StringName& p_name, const Variant& p_
 		custom_debug_package = p_value;
 	else if (n == "custom_package/release")
 		custom_release_package = p_value;
+	else if (n == "command_line/extra_args")
+		cmdline = p_value;
 	else if (n == "package/display_name")
 		display_name = p_value;
 	else if (n == "package/short_name")
@@ -1904,6 +1909,8 @@ bool EditorExportPlatformWinrt::_get(const StringName& p_name, Variant &r_ret) c
 		r_ret = custom_debug_package;
 	else if (n == "custom_package/release")
 		r_ret = custom_release_package;
+	else if (n == "command_line/extra_args")
+		r_ret = cmdline;
 	else if (n == "package/display_name")
 		r_ret = display_name;
 	else if (n == "package/short_name")
@@ -1994,6 +2001,8 @@ void EditorExportPlatformWinrt::_get_property_list(List<PropertyInfo>* p_list) c
 	p_list->push_back(PropertyInfo(Variant::STRING, "custom_package/release", PROPERTY_HINT_GLOBAL_FILE, "appx"));
 
 	p_list->push_back(PropertyInfo(Variant::INT, "architecture/target", PROPERTY_HINT_ENUM, "ARM,x86,x64"));
+
+	p_list->push_back(PropertyInfo(Variant::STRING, "command_line/extra_args"));
 
 	p_list->push_back(PropertyInfo(Variant::STRING, "package/display_name"));
 	p_list->push_back(PropertyInfo(Variant::STRING, "package/short_name"));
@@ -2262,9 +2271,41 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 	}
 
 	ep.step("Adding Files..", 1);
-	Vector<String> cl;
+
+	Vector<String> cl = cmdline.strip_edges().split(" ");
+	for (int i = 0;i<cl.size();i++) {
+		if (cl[i].strip_edges().length() == 0) {
+			cl.remove(i);
+			i--;
+		}
+	}
+
+	if (!(p_flags & EXPORT_DUMB_CLIENT)) {
+		cl.push_back("-path");
+		cl.push_back("game");
+	}
 
 	gen_export_flags(cl, p_flags);
+
+	// Command line file
+	Vector<uint8_t> clf;
+
+	// Argc
+	clf.resize(4);
+	encode_uint32(cl.size(), clf.ptr());
+
+	for (int i = 0; i < cl.size(); i++) {
+
+		CharString txt = cl[i].utf8();
+		int base = clf.size();
+		clf.resize(base + 4 + txt.length());
+		encode_uint32(txt.length(), &clf[base]);
+		copymem(&clf[base + 4], txt.ptr(), txt.length());
+		print_line(itos(i) + " param: " + cl[i]);
+	}
+
+	packager.add_file("__cl__.cl", clf.ptr(), clf.size(), -1, -1, false);
+
 
 	err = export_project_files(save_appx_file, &packager, false);
 

@@ -76,6 +76,8 @@ namespace GodotWinRT
         void InitializeEGL(Windows::UI::Core::CoreWindow^ window);
         void CleanupEGL();
 
+		char** get_command_line(unsigned int* out_argc);
+
         bool mWindowClosed;
         bool mWindowVisible;
         GLsizei mWindowWidth;
