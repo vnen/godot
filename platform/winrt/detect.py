@@ -25,7 +25,6 @@ def get_flags():
 
 	return [
 	('tools', 'no'),
-	('opus', 'no'),
 	('openssl', 'builtin'),
 	]
 
@@ -77,7 +76,7 @@ def configure(env):
 
 	env.Append(CPPPATH=['#platform/winrt','#drivers/windows'])
 	env.Append(LINKFLAGS=['/MANIFEST:NO', '/NXCOMPAT', '/DYNAMICBASE', '/WINMD', '/APPCONTAINER', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1', '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"'])
-	env.Append(CPPFLAGS=['/D','__WRL_NO_DEFAULT_LIB__'])
+	env.Append(CPPFLAGS=['/D','__WRL_NO_DEFAULT_LIB__','/D','WIN32'])
 	env.Append(CPPFLAGS=['/FU', os.environ['VCINSTALLDIR'] + 'lib/store/references/platform.winmd'])
 	env.Append(CPPFLAGS=['/AI', os.environ['VCINSTALLDIR'] + 'lib/store/references'])
 
