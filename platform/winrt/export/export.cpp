@@ -321,7 +321,7 @@ class AppxPackager {
 		ZPOS64_T zip_offset;
 	};
 
-	EditorProgress *progress;
+	String progress_task;
 	FileAccess *package;
 	String tmp_blockmap_file_path;
 	String tmp_content_types_file_path;
@@ -423,7 +423,8 @@ public:
 		DONT_SIGN,
 	};
 
-	void init(FileAccess* p_fa, EditorProgress* p_progress, SignOption p_sign, String &p_certificate_path, String &p_certificate_password);
+	void set_progress_task(String p_task) { progress_task = p_task; }
+	void init(FileAccess* p_fa, SignOption p_sign, String &p_certificate_path, String &p_certificate_password);
 	void add_file(String p_file_name, const uint8_t* p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress = false);
 	void finish();
 
@@ -810,9 +811,8 @@ Vector<uint8_t> AppxPackager::make_end_of_central_record() {
 	return buf;
 }
 
-void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress, SignOption p_sign, String &p_certificate_path, String &p_certificate_password) {
+void AppxPackager::init(FileAccess * p_fa, SignOption p_sign, String &p_certificate_path, String &p_certificate_password) {
 
-	progress = p_progress;
 	package = p_fa;
 	central_dir_offset = 0;
 	end_of_central_dir_offset = 0;
@@ -830,7 +830,7 @@ void AppxPackager::init(FileAccess * p_fa, EditorProgress* p_progress, SignOptio
 void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t p_len, int p_file_no, int p_total_files, bool p_compress) {
 
 	if (p_file_no >= 1 && p_total_files >= 1) {
-		progress->step("File: " + p_file_name, 3 + p_file_no * 100 / p_total_files);
+		EditorNode::progress_task_step(progress_task, "File: " + p_file_name, (p_file_no * 100) / p_total_files);
 	}
 
 	bool do_hash = p_file_name != "AppxSignature.p7x";
@@ -971,7 +971,8 @@ void AppxPackager::add_file(String p_file_name, const uint8_t * p_buffer, size_t
 void AppxPackager::finish() {
 
 	// Create and add block map file
-	progress->step("Creating block map...", 103);
+	EditorNode::progress_task_step("export", "Creating block map...", 4);
+
 	make_block_map();
 	FileAccess* blockmap_file = FileAccess::open(tmp_blockmap_file_path, FileAccess::READ);
 	Vector<uint8_t> blockmap_buffer;
@@ -996,7 +997,7 @@ void AppxPackager::finish() {
 	blockmap_file = NULL;
 
 	// Add content types
-	progress->step("Setting content types...", 104);
+	EditorNode::progress_task_step("export", "Setting content types...", 5);
 	make_content_types();
 
 	FileAccess* types_file = FileAccess::open(tmp_content_types_file_path, FileAccess::READ);
@@ -1097,7 +1098,7 @@ void AppxPackager::finish() {
 
 
 	// Write central directory
-	progress->step("Finishing package...", 105);
+	EditorNode::progress_task_step("export", "Finishing package...", 6);
 	central_dir_offset = package->get_pos();
 	package->store_buffer(central_dir_data.ptr(), central_dir_data.size());
 
@@ -2151,7 +2152,7 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 
 	String src_appx;
 
-	EditorProgress ep("export", "Exporting for Windows Universal", 105);
+	EditorProgress ep("export", "Exporting for Windows Universal", 7);
 
 	if (is_debug)
 		src_appx = custom_debug_package;
@@ -2207,12 +2208,12 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 	ERR_FAIL_COND_V(err != OK, ERR_CANT_CREATE);
 
 	AppxPackager packager;
-	packager.init(fa_pack, &ep, sign_package ? AppxPackager::SIGN : AppxPackager::DONT_SIGN, certificate_path, certificate_pass);
+	packager.init(fa_pack, sign_package ? AppxPackager::SIGN : AppxPackager::DONT_SIGN, certificate_path, certificate_pass);
 
 	FileAccess *src_f = NULL;
 	zlib_filefunc_def io = zipio_create_io_from_file(&src_f);
 
-	ep.step("Creating package", 0);
+	ep.step("Creating package...", 0);
 
 	unzFile pkg = unzOpen2(src_appx.utf8().get_data(), &io);
 
@@ -2223,6 +2224,14 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 	}
 
 	int ret = unzGoToFirstFile(pkg);
+
+	ep.step("Copying template files...", 1);
+
+	EditorNode::progress_add_task("template_files", "Template files", 100);
+	packager.set_progress_task("template_files");
+
+	int template_files_amount = 9;
+	int template_file_no = 1;
 
 	while (ret == UNZ_OK) {
 
@@ -2265,12 +2274,14 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 
 		print_line("ADDING: " + path);
 
-		packager.add_file(path, data.ptr(), data.size(), -1, -1, _should_compress_asset(path, data));
+		packager.add_file(path, data.ptr(), data.size(), template_file_no++, template_files_amount, _should_compress_asset(path, data));
 
 		ret = unzGoToNextFile(pkg);
 	}
 
-	ep.step("Adding Files..", 1);
+	EditorNode::progress_end_task("template_files");
+
+	ep.step("Creating command line...", 2);
 
 	Vector<String> cl = cmdline.strip_edges().split(" ");
 	for (int i = 0;i<cl.size();i++) {
@@ -2306,8 +2317,16 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 
 	packager.add_file("__cl__.cl", clf.ptr(), clf.size(), -1, -1, false);
 
+	ep.step("Adding project files...", 3);
+
+	EditorNode::progress_add_task("project_files", "Project Files", 100);
+	packager.set_progress_task("project_files");
 
 	err = export_project_files(save_appx_file, &packager, false);
+
+	EditorNode::progress_end_task("project_files");
+
+	ep.step("Closing package...", 7);
 
 	unzClose(pkg);
 
