@@ -27,7 +27,7 @@ def get_flags():
 	('tools', 'no'),
 	('opus', 'no'),
 	('freetype', 'no'),
-	('openssl', 'no'),
+	('openssl', 'builtin'),
 	]
 
 
