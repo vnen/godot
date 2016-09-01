@@ -50,6 +50,7 @@ using namespace Windows::UI::Xaml::Input;
 using namespace Windows::Foundation;
 using namespace Windows::Graphics::Display;
 using namespace Windows::System;
+using namespace Windows::System::Threading::Core;
 using namespace Microsoft::WRL;
 
 using namespace GodotWinRT;
@@ -139,8 +140,11 @@ void App::SetWindow(CoreWindow^ p_window)
 	window->PointerWheelChanged +=
 		ref new TypedEventHandler<CoreWindow^, PointerEventArgs^>(this, &App::OnPointerWheelChanged);
 
-	MouseDevice::GetForCurrentView()->MouseMoved +=
-		ref new TypedEventHandler<MouseDevice^, MouseEventArgs^>(this, &App::OnMouseMoved);
+	mouseChangedNotifier = SignalNotifier::AttachToEvent(L"os_mouse_mode_changed", ref new SignalHandler(
+		this, &App::OnMouseModeChanged
+	));
+
+	mouseChangedNotifier->Enable();
 
 	window->CharacterReceived +=
 		ref new TypedEventHandler<CoreWindow^, CharacterReceivedEventArgs^>(this, &App::OnCharacterReceived);
@@ -327,7 +331,35 @@ void App::OnPointerReleased(Windows::UI::Core::CoreWindow^ sender, Windows::UI::
 void App::OnPointerWheelChanged(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args) {
 
 	pointer_event(sender, args, true, true);
-};
+}
+
+void App::OnMouseModeChanged(Windows::System::Threading::Core::SignalNotifier^ signalNotifier, bool timedOut) {
+
+	OS::MouseMode mode = os->get_mouse_mode();
+	SignalNotifier^ notifier = mouseChangedNotifier;
+
+	window->Dispatcher->RunAsync(
+		CoreDispatcherPriority::High,
+		ref new DispatchedHandler(
+		[mode, notifier, this]() {
+			if (mode == OS::MOUSE_MODE_CAPTURED) {
+
+				this->MouseMovedToken = MouseDevice::GetForCurrentView()->MouseMoved +=
+					ref new TypedEventHandler<MouseDevice^, MouseEventArgs^>(this, &App::OnMouseMoved);
+
+			} else {
+
+				MouseDevice::GetForCurrentView()->MouseMoved -= MouseMovedToken;
+
+			}
+
+			notifier->Enable();
+	}));
+
+	ResetEvent(os->mouse_mode_changed);
+
+
+}
 
 void App::OnPointerMoved(Windows::UI::Core::CoreWindow^ sender, Windows::UI::Core::PointerEventArgs^ args) {
 

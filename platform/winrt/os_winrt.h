@@ -191,6 +191,9 @@ protected:
 
 public:
 
+	// Event to send to the app wrapper
+	HANDLE mouse_mode_changed;
+
 	void print_error(const char* p_function,const char* p_file,int p_line,const char *p_code,const char*p_rationale,ErrorType p_type);
 
 	virtual void vprint(const char *p_format, va_list p_list, bool p_stderr=false);

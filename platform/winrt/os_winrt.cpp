@@ -563,6 +563,8 @@ void OSWinrt::set_mouse_mode(MouseMode p_mode) {
 	}
 
 	mouse_mode = p_mode;
+
+	SetEvent(mouse_mode_changed);
 }
 
 OSWinrt::MouseMode OSWinrt::get_mouse_mode() const{
@@ -956,6 +958,8 @@ OSWinrt::OSWinrt() {
 
 	managed_object = ref new ManagedType;
 	managed_object->os = this;
+
+	mouse_mode_changed = CreateEvent(NULL, TRUE, FALSE, L"os_mouse_mode_changed");
 
 	AudioDriverManagerSW::add_driver(&audio_driver);
 }
