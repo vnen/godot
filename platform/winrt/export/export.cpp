@@ -1515,11 +1515,14 @@ bool EditorExportPlatformWinrt::_valid_bgcolor(const String & p_color) const {
 		"snow","springGreen","steelBlue","tan","teal","thistle",
 		"tomato","transparent","turquoise","violet","wheat","white",
 		"whiteSmoke","yellow","yellowGreen",
+		NULL
 	};
 
-	for (int i = 0; i < sizeof(valid_colors); i++) {
+	const char** color = valid_colors;
 
-		if (p_color == valid_colors[i]) return true;
+	while(*color) {
+		if (p_color == *color) return true;
+		color++;
 	}
 
 	return false;
