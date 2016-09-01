@@ -86,9 +86,24 @@ OS::VideoMode OSWinrt::get_default_video_mode() const {
 
 Size2 OSWinrt::get_window_size() const {
 	Size2 size;
-	size.width = 1280;
-	size.height = 720;
+	size.width = video_mode.width;
+	size.height = video_mode.height;
 	return size;
+}
+
+void OSWinrt::set_window_size(const Size2 p_size) {
+
+	Windows::Foundation::Size new_size;
+	new_size.Width = p_size.width;
+	new_size.Height = p_size.height;
+
+	ApplicationView^ view = ApplicationView::GetForCurrentView();
+
+	if (view->TryResizeView(new_size)) {
+
+		video_mode.width = p_size.width;
+		video_mode.height = p_size.height;
+	}
 }
 
 void OSWinrt::set_window_fullscreen(bool p_enabled) {
@@ -222,6 +237,9 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 	ApplicationView^ view = ApplicationView::GetForCurrentView();
 	vm.fullscreen = view->IsFullScreenMode;
 
+	view->SetDesiredBoundsMode(ApplicationViewBoundsMode::UseVisible);
+	view->PreferredLaunchWindowingMode = ApplicationViewWindowingMode::PreferredLaunchViewSize;
+
 	if (p_desired.fullscreen != view->IsFullScreenMode) {
 		if (p_desired.fullscreen) {
 
@@ -232,6 +250,18 @@ void OSWinrt::initialize(const VideoMode& p_desired,int p_video_driver,int p_aud
 			view->ExitFullScreenMode();
 			vm.fullscreen = false;
 		}
+	}
+
+	Windows::Foundation::Size desired;
+	desired.Width = p_desired.width;
+	desired.Height = p_desired.height;
+
+	view->PreferredLaunchViewSize = desired;
+
+	if (view->TryResizeView(desired)) {
+
+		vm.width = view->VisibleBounds.Width;
+		vm.height = view->VisibleBounds.Height;
 	}
 
 	set_video_mode(vm);
