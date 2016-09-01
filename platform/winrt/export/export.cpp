@@ -1529,11 +1529,13 @@ bool EditorExportPlatformWinrt::_valid_image(const Ref<ImageTexture> p_image, in
 
 	if (!p_image.is_valid()) return false;
 
-	real_t scales[] = { 1.0, 1.25, 1.5, 2.0 };
+	// TODO: Add resource creation or image rescaling to enable other scales:
+	// 1.25, 1.5, 2.0
+	real_t scales[] = { 1.0 };
 	bool valid_w = false;
 	bool valid_h = false;
 
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 1; i++) {
 
 		int w = ceil(p_width * scales[i]);
 		int h = ceil(p_height * scales[i]);
@@ -2109,37 +2111,37 @@ bool EditorExportPlatformWinrt::can_export(String * r_error) const {
 
 	if (store_logo.is_valid() && !_valid_image(store_logo, 50, 50)) {
 		valid = false;
-		err += TTR("Invalid Store Logo image dimensions (should be 50x50 or a multiple).") + "\n";
+		err += TTR("Invalid Store Logo image dimensions (should be 50x50).") + "\n";
 	}
 
 	if (square44.is_valid() && !_valid_image(square44, 44, 44)) {
 		valid = false;
-		err += TTR("Invalid square 44x44 logo image dimensions (should be 44x44 or a multiple).") + "\n";
+		err += TTR("Invalid square 44x44 logo image dimensions (should be 44x44).") + "\n";
 	}
 
 	if (square71.is_valid() && !_valid_image(square71, 71, 71)) {
 		valid = false;
-		err += TTR("Invalid square 71x71 logo image dimensions (should be 71x71 or a multiple).") + "\n";
+		err += TTR("Invalid square 71x71 logo image dimensions (should be 71x71).") + "\n";
 	}
 
 	if (square150.is_valid() && !_valid_image(square150, 150, 150)) {
 		valid = false;
-		err += TTR("Invalid square 150x150 logo image dimensions (should be 150x150 or a multiple).") + "\n";
+		err += TTR("Invalid square 150x150 logo image dimensions (should be 150x150).") + "\n";
 	}
 
 	if (square310.is_valid() && !_valid_image(square310, 310, 310)) {
 		valid = false;
-		err += TTR("Invalid square 310x310 logo image dimensions (should be 310x310 or a multiple).") + "\n";
+		err += TTR("Invalid square 310x310 logo image dimensions (should be 310x310).") + "\n";
 	}
 
 	if (wide310.is_valid() && !_valid_image(wide310, 310, 150)) {
 		valid = false;
-		err += TTR("Invalid wide 310x150 logo image dimensions (should be 310x150 or a multiple).") + "\n";
+		err += TTR("Invalid wide 310x150 logo image dimensions (should be 310x150).") + "\n";
 	}
 
 	if (splash.is_valid() && !_valid_image(splash, 620, 300)) {
 		valid = false;
-		err += TTR("Invalid splash screen image dimensions (should be 620x300 or a multiple).") + "\n";
+		err += TTR("Invalid splash screen image dimensions (should be 620x300).") + "\n";
 	}
 
 	if (r_error)
@@ -2253,7 +2255,7 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 
 		if (path.begins_with("Assets/")) {
 
-			path = path.replace(".scale-400", "");
+			path = path.replace(".scale-100", "");
 
 			data = _get_image_data(path);
 			if (data.size() > 0) do_read = false;

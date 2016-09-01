@@ -115,6 +115,29 @@ extern "C"
 		{
 		return 0;
 		}
+	char *getenv(
+					  const char *varname
+					  )
+		{
+		//hardcoded environmental variables used for the appx testing application for store/phone
+		if (!strcmp(varname, "OPENSSL_CONF"))
+			{
+			return "./openssl.cnf";
+			}
+		return 0;
+		}
+	int setenv(const char *envname, const char *envval, int overwrite)
+		{
+		return -1;
+		}
+	int _getch(void)
+		{
+		return 0;
+		}
+	int _kbhit()
+		{
+		return 0;
+		}
 	BOOL __cdecl FlushConsoleInputBuffer(
 									   _In_  HANDLE hConsoleInput
 									   )
