@@ -13,4 +13,7 @@ files = [
 	'os_winrt.cpp',
 ]
 
-env.Program('#bin/godot', files)
+cmd = env.AlwaysBuild(env.ANGLE('libANGLE.lib', None))
+
+prog = env.Program('#bin/godot', files)
+env.Depends(prog, [cmd])

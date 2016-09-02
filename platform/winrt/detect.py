@@ -15,6 +15,15 @@ def can_build():
 	if (os.name=="nt"):
 		#building natively on windows!
 		if (os.getenv("VSINSTALLDIR")):
+
+			if (os.getenv("ANGLE_SRC_PATH") == None):
+				print("You need to define ANGLE_SRC_PATH to the path of ANGLE source root.")
+				return False
+
+			if not os.path.isfile(str(os.getenv("ANGLE_SRC_PATH")) + "/winrt/10/src/angle.sln"):
+				print ("Couldn't find the ANGLE solution. Is ANGLE_SRC_PATH configured to the right path?")
+				return False
+
 			return True
 	return False
 
@@ -41,6 +50,12 @@ def configure(env):
 	arch = ""
 	env['ENV'] = os.environ;
 
+	# ANGLE
+	angle_root = os.getenv("ANGLE_SRC_PATH")
+	env.Append(CPPPATH=[angle_root + '/include'])
+	jobs = str(env.GetOption("num_jobs"))
+	angle_build_cmd = "msbuild.exe " + angle_root + "/winrt/10/src/angle.sln /nologo /v:m /m:" + jobs + " /p:Configuration=Release /p:Platform="
+
 	if os.getenv('Platform') == "ARM":
 
 		print "Compiled program architecture will be an ARM executable. (forcing bits=32)."
@@ -49,6 +64,10 @@ def configure(env):
 		env["bits"]="32"
 		env.Append(LINKFLAGS=['/MACHINE:ARM'])
 		env.Append(LIBPATH=[os.environ['VCINSTALLDIR'] + 'lib/store/arm'])
+
+		angle_build_cmd += "ARM"
+
+		env.Append(LIBPATH=[angle_root + '/winrt/10/src/Release_ARM/lib'])
 
 	else:
 
@@ -66,13 +85,22 @@ def configure(env):
 
 		if (env["bits"] == "32"):
 			arch = "x86"
+
+			angle_build_cmd += "Win32"
+
 			env.Append(CPPFLAGS=['/DPNG_ABORT=abort'])
 			env.Append(LINKFLAGS=['/MACHINE:X86'])
 			env.Append(LIBPATH=[os.environ['VCINSTALLDIR'] + 'lib/store'])
+			env.Append(LIBPATH=[angle_root + '/winrt/10/src/Release_Win32/lib'])
+
 		else:
 			arch = "x64"
+
+			angle_build_cmd += "x64"
+
 			env.Append(LINKFLAGS=['/MACHINE:X64'])
 			env.Append(LIBPATH=[os.environ['VCINSTALLDIR'] + 'lib/store/amd64'])
+			env.Append(LIBPATH=[angle_root + '/winrt/10/src/Release_x64/lib'])
 
 	env.Append(CPPPATH=['#platform/winrt','#drivers/windows'])
 	env.Append(LINKFLAGS=['/MANIFEST:NO', '/NXCOMPAT', '/DYNAMICBASE', '/WINMD', '/APPCONTAINER', '/ERRORREPORT:PROMPT', '/NOLOGO', '/TLBID:1', '/NODEFAULTLIB:"kernel32.lib"', '/NODEFAULTLIB:"ole32.lib"'])
@@ -121,12 +149,17 @@ def configure(env):
 		'xaudio2',
 		'WindowsApp',
 		'mincore',
+		'libANGLE',
+		'libEGL',
+		'libGLESv2',
 		]
 	env.Append(LINKFLAGS=[p+".lib" for p in LIBS])
 
 	# Incremental linking fix
 	env['BUILDERS']['ProgramOriginal'] = env['BUILDERS']['Program']
 	env['BUILDERS']['Program'] = methods.precious_program
+
+	env.Append( BUILDERS = { 'ANGLE' : env.Builder(action = angle_build_cmd) } )
 
 	env.Append( BUILDERS = { 'GLSL120' : env.Builder(action = methods.build_legacygl_headers, suffix = 'glsl.h',src_suffix = '.glsl') } )
 	env.Append( BUILDERS = { 'GLSL' : env.Builder(action = methods.build_glsl_headers, suffix = 'glsl.h',src_suffix = '.glsl') } )
