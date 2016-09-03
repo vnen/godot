@@ -2205,10 +2205,6 @@ Error EditorExportPlatformWinrt::export_project(const String & p_path, bool p_de
 
 	Error err = OK;
 
-	//CertFile cf;
-	//err = read_cert_file(certificate_path, certificate_pass, &cf);
-	//if (err != OK) return err;
-
 	FileAccess *fa_pack = FileAccess::open(p_path, FileAccess::WRITE, &err);
 	ERR_FAIL_COND_V(err != OK, ERR_CANT_CREATE);
 

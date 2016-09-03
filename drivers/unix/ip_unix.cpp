@@ -37,7 +37,6 @@
   #include <winsock2.h>
   #include <windows.h>
   #include <stdio.h>
-  //#include <windows.networking.connectivity.h>
  #else
   #define WINVER 0x0600
   #include <ws2tcpip.h>
@@ -92,8 +91,6 @@ void IP_Unix::get_local_addresses(List<IP_Address> *r_addresses) const {
 	for (int i = 0; i < hostnames->Size; i++) {
 
 		if (hostnames->GetAt(i)->Type == HostNameType::Ipv4 && hostnames->GetAt(i)->IPInformation != nullptr) {
-
-			print_line(String(hostnames->GetAt(i)->CanonicalName->Data()));
 
 			r_addresses->push_back(IP_Address(String(hostnames->GetAt(i)->CanonicalName->Data())));
 
