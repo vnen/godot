@@ -663,10 +663,19 @@ OS::Time OSWinrt::get_time(bool utc) const {
 }
 
 OS::TimeZoneInfo OSWinrt::get_time_zone_info() const {
+	TIME_ZONE_INFORMATION info;
+	bool daylight = false;
+	if (GetTimeZoneInformation(&info) == TIME_ZONE_ID_DAYLIGHT)
+		daylight = true;
 
 	TimeZoneInfo ret;
-	ret.bias = -3;
-	ret.name = "BRT";
+	if (daylight) {
+		ret.name = info.DaylightName;
+	} else {
+		ret.name = info.StandardName;
+	}
+
+	ret.bias = info.Bias;
 	return ret;
 }
 
