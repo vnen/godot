@@ -19,6 +19,9 @@ protected:
 
 public:
 
+	String source;
+	String path;
+
 	virtual bool can_instance() const;
 
 	virtual Ref<Script> get_base_script() const; //for script inheritance
@@ -52,6 +55,8 @@ public:
 	virtual void get_script_property_list(List<PropertyInfo> *p_list) const;
 
 	virtual int get_member_line(const StringName& p_member) const { return 0; }
+
+	Error load_source_code(const String& p_path);
 
 	JavaScript();
 	~JavaScript();

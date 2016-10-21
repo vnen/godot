@@ -1,5 +1,7 @@
 
 #include "js_language.h"
+#include "os/file_access.h"
+#include "io/file_access_encrypted.h"
 
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 
@@ -26,7 +28,7 @@ void JavaScriptLanguage::get_comment_delimiters(List<String>* p_delimiters) cons
 void JavaScriptLanguage::get_string_delimiters(List<String>* p_delimiters) const {}
 
 Ref<Script> JavaScriptLanguage::get_template(const String & p_class_name, const String & p_base_class_name) const {
-	
+
 	Ref<JavaScript> script;
 	script.instance();
 
@@ -148,14 +150,21 @@ bool JavaScript::instance_has(const Object * p_this) const {
 }
 
 bool JavaScript::has_source_code() const {
-	return false;
+
+	return !source.empty();
 }
 
 String JavaScript::get_source_code() const {
-	return String();
+
+	return source;
 }
 
-void JavaScript::set_source_code(const String & p_code) {}
+void JavaScript::set_source_code(const String & p_code) {
+
+	if (source == p_code)
+		return;
+	source = p_code;
+}
 
 Error JavaScript::reload(bool p_keep_state) {
 	return Error();
@@ -178,7 +187,8 @@ String JavaScript::get_node_type() const {
 }
 
 ScriptLanguage * JavaScript::get_language() const {
-	return nullptr;
+
+	return JavaScriptLanguage::get_singleton();
 }
 
 bool JavaScript::has_script_signal(const StringName & p_signal) const {
@@ -193,7 +203,46 @@ bool JavaScript::get_property_default_value(const StringName & p_property, Varia
 
 void JavaScript::get_script_method_list(List<MethodInfo>* p_list) const {}
 
-void JavaScript::get_script_property_list(List<PropertyInfo>* p_list) const {}
+void JavaScript::get_script_property_list(List<PropertyInfo>* p_list) const {
+
+	p_list->push_back(PropertyInfo(Variant::STRING, "script/source", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
+}
+
+Error JavaScript::load_source_code(const String & p_path) {
+
+	DVector<uint8_t> sourcef;
+	Error err;
+	FileAccess *f = FileAccess::open(p_path, FileAccess::READ, &err);
+	if (err) {
+
+		ERR_FAIL_COND_V(err, err);
+	}
+
+	int len = f->get_len();
+	sourcef.resize(len + 1);
+	DVector<uint8_t>::Write w = sourcef.write();
+	int r = f->get_buffer(w.ptr(), len);
+	f->close();
+	memdelete(f);
+	ERR_FAIL_COND_V(r != len, ERR_CANT_OPEN);
+	w[len] = 0;
+
+	String s;
+	if (s.parse_utf8((const char*)w.ptr())) {
+
+		ERR_EXPLAIN("Script '" + p_path + "' contains invalid unicode (utf-8), so it was not loaded. Please ensure that scripts are saved in valid utf-8 unicode.");
+		ERR_FAIL_V(ERR_INVALID_DATA);
+	}
+
+	source = s;
+#ifdef TOOLS_ENABLED
+	//source_changed_cache = true;
+#endif
+	//print_line("LSC :"+get_path());
+	path = p_path;
+	return OK;
+
+}
 
 JavaScript::JavaScript() {}
 
@@ -201,8 +250,29 @@ JavaScript::~JavaScript() {}
 
 RES ResourceFormatLoaderJavaScript::load(const String & p_path, const String & p_original_path, Error * r_error) {
 
-	*r_error = ERR_UNAVAILABLE;
-	return RES();
+	if (r_error)
+		*r_error = ERR_FILE_CANT_OPEN;
+
+	JavaScript *script = memnew(JavaScript);
+
+	Ref<JavaScript> scriptres(script);
+
+	Error err = script->load_source_code(p_path);
+
+	if (err != OK) {
+
+		ERR_FAIL_COND_V(err != OK, RES());
+	}
+
+	script->set_path(p_original_path);
+	script->set_name(p_path.get_file());
+
+	script->reload();
+
+	if (r_error)
+		*r_error = OK;
+
+	return scriptres;
 }
 
 void ResourceFormatLoaderJavaScript::get_recognized_extensions(List<String>* p_extensions) const {
@@ -211,12 +281,12 @@ void ResourceFormatLoaderJavaScript::get_recognized_extensions(List<String>* p_e
 }
 
 bool ResourceFormatLoaderJavaScript::handles_type(const String & p_type) const {
-	
+
 	return (p_type == "Script" || p_type == "JavaScript");
 }
 
 String ResourceFormatLoaderJavaScript::get_resource_type(const String & p_path) const {
-	
+
 	if (p_path.extension().to_lower() == "js") {
 		return "JavaScript";
 	}
@@ -224,13 +294,39 @@ String ResourceFormatLoaderJavaScript::get_resource_type(const String & p_path) 
 }
 
 Error ResourceFormatSaverJavaScript::save(const String & p_path, const RES & p_resource, uint32_t p_flags) {
-	
-	return ERR_UNAVAILABLE;
+
+	Ref<JavaScript> sqscr = p_resource;
+	ERR_FAIL_COND_V(sqscr.is_null(), ERR_INVALID_PARAMETER);
+
+	String source = sqscr->get_source_code();
+
+	Error err;
+	FileAccess *file = FileAccess::open(p_path, FileAccess::WRITE, &err);
+
+
+	if (err) {
+
+		ERR_FAIL_COND_V(err, err);
+	}
+
+	file->store_string(source);
+	if (file->get_error() != OK && file->get_error() != ERR_FILE_EOF) {
+		memdelete(file);
+		return ERR_CANT_CREATE;
+	}
+	file->close();
+	memdelete(file);
+
+	if (ScriptServer::is_reload_scripts_on_save_enabled()) {
+		JavaScriptLanguage::get_singleton()->reload_tool_script(p_resource, false);
+	}
+
+	return OK;
 }
 
 void ResourceFormatSaverJavaScript::get_recognized_extensions(const RES & p_resource, List<String>* p_extensions) const {
-	
-	if (p_resource->cast_to<JavaScript>()) {
+
+	if (p_resource->cast_to<JavaScript>() != NULL) {
 		p_extensions->push_back("js");
 	}
 }
