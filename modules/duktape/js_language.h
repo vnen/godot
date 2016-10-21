@@ -5,16 +5,67 @@
 #include "vector.h"
 #include "list.h"
 #include "ustring.h"
+#include "io/resource_loader.h"
+#include "io/resource_saver.h"
 
-class JavascriptLanguage : public ScriptLanguage {
 
-	static JavascriptLanguage *singleton;
+class JavaScript : public Script {
+
+	OBJ_TYPE(JavaScript, Script);
+
+protected:
+
+	static void _bind_methods();
+
+public:
+
+	virtual bool can_instance() const;
+
+	virtual Ref<Script> get_base_script() const; //for script inheritance
+
+	virtual StringName get_instance_base_type() const; // this may not work in all scripts, will return empty if so
+	virtual ScriptInstance* instance_create(Object *p_this);
+	virtual bool instance_has(const Object *p_this) const;
+
+
+	virtual bool has_source_code() const;
+	virtual String get_source_code() const;
+	virtual void set_source_code(const String& p_code);
+	virtual Error reload(bool p_keep_state = false);
+
+	virtual bool has_method(const StringName& p_method) const;
+	virtual MethodInfo get_method_info(const StringName& p_method) const;
+
+	virtual bool is_tool() const;
+
+	virtual String get_node_type() const;
+
+	virtual ScriptLanguage *get_language() const;
+
+	virtual bool has_script_signal(const StringName& p_signal) const;
+	virtual void get_script_signal_list(List<MethodInfo> *r_signals) const;
+
+	virtual bool get_property_default_value(const StringName& p_property, Variant& r_value) const;
+
+	virtual void update_exports() {} //editor tool
+	virtual void get_script_method_list(List<MethodInfo> *p_list) const;
+	virtual void get_script_property_list(List<PropertyInfo> *p_list) const;
+
+	virtual int get_member_line(const StringName& p_member) const { return 0; }
+
+	JavaScript();
+	~JavaScript();
+};
+
+class JavaScriptLanguage : public ScriptLanguage {
+
+	static JavaScriptLanguage *singleton;
 	
 public:
 
-	_FORCE_INLINE_ static JavascriptLanguage* get_singleton() { return singleton; }
+	_FORCE_INLINE_ static JavaScriptLanguage* get_singleton() { return singleton; }
 
-	virtual String get_name() const { return "Javascript"; }
+	virtual String get_name() const { return "JavaScript"; }
 
 	/* LANGUAGE FUNCTIONS */
 	virtual void init();
@@ -78,8 +129,27 @@ public:
 
 	virtual void frame();
 
-	JavascriptLanguage();
-	~JavascriptLanguage();
+	JavaScriptLanguage();
+	~JavaScriptLanguage();
+
+};
+
+class ResourceFormatLoaderJavaScript : public ResourceFormatLoader {
+public:
+
+	virtual RES load(const String &p_path, const String& p_original_path = "", Error *r_error = NULL);
+	virtual void get_recognized_extensions(List<String> *p_extensions) const;
+	virtual bool handles_type(const String& p_type) const;
+	virtual String get_resource_type(const String &p_path) const;
+
+};
+
+class ResourceFormatSaverJavaScript : public ResourceFormatSaver {
+public:
+
+	virtual Error save(const String &p_path, const RES& p_resource, uint32_t p_flags);
+	virtual void get_recognized_extensions(const RES& p_resource, List<String> *p_extensions) const;
+	virtual bool recognize(const RES& p_resource) const;
 
 };
 
