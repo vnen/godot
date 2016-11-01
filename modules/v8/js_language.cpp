@@ -8,20 +8,119 @@ JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 void JavaScriptLanguage::init() {}
 
 String JavaScriptLanguage::get_type() const {
-	return String();
+
+	return "JavaScript";
 }
 
 String JavaScriptLanguage::get_extension() const {
-	return String();
+	
+	return "js";
 }
 
 Error JavaScriptLanguage::execute_file(const String & p_path) {
-	return Error();
+
+	return OK;
 }
 
 void JavaScriptLanguage::finish() {}
 
-void JavaScriptLanguage::get_reserved_words(List<String>* p_words) const {}
+void JavaScriptLanguage::get_reserved_words(List<String>* p_words) const {
+
+	static const char* reserved_words[] = {
+		"abstract",
+		"else",
+		"instanceof",
+		"super",
+		"boolean",
+		"enum",
+		"int",
+		"switch",
+		"break",
+		"export",
+		"interface",
+		"synchronized",
+		"byte",
+		"extends",
+		"let",
+		"this",
+		"case",
+		"false",
+		"long",
+		"throw",
+		"catch",
+		"final",
+		"native",
+		"throws",
+		"char",
+		"finally",
+		"new",
+		"transient",
+		"class",
+		"float",
+		"null",
+		"true",
+		"const",
+		"for",
+		"package",
+		"try",
+		"continue",
+		"function",
+		"private",
+		"typeof",
+		"debugger",
+		"goto",
+		"protected",
+		"var",
+		"default",
+		"if",
+		"public",
+		"void",
+		"delete",
+		"implements",
+		"return",
+		"volatile",
+		"do",
+		"import",
+		"short",
+		"while",
+		"double",
+		"in",
+		"static",
+		"with",
+
+		// not reserved but implementation-specific
+		"Array",
+		"Date",
+		"eval",
+		"function",
+		"hasOwnProperty",
+		"Infinity",
+		"isFinite",
+		"isNaN",
+		"isPrototypeOf",
+		"length",
+		"Math",
+		"NaN",
+		"name",
+		"Number",
+		"Object",
+		"prototype",
+		"String",
+		"toString",
+		"undefined",
+		"valueOf",
+		0
+	};
+
+	const char **w = reserved_words;
+
+
+	while (*w) {
+
+		p_words->push_back(*w);
+		w++;
+	}
+}
 
 void JavaScriptLanguage::get_comment_delimiters(List<String>* p_delimiters) const {}
 
@@ -335,3 +434,54 @@ bool ResourceFormatSaverJavaScript::recognize(const RES & p_resource) const {
 
 	return (p_resource->cast_to<JavaScript>() != NULL);
 }
+
+bool JavaScriptInstance::get(const StringName & p_name, Variant & r_ret) const {
+	return false;
+}
+
+void JavaScriptInstance::get_property_list(List<PropertyInfo>* p_properties) const {}
+
+Variant::Type JavaScriptInstance::get_property_type(const StringName & p_name, bool * r_is_valid) const {
+	return Variant::Type();
+}
+
+void JavaScriptInstance::get_property_state(List<Pair<StringName, Variant>>& state) {}
+
+void JavaScriptInstance::get_method_list(List<MethodInfo>* p_list) const {}
+
+bool JavaScriptInstance::has_method(const StringName & p_method) const {
+	return false;
+}
+
+Variant JavaScriptInstance::call(const StringName & p_method, VARIANT_ARG_LIST) {
+	return Variant();
+}
+
+Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p_args, int p_argcount, Variant::CallError & r_error) {
+	return Variant();
+}
+
+void JavaScriptInstance::call_multilevel(const StringName & p_method, VARIANT_ARG_LIST) {}
+
+void JavaScriptInstance::call_multilevel(const StringName & p_method, const Variant ** p_args, int p_argcount) {}
+
+void JavaScriptInstance::call_multilevel_reversed(const StringName & p_method, const Variant ** p_args, int p_argcount) {}
+
+void JavaScriptInstance::notification(int p_notification) {}
+
+ScriptInstance::RPCMode JavaScriptInstance::get_rpc_mode(const StringName & p_method) const {
+	return RPCMode();
+}
+
+ScriptInstance::RPCMode JavaScriptInstance::get_rset_mode(const StringName & p_variable) const {
+	return RPCMode();
+}
+
+ScriptLanguage * JavaScriptInstance::get_language() {
+
+	return JavaScriptLanguage::get_singleton();
+}
+
+JavaScriptInstance::JavaScriptInstance() {}
+
+JavaScriptInstance::~JavaScriptInstance() {}

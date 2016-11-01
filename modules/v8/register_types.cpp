@@ -9,7 +9,7 @@ JavaScriptLanguage *js_duktape_language = NULL;
 ResourceFormatLoaderJavaScript *js_resource_loader = NULL;
 ResourceFormatSaverJavaScript *js_resource_saver = NULL;
 
-void register_duktape_types() {
+void register_v8_types() {
 
 	ObjectTypeDB::register_type<JavaScript>();
 
@@ -22,7 +22,7 @@ void register_duktape_types() {
 	ResourceSaver::add_resource_format_saver(js_resource_saver);
 }
 
-void unregister_duktape_types() {
+void unregister_v8_types() {
 
 	ScriptServer::unregister_language(js_duktape_language);
 
