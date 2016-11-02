@@ -1,6 +1,8 @@
 
 #include "js_language.h"
 
+#include "v8.h"
+
 void JavaScriptLanguage::get_reserved_words(List<String>* p_words) const {
 
 	static const char* reserved_words[] = {
@@ -131,6 +133,76 @@ Ref<Script> JavaScriptLanguage::get_template(const String & p_class_name, const 
 }
 
 bool JavaScriptLanguage::validate(const String & p_script, int & r_line_error, int & r_col_error, String & r_test_error, const String & p_path, List<String>* r_functions) const {
+
+	using namespace v8;
+
+	// Create a stack-allocated handle scope.
+	Isolate::Scope isolate_scope(isolate);
+	HandleScope handle_scope(isolate);
+
+	Local<Context> context = Context::New(isolate);
+	Context::Scope context_scope(context);
+
+	Local<v8::String> source = v8::String::NewFromUtf8(isolate, p_script.utf8().get_data(),
+		NewStringType::kNormal
+		).ToLocalChecked();
+
+	TryCatch trycatch(isolate);
+	MaybeLocal<v8::Script> script = v8::Script::Compile(context, source);
+
+	if (script.IsEmpty()) {
+		Local<Message> ex = trycatch.Message();
+
+		v8::String::Utf8Value extext(trycatch.Exception());
+		r_test_error = ::String(*extext);
+
+		if (ex.IsEmpty()) {
+			r_line_error = 0;
+			r_col_error = 0;
+		} else {
+			r_line_error = ex->GetLineNumber();
+			r_col_error = ex->GetStartColumn();
+		}
+
+		return false;
+	}
+
+	MaybeLocal<Value> result = script.ToLocalChecked()->Run(context);
+
+
+	if (result.IsEmpty()) {
+		Local<Message> ex = trycatch.Message();
+
+		v8::String::Utf8Value extext(trycatch.Exception());
+		r_test_error = ::String(*extext);
+
+		if (ex.IsEmpty()) {
+			r_line_error = 0;
+			r_col_error = 0;
+		} else {
+			r_line_error = ex->GetLineNumber();
+			r_col_error = ex->GetStartColumn();
+		}
+
+		return false;
+	} else {
+
+		Local<v8::Object> global = context->Global();
+		Local<v8::Array> props = global->GetOwnPropertyNames();
+
+		for (int i = 0; i < props->Length(); i++) {
+
+			if (global->Get(props->Get(i))->IsFunction()) {
+
+				Local<Function> func = Local<Function>::Cast(global->Get(props->Get(i)));
+				int lineno = 1 + func->GetScriptLineNumber();
+				v8::String::Utf8Value func_name(func->GetDebugName());
+
+				r_functions->push_back(::String(*func_name) + ":" + itos(lineno));
+			}
+
+		}
+	}
 
 	return true;
 }

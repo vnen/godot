@@ -83,6 +83,8 @@ class JavaScriptInstance : public ScriptInstance {
 	Object *owner;
 	Ref<JavaScript> script;
 
+	v8::Persistent<v8::Context> *context;
+
 public:
 
 
@@ -123,6 +125,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 
 	static JavaScriptLanguage *singleton;
 
+	friend class JavaScriptInstance;
 	v8::Platform *platform;
 	v8::Isolate *isolate;
 

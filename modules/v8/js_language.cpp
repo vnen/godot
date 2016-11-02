@@ -351,6 +351,13 @@ ScriptLanguage * JavaScriptInstance::get_language() {
 	return JavaScriptLanguage::get_singleton();
 }
 
-JavaScriptInstance::JavaScriptInstance() {}
+JavaScriptInstance::JavaScriptInstance() {
+
+	using namespace v8;
+
+	// Create a context for this instance
+	Local<Context> local_context = Context::New(JavaScriptLanguage::get_singleton()->isolate);
+	context = &Persistent<Context>(local_context->GetIsolate(), local_context);
+}
 
 JavaScriptInstance::~JavaScriptInstance() {}
