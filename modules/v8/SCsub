@@ -4,4 +4,17 @@ Import('env')
 
 env.add_source_files(env.modules_sources, "*.cpp")
 
+libs = [
+	"icui18n",
+	"icuuc",
+	"v8",
+	"v8_libbase",
+	"v8_libplatform"
+]
+
+env.Append(LIBPATH=["#modules/v8/thirdparty"])
+env.Append(LINKFLAGS=[l+".lib" for l in libs])
+
+
+
 Export('env')
