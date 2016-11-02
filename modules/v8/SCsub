@@ -5,11 +5,10 @@ Import('env')
 env.add_source_files(env.modules_sources, "*.cpp")
 
 libs = [
-	"icui18n",
-	"icuuc",
 	"v8",
 	"v8_libbase",
-	"v8_libplatform"
+	"v8_libplatform",
+	"DbgHelp"
 ]
 
 env.Append(CPPPATH=["#modules/v8/thirdparty/include"])
