@@ -99,11 +99,20 @@ StringName JavaScript::get_instance_base_type() const {
 }
 
 ScriptInstance * JavaScript::instance_create(Object * p_this) {
-	return nullptr;
+
+	JavaScriptInstance* instance = memnew(JavaScriptInstance);
+
+	instance->owner = p_this;
+	instance->script = Ref<JavaScript>(this);
+
+	instances.insert(p_this);
+
+	return instance;
 }
 
 bool JavaScript::instance_has(const Object * p_this) const {
-	return false;
+
+	return instances.has((Object*)p_this);
 }
 
 bool JavaScript::has_source_code() const {

@@ -25,6 +25,8 @@ class JavaScript : public Script {
 
 	OBJ_TYPE(JavaScript, Script);
 
+	Set<Object*> instances;
+
 protected:
 
 	static void _bind_methods();
@@ -75,6 +77,11 @@ public:
 };
 
 class JavaScriptInstance : public ScriptInstance {
+
+	friend class JavaScript;
+
+	Object *owner;
+	Ref<JavaScript> script;
 
 public:
 
