@@ -24,182 +24,12 @@ Error JavaScriptLanguage::execute_file(const String & p_path) {
 
 void JavaScriptLanguage::finish() {}
 
-void JavaScriptLanguage::get_reserved_words(List<String>* p_words) const {
-
-	static const char* reserved_words[] = {
-		"abstract",
-		"else",
-		"instanceof",
-		"super",
-		"boolean",
-		"enum",
-		"int",
-		"switch",
-		"break",
-		"export",
-		"interface",
-		"synchronized",
-		"byte",
-		"extends",
-		"let",
-		"this",
-		"case",
-		"false",
-		"long",
-		"throw",
-		"catch",
-		"final",
-		"native",
-		"throws",
-		"char",
-		"finally",
-		"new",
-		"transient",
-		"class",
-		"float",
-		"null",
-		"true",
-		"const",
-		"for",
-		"package",
-		"try",
-		"continue",
-		"function",
-		"private",
-		"typeof",
-		"debugger",
-		"goto",
-		"protected",
-		"var",
-		"default",
-		"if",
-		"public",
-		"void",
-		"delete",
-		"implements",
-		"return",
-		"volatile",
-		"do",
-		"import",
-		"short",
-		"while",
-		"double",
-		"in",
-		"static",
-		"with",
-
-		// not reserved but implementation-specific
-		"Array",
-		"Date",
-		"eval",
-		"function",
-		"hasOwnProperty",
-		"Infinity",
-		"isFinite",
-		"isNaN",
-		"isPrototypeOf",
-		"length",
-		"Math",
-		"NaN",
-		"name",
-		"Number",
-		"Object",
-		"prototype",
-		"String",
-		"toString",
-		"undefined",
-		"valueOf",
-		0
-	};
-
-	const char **w = reserved_words;
-
-
-	while (*w) {
-
-		p_words->push_back(*w);
-		w++;
-	}
-}
-
-void JavaScriptLanguage::get_comment_delimiters(List<String>* p_delimiters) const {}
-
-void JavaScriptLanguage::get_string_delimiters(List<String>* p_delimiters) const {}
-
-Ref<Script> JavaScriptLanguage::get_template(const String & p_class_name, const String & p_base_class_name) const {
-
-	Ref<JavaScript> script;
-	script.instance();
-
-	return script;
-}
-
-bool JavaScriptLanguage::validate(const String & p_script, int & r_line_error, int & r_col_error, String & r_test_error, const String & p_path, List<String>* r_functions) const {
-	return false;
-}
-
-Script * JavaScriptLanguage::create_script() const {
-	return nullptr;
-}
-
-bool JavaScriptLanguage::has_named_classes() const {
-	return false;
-}
-
-int JavaScriptLanguage::find_function(const String & p_function, const String & p_code) const {
-	return 0;
-}
-
-String JavaScriptLanguage::make_function(const String & p_class, const String & p_name, const StringArray & p_args) const {
-	return String();
-}
-
-void JavaScriptLanguage::auto_indent_code(String & p_code, int p_from_line, int p_to_line) const {}
 
 void JavaScriptLanguage::add_global_constant(const StringName & p_variable, const Variant & p_value) {}
-
-String JavaScriptLanguage::debug_get_error() const {
-	return String();
-}
-
-int JavaScriptLanguage::debug_get_stack_level_count() const {
-	return 0;
-}
-
-int JavaScriptLanguage::debug_get_stack_level_line(int p_level) const {
-	return 0;
-}
-
-String JavaScriptLanguage::debug_get_stack_level_function(int p_level) const {
-	return String();
-}
-
-String JavaScriptLanguage::debug_get_stack_level_source(int p_level) const {
-	return String();
-}
-
-void JavaScriptLanguage::debug_get_stack_level_locals(int p_level, List<String>* p_locals, List<Variant>* p_values, int p_max_subitems, int p_max_depth) {}
-
-void JavaScriptLanguage::debug_get_stack_level_members(int p_level, List<String>* p_members, List<Variant>* p_values, int p_max_subitems, int p_max_depth) {}
-
-void JavaScriptLanguage::debug_get_globals(List<String>* p_locals, List<Variant>* p_values, int p_max_subitems, int p_max_depth) {}
-
-String JavaScriptLanguage::debug_parse_stack_level_expression(int p_level, const String & p_expression, int p_max_subitems, int p_max_depth) {
-	return String();
-}
 
 void JavaScriptLanguage::reload_all_scripts() {}
 
 void JavaScriptLanguage::reload_tool_script(const Ref<Script>& p_script, bool p_soft_reload) {}
-
-void JavaScriptLanguage::get_recognized_extensions(List<String>* p_extensions) const {
-
-	p_extensions->push_back("js");
-}
-
-void JavaScriptLanguage::get_public_functions(List<MethodInfo>* p_functions) const {}
-
-void JavaScriptLanguage::get_public_constants(List<Pair<String, Variant>>* p_constants) const {}
 
 void JavaScriptLanguage::profiling_start() {}
 
@@ -435,6 +265,10 @@ bool ResourceFormatSaverJavaScript::recognize(const RES & p_resource) const {
 	return (p_resource->cast_to<JavaScript>() != NULL);
 }
 
+bool JavaScriptInstance::set(const StringName & p_name, const Variant & p_value) {
+	return false;
+}
+
 bool JavaScriptInstance::get(const StringName & p_name, Variant & r_ret) const {
 	return false;
 }
@@ -453,21 +287,19 @@ bool JavaScriptInstance::has_method(const StringName & p_method) const {
 	return false;
 }
 
-Variant JavaScriptInstance::call(const StringName & p_method, VARIANT_ARG_LIST) {
-	return Variant();
-}
-
 Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p_args, int p_argcount, Variant::CallError & r_error) {
 	return Variant();
 }
-
-void JavaScriptInstance::call_multilevel(const StringName & p_method, VARIANT_ARG_LIST) {}
 
 void JavaScriptInstance::call_multilevel(const StringName & p_method, const Variant ** p_args, int p_argcount) {}
 
 void JavaScriptInstance::call_multilevel_reversed(const StringName & p_method, const Variant ** p_args, int p_argcount) {}
 
 void JavaScriptInstance::notification(int p_notification) {}
+
+Ref<Script> JavaScriptInstance::get_script() const {
+	return Ref<Script>();
+}
 
 ScriptInstance::RPCMode JavaScriptInstance::get_rpc_mode(const StringName & p_method) const {
 	return RPCMode();
