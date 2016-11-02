@@ -8,6 +8,18 @@
 #include "io/resource_loader.h"
 #include "io/resource_saver.h"
 
+#include "v8.h"
+#include "libplatform/libplatform.h"
+
+class GodotV8ArrayAllocator : public v8::ArrayBuffer::Allocator {
+
+	virtual void* Allocate(size_t length) {
+		void* data = AllocateUninitialized(length);
+		return data == NULL ? data : memset(data, 0, length);
+	}
+	virtual void* AllocateUninitialized(size_t length) { return memalloc(length); }
+	virtual void Free(void* data, size_t) { memfree(data); }
+};
 
 class JavaScript : public Script {
 
@@ -103,6 +115,11 @@ public:
 class JavaScriptLanguage : public ScriptLanguage {
 
 	static JavaScriptLanguage *singleton;
+
+	v8::Platform *platform;
+	v8::Isolate *isolate;
+
+	GodotV8ArrayAllocator allocator;
 	
 public:
 

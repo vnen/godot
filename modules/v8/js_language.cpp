@@ -2,10 +2,41 @@
 #include "js_language.h"
 #include "os/file_access.h"
 #include "io/file_access_encrypted.h"
+#include "globals.h"
+#include "core/os/os.h"
+
+#include "v8.h"
+#include "libplatform/libplatform.h"
 
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 
-void JavaScriptLanguage::init() {}
+void JavaScriptLanguage::init() {
+
+	using namespace v8;
+
+	// Initialize V8.
+	V8::InitializeICUDefaultLocation(OS::get_singleton()->get_executable_path().utf8().get_data());
+	V8::InitializeExternalStartupData(OS::get_singleton()->get_executable_path().utf8().get_data());
+	platform = platform::CreateDefaultPlatform();
+	V8::InitializePlatform(platform);
+	V8::Initialize();
+
+	// Create the isolate
+	Isolate::CreateParams create_params;
+	create_params.array_buffer_allocator = &allocator;
+
+	isolate = Isolate::New(create_params);
+}
+
+void JavaScriptLanguage::finish() {
+
+	using namespace v8;
+
+	isolate->Dispose();
+	V8::Dispose();
+	V8::ShutdownPlatform();
+	delete platform;
+}
 
 String JavaScriptLanguage::get_type() const {
 
@@ -21,9 +52,6 @@ Error JavaScriptLanguage::execute_file(const String & p_path) {
 
 	return OK;
 }
-
-void JavaScriptLanguage::finish() {}
-
 
 void JavaScriptLanguage::add_global_constant(const StringName & p_variable, const Variant & p_value) {}
 
