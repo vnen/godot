@@ -8,6 +8,16 @@
 #include "v8.h"
 #include "libplatform/libplatform.h"
 
+void JSPrint(const v8::FunctionCallbackInfo<v8::Value>& args) {
+
+	if (args.Length() < 1) return;
+
+	v8::HandleScope scope(args.GetIsolate());
+	v8::Local<v8::Value> arg = args[0];
+	v8::String::Utf8Value value(arg);
+	print_line(*value);
+}
+
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 
 void JavaScriptLanguage::init() {
@@ -439,8 +449,12 @@ JavaScriptInstance::JavaScriptInstance() {
 	int n = HandleScope::NumberOfHandles(isolate);
 	EscapableHandleScope handle_scope(isolate);
 
+	// Global template
+	Local<ObjectTemplate> global_template = ObjectTemplate::New(isolate);
+	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), FunctionTemplate::New(isolate, JSPrint));
+
 	// Create a context for this instance
-	Local<Context> local_context = Context::New(isolate);
+	Local<Context> local_context = Context::New(isolate, NULL, global_template);
 	Context::Scope local_context_scope();
 	context = Persistent<Context, v8::CopyablePersistentTraits<v8::Context>>(isolate, handle_scope.Escape(local_context));
 
