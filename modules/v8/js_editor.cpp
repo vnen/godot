@@ -122,10 +122,16 @@ Ref<Script> JavaScriptLanguage::get_template(const String & p_class_name, const 
 	script.instance();
 
 	String _template = String() +
-		"function _ready(delta) {\n" +
-		"\t// Called every time the node is added to the scene.\n" +
-		"\t// Initialization here\n" +
-		"}";
+		"class %CLASS% extends %BASE% {\n\n"
+		"\t_ready() {\n" +
+		"\t\t// Called every time the node is added to the scene.\n" +
+		"\t\t// Initialization here\n" +
+		"\t}\n" +
+		"}\n\n" +
+		"exports = %CLASS%;\n";
+
+	_template = _template.replace("%CLASS%", p_class_name);
+	_template = _template.replace("%BASE%", p_base_class_name);
 
 	script->set_source_code(_template);
 
@@ -214,7 +220,7 @@ Script * JavaScriptLanguage::create_script() const {
 
 bool JavaScriptLanguage::has_named_classes() const {
 
-	return false;
+	return true;
 }
 
 int JavaScriptLanguage::find_function(const String & p_function, const String & p_code) const {
