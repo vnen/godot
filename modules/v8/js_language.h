@@ -25,7 +25,15 @@ class JavaScript : public Script {
 
 	OBJ_TYPE(JavaScript, Script);
 
+	friend class JavaScriptInstance;
 	Set<Object*> instances;
+	v8::Persistent<v8::Function, v8::CopyablePersistentTraits<v8::Function> > constructor;
+	bool compiled;
+
+	bool tool;
+
+	Set<PlaceHolderScriptInstance*> placeholders;
+	void _update_exports();
 
 protected:
 
@@ -85,8 +93,8 @@ class JavaScriptInstance : public ScriptInstance {
 
 	v8::Isolate *isolate;
 
-	v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context>> context;
-	v8::Persistent<v8::Value, v8::CopyablePersistentTraits<v8::Value>> result;
+	v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context> > context;
+	v8::Persistent<v8::Object, v8::CopyablePersistentTraits<v8::Object> > instance;
 
 	bool compiled;
 
@@ -133,6 +141,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 	static JavaScriptLanguage *singleton;
 
 	friend class JavaScriptInstance;
+	friend class JavaScript;
 	v8::Isolate::CreateParams create_params;
 	v8::Platform *platform;
 	v8::Isolate *isolate;
