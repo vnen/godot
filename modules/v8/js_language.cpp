@@ -388,8 +388,10 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 
 	v8::Local<v8::Object> global = ctx->Global();
 	String m = p_method;
-	v8::Local<v8::Object> exports = v8::Local<v8::Object>::Cast(global->Get(context.Get(isolate), v8::String::NewFromUtf8(isolate, "exports")).ToLocalChecked());
-	v8::MaybeLocal<v8::Value> func_val = exports->Get(context.Get(isolate), v8::String::NewFromUtf8(isolate, m.utf8().get_data()));
+
+	v8::Local<v8::Function> exports = v8::Local<v8::Function>::Cast(global->Get(ctx, v8::String::NewFromUtf8(isolate, "exports")).ToLocalChecked());
+	v8::Local<v8::Object> ob = exports->NewInstance();
+	v8::MaybeLocal<v8::Value> func_val = ob->Get(ctx, v8::String::NewFromUtf8(isolate, m.utf8().get_data()));
 
 	if (func_val.IsEmpty() || !func_val.ToLocalChecked()->IsFunction()) {
 
