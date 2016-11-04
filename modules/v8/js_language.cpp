@@ -312,8 +312,6 @@ void JavaScriptInstance::_run() {
 
 	v8::Local<v8::Context> ctx = context.Get(isolate);
 
-	int n = v8::HandleScope::NumberOfHandles(isolate);
-
 	v8::Context::Scope context_scope(ctx);
 
 	v8::Local<v8::String> source =
@@ -355,10 +353,15 @@ Variant::Type JavaScriptInstance::get_property_type(const StringName & p_name, b
 
 void JavaScriptInstance::get_property_state(List<Pair<StringName, Variant>>& state) {}
 
-void JavaScriptInstance::get_method_list(List<MethodInfo>* p_list) const {}
+void JavaScriptInstance::get_method_list(List<MethodInfo>* p_list) const {
+
+	MethodInfo m;
+	m.name = "_ready";
+	p_list->push_back(m);
+}
 
 bool JavaScriptInstance::has_method(const StringName & p_method) const {
-	return false;
+	return true;
 }
 
 Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p_args, int p_argcount, Variant::CallError & r_error) {
@@ -394,9 +397,17 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 	return Variant();
 }
 
-void JavaScriptInstance::call_multilevel(const StringName & p_method, const Variant ** p_args, int p_argcount) {}
+void JavaScriptInstance::call_multilevel(const StringName & p_method, const Variant ** p_args, int p_argcount) {
 
-void JavaScriptInstance::call_multilevel_reversed(const StringName & p_method, const Variant ** p_args, int p_argcount) {}
+	Variant::CallError err;
+	call(p_method, p_args, p_argcount, err);
+}
+
+void JavaScriptInstance::call_multilevel_reversed(const StringName & p_method, const Variant ** p_args, int p_argcount) {
+
+	Variant::CallError err;
+	call(p_method, p_args, p_argcount, err);
+}
 
 void JavaScriptInstance::notification(int p_notification) {}
 
