@@ -83,7 +83,14 @@ class JavaScriptInstance : public ScriptInstance {
 	Object *owner;
 	Ref<JavaScript> script;
 
-	v8::Persistent<v8::Context> *context;
+	v8::Isolate *isolate;
+
+	v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context>> context;
+	v8::Persistent<v8::Value, v8::CopyablePersistentTraits<v8::Value>> result;
+
+	bool compiled;
+
+	void _run();
 
 public:
 
@@ -126,6 +133,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 	static JavaScriptLanguage *singleton;
 
 	friend class JavaScriptInstance;
+	v8::Isolate::CreateParams create_params;
 	v8::Platform *platform;
 	v8::Isolate *isolate;
 

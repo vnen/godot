@@ -22,10 +22,10 @@ void JavaScriptLanguage::init() {
 	V8::Initialize();
 
 	// Create the isolate
-	Isolate::CreateParams create_params;
 	create_params.array_buffer_allocator = &allocator;
 
 	isolate = Isolate::New(create_params);
+	isolate->Enter();
 }
 
 void JavaScriptLanguage::finish() {
@@ -87,7 +87,8 @@ JavaScriptLanguage::~JavaScriptLanguage() {
 void JavaScript::_bind_methods() {}
 
 bool JavaScript::can_instance() const {
-	return false;
+
+	return true;
 }
 
 Ref<Script> JavaScript::get_base_script() const {
@@ -104,6 +105,8 @@ ScriptInstance * JavaScript::instance_create(Object * p_this) {
 
 	instance->owner = p_this;
 	instance->script = Ref<JavaScript>(this);
+
+	instance->_run();
 
 	instances.insert(p_this);
 
@@ -302,6 +305,40 @@ bool ResourceFormatSaverJavaScript::recognize(const RES & p_resource) const {
 	return (p_resource->cast_to<JavaScript>() != NULL);
 }
 
+void JavaScriptInstance::_run() {
+
+	v8::Isolate::Scope isolate_scope(isolate);
+	v8::HandleScope handle_scope(isolate);
+
+	v8::Local<v8::Context> ctx = context.Get(isolate);
+
+	int n = v8::HandleScope::NumberOfHandles(isolate);
+
+	v8::Context::Scope context_scope(ctx);
+
+	v8::Local<v8::String> source =
+		v8::String::NewFromUtf8(
+			isolate,
+			script->get_source_code().utf8().get_data(),
+			v8::NewStringType::kNormal).ToLocalChecked();
+
+	v8::TryCatch trycatch(isolate);
+	v8::MaybeLocal<v8::Script> script = v8::Script::Compile(context.Get(isolate), source);
+
+	if (!script.IsEmpty()) {
+
+		v8::MaybeLocal<v8::Value> temp_result = script.ToLocalChecked()->Run(context.Get(isolate));
+
+		if (!temp_result.IsEmpty()) {
+
+			result = v8::Persistent<v8::Value, v8::CopyablePersistentTraits<v8::Value>>(isolate, temp_result.ToLocalChecked());
+			compiled = true;
+		}
+
+	}
+
+}
+
 bool JavaScriptInstance::set(const StringName & p_name, const Variant & p_value) {
 	return false;
 }
@@ -325,6 +362,35 @@ bool JavaScriptInstance::has_method(const StringName & p_method) const {
 }
 
 Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p_args, int p_argcount, Variant::CallError & r_error) {
+
+	if (!compiled) {
+
+		r_error.error = Variant::CallError::CALL_ERROR_INSTANCE_IS_NULL;
+		return Variant();
+	}
+
+	v8::HandleScope scope(isolate);
+
+	v8::Local<v8::Context> ctx = context.Get(isolate);
+
+	v8::Local<v8::Object> global = ctx->Global();
+	String m = p_method;
+	v8::MaybeLocal<v8::Value> func_val = global->Get(context.Get(isolate), v8::String::NewFromUtf8(isolate, m.utf8().get_data()));
+
+	if (func_val.IsEmpty() || !func_val.ToLocalChecked()->IsFunction()) {
+
+		r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
+		return Variant();
+	}
+
+	v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(func_val.ToLocalChecked());
+	v8::Local<v8::Value> result = func->CallAsFunction(global, 0, NULL);
+
+	if (!result.IsEmpty()) {
+		v8::String::Utf8Value res(result->ToString());
+		return Variant(String(*res));
+	}
+
 	return Variant();
 }
 
@@ -335,15 +401,16 @@ void JavaScriptInstance::call_multilevel_reversed(const StringName & p_method, c
 void JavaScriptInstance::notification(int p_notification) {}
 
 Ref<Script> JavaScriptInstance::get_script() const {
-	return Ref<Script>();
+
+	return script;
 }
 
 ScriptInstance::RPCMode JavaScriptInstance::get_rpc_mode(const StringName & p_method) const {
-	return RPCMode();
+	return RPC_MODE_DISABLED;
 }
 
 ScriptInstance::RPCMode JavaScriptInstance::get_rset_mode(const StringName & p_variable) const {
-	return RPCMode();
+	return RPC_MODE_DISABLED;
 }
 
 ScriptLanguage * JavaScriptInstance::get_language() {
@@ -355,9 +422,20 @@ JavaScriptInstance::JavaScriptInstance() {
 
 	using namespace v8;
 
+	isolate = JavaScriptLanguage::get_singleton()->isolate;
+
+	HandleScope scope(isolate);
+	int n = HandleScope::NumberOfHandles(isolate);
+	EscapableHandleScope handle_scope(isolate);
+
 	// Create a context for this instance
-	Local<Context> local_context = Context::New(JavaScriptLanguage::get_singleton()->isolate);
-	context = &Persistent<Context>(local_context->GetIsolate(), local_context);
+	Local<Context> local_context = Context::New(isolate);
+	Context::Scope local_context_scope();
+	context = Persistent<Context, v8::CopyablePersistentTraits<v8::Context>>(isolate, handle_scope.Escape(local_context));
+
+	compiled = false;
 }
 
-JavaScriptInstance::~JavaScriptInstance() {}
+JavaScriptInstance::~JavaScriptInstance() {
+
+}
