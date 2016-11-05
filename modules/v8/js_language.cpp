@@ -1,5 +1,6 @@
 
 #include "js_language.h"
+#include "js_functions.h"
 #include "os/file_access.h"
 #include "io/file_access_encrypted.h"
 #include "globals.h"
@@ -7,16 +8,6 @@
 
 #include "v8.h"
 #include "libplatform/libplatform.h"
-
-void JSPrint(const v8::FunctionCallbackInfo<v8::Value>& args) {
-
-	if (args.Length() < 1) return;
-
-	v8::HandleScope scope(args.GetIsolate());
-	v8::Local<v8::Value> arg = args[0];
-	v8::String::Utf8Value value(arg);
-	print_line(*value);
-}
 
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 
@@ -181,7 +172,7 @@ Error JavaScript::reload(bool p_keep_state) {
 
 	// Global template
 	v8::Local<v8::ObjectTemplate> global_template = v8::ObjectTemplate::New(isolate);
-	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JSPrint));
+	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print));
 
 	v8::Local<v8::Context> ctx = v8::Context::New(isolate, NULL, global_template);
 	v8::Context::Scope scope(ctx);
@@ -510,7 +501,7 @@ JavaScriptInstance::JavaScriptInstance() {
 
 	// Global template
 	v8::Local<v8::ObjectTemplate> global_template = v8::ObjectTemplate::New(isolate);
-	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JSPrint));
+	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print));
 
 	// Create a context for this instance
 	v8::Local<v8::Context> local_context = v8::Context::New(isolate, NULL, global_template);
