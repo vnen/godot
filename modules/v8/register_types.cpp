@@ -34,7 +34,7 @@
 #include "script_language.h"
 #include "js_language.h"
 
-JavaScriptLanguage *js_duktape_language = NULL;
+JavaScriptLanguage *js_v8_language = NULL;
 ResourceFormatLoaderJavaScript *js_resource_loader = NULL;
 ResourceFormatSaverJavaScript *js_resource_saver = NULL;
 
@@ -42,8 +42,8 @@ void register_v8_types() {
 
 	ObjectTypeDB::register_type<JavaScript>();
 
-	js_duktape_language = memnew(JavaScriptLanguage);
-	ScriptServer::register_language(js_duktape_language);
+	js_v8_language = memnew(JavaScriptLanguage);
+	ScriptServer::register_language(js_v8_language);
 
 	js_resource_loader = memnew(ResourceFormatLoaderJavaScript);
 	ResourceLoader::add_resource_format_loader(js_resource_loader);
@@ -53,10 +53,10 @@ void register_v8_types() {
 
 void unregister_v8_types() {
 
-	ScriptServer::unregister_language(js_duktape_language);
+	ScriptServer::unregister_language(js_v8_language);
 
-	if (js_duktape_language)
-		memdelete(js_duktape_language);
+	if (js_v8_language)
+		memdelete(js_v8_language);
 	if (js_resource_loader)
 		memdelete(js_resource_loader);
 	if (js_resource_saver)
