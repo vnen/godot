@@ -174,7 +174,10 @@ bool JavaScriptLanguage::validate(const String & p_script, int & r_line_error, i
 	Isolate::Scope isolate_scope(isolate);
 	HandleScope handle_scope(isolate);
 
-	Local<Context> context = Context::New(isolate);
+	Local<ObjectTemplate> global = ObjectTemplate::New(isolate);
+	global->Set(v8::String::NewFromUtf8(isolate, "Node2D"), v8::FunctionTemplate::New(isolate));
+
+	Local<Context> context = Context::New(isolate, NULL, global);
 	Context::Scope context_scope(context);
 
 	Local<v8::String> source = v8::String::NewFromUtf8(isolate, p_script.utf8().get_data(),

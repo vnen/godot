@@ -29,6 +29,7 @@
 
 #include "js_language.h"
 #include "js_functions.h"
+#include "js_bindings.h"
 #include "os/file_access.h"
 #include "io/file_access_encrypted.h"
 #include "globals.h"
@@ -55,6 +56,8 @@ void JavaScriptLanguage::init() {
 
 	isolate = Isolate::New(create_params);
 	isolate->Enter();
+
+	JavaScriptAccessors make_access(isolate);
 }
 
 void JavaScriptLanguage::finish() {
@@ -202,6 +205,9 @@ Error JavaScript::reload(bool p_keep_state) {
 	v8::Local<v8::ObjectTemplate> global_template = v8::ObjectTemplate::New(isolate);
 	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print));
 
+	v8::Local<v8::FunctionTemplate> node2d = JavaScriptBinding::Node2D_template.Get(isolate);
+	global_template->Set(v8::String::NewFromUtf8(isolate, "Node2D"), node2d, v8::PropertyAttribute::ReadOnly);
+
 	v8::Local<v8::Context> ctx = v8::Context::New(isolate, NULL, global_template);
 	v8::Context::Scope scope(ctx);
 
@@ -221,6 +227,9 @@ Error JavaScript::reload(bool p_keep_state) {
 	v8::MaybeLocal<v8::Value> temp_result = script.ToLocalChecked()->Run(ctx);
 
 	if (temp_result.IsEmpty()) {
+		v8::Local<v8::Value> exception = trycatch.Exception();
+		v8::String::Utf8Value exception_str(exception->ToDetailString());
+		print_line(*exception_str);
 		return ERR_COMPILATION_FAILED;
 	}
 
@@ -228,6 +237,11 @@ Error JavaScript::reload(bool p_keep_state) {
 	v8::MaybeLocal<v8::Value> exported = ctx->Global()->Get(ctx, v8::String::NewFromUtf8(isolate, "exports"));
 
 	if (exported.IsEmpty() || !exported.ToLocalChecked()->IsFunction()) {
+		if (trycatch.HasCaught()) {
+			v8::Local<v8::Value> exception = trycatch.Exception();
+			v8::String::Utf8Value exception_str(exception->ToDetailString());
+			print_line(*exception_str);
+		}
 		return ERR_COMPILATION_FAILED;
 	}
 
@@ -471,6 +485,10 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 	v8::MaybeLocal<v8::Value> func_val = inst->Get(ctx, v8::String::NewFromUtf8(isolate, m.utf8().get_data()));
 
 	if (func_val.IsEmpty() || !func_val.ToLocalChecked()->IsFunction()) {
+		if (!func_val.IsEmpty()) {
+			v8::String::Utf8Value tp(func_val.ToLocalChecked()->TypeOf(isolate));
+			//print_line(String("type is ") + *tp);
+		}
 		r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
 		return Variant();
 	}
@@ -484,6 +502,7 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 	}
 
 	r_error.error = Variant::CallError::CALL_OK;
+	return Variant();
 
 }
 
@@ -531,9 +550,12 @@ JavaScriptInstance::JavaScriptInstance() {
 	v8::Local<v8::ObjectTemplate> global_template = v8::ObjectTemplate::New(isolate);
 	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print));
 
+	v8::Local<v8::FunctionTemplate> node2d = JavaScriptBinding::Node2D_template.Get(isolate);
+	global_template->Set(v8::String::NewFromUtf8(isolate, "Node2D"), node2d, v8::PropertyAttribute::ReadOnly);
+
 	// Create a context for this instance
 	v8::Local<v8::Context> local_context = v8::Context::New(isolate, NULL, global_template);
-	v8::Context::Scope local_context_scope();
+	v8::Context::Scope local_context_scope(local_context);
 	context = v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context>>(isolate, handle_scope.Escape(local_context));
 
 	compiled = false;

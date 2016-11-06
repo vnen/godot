@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  js_functions.h                                                       */
+/*  js_bindings.h                                                        */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -27,16 +27,41 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifndef JS_FUNCTIONS_H
-#define JS_FUNCTIONS_H
+#ifndef JS_BINDINGS_H
+#define JS_BINDINGS_H
 
 #include "v8.h"
 
-class JavaScriptFunctions {
+class Variant;
+
+class JavaScriptAccessors {
+
+	static JavaScriptAccessors* singleton;
 
 public:
 
-	static void print(const v8::FunctionCallbackInfo<v8::Value>& args);
+	static void get_string(v8::Local<v8::String> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_info);
+	static void set_string(v8::Local<v8::String> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<void>& p_info);
+
+	static JavaScriptAccessors* get_singleton() { return singleton; }
+
+	static v8::Local<v8::Value> wrap_variant(v8::Isolate *p_isolate, const v8::Local<v8::ObjectTemplate> p_constructor, Variant *p_variant);
+	static Variant* unwrap_variant(const v8::Local<v8::Object> &p_object);
+
+	static v8::Local<v8::Value> variant_to_js(v8::Isolate* p_isolate, Variant &p_variant);
+	static Variant &js_to_variant(v8::Isolate* p_isolate, v8::Local<v8::Value> p_value);
+
+	JavaScriptAccessors(v8::Isolate* p_isolate);
+	~JavaScriptAccessors();
+
+};
+
+class JavaScriptBinding {
+
+public:
+
+	static v8::Global<v8::FunctionTemplate> Node2D_template;
+	static void Node2D_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 };
 
 #endif
