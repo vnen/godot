@@ -62,6 +62,7 @@ public:
 
 	static v8::Global<v8::FunctionTemplate> Node2D_template;
 	static void Node2D_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+	static void get_name(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 };
 
 #endif

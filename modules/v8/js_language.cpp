@@ -430,11 +430,14 @@ void JavaScriptInstance::_run() {
 	v8::Context::Scope context_scope(ctx);
 
 	v8::Local<v8::Function> cons = script->constructor.Get(isolate);
-	v8::MaybeLocal<v8::Object> inst = cons->NewInstance(ctx);
+	v8::MaybeLocal<v8::Object> maybe_inst = cons->NewInstance(ctx);
 
-	if (inst.IsEmpty()) return;
+	if (maybe_inst.IsEmpty()) return;
 
-	instance = v8::Persistent<v8::Object, v8::CopyablePersistentTraits<v8::Object> >(isolate, inst.ToLocalChecked());
+	v8::Local<v8::Object> inst = maybe_inst.ToLocalChecked();
+	inst->SetInternalField(0, v8::External::New(isolate, owner));
+
+	instance = v8::Persistent<v8::Object, v8::CopyablePersistentTraits<v8::Object> >(isolate, inst);
 
 	compiled = true;
 }
