@@ -165,6 +165,15 @@ void JavaScriptBinding::get_name(const v8::FunctionCallbackInfo<v8::Value>& p_ar
 	void* ptr = field->Value();
 	Node2D* node2d = static_cast<Node2D*>(ptr);
 
-	v8::Local<v8::Value> js_result = JavaScriptAccessors::variant_to_js(isolate, Variant(node2d->get_name()));
-	p_args.GetReturnValue().Set(js_result);
+	v8::String::Utf8Value holder(p_args.Callee()->GetName());
+	print_line(*holder);
+
+	StringName method_name(*holder);
+	MethodBind* method = ObjectTypeDB::get_method(node2d->get_type_name(), method_name);
+	Variant::CallError err;
+
+	if (method) {
+		v8::Local<v8::Value> js_result = JavaScriptAccessors::variant_to_js(isolate, method->call(node2d, NULL, 0, err));
+		p_args.GetReturnValue().Set(js_result);
+	}
 }
