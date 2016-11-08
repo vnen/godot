@@ -99,6 +99,10 @@ void JavaScriptLanguage::init() {
 
 	// Global template
 	v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate, v8::FunctionTemplate::New(isolate, Bindings::js_constructor));
+
+	// Add global functions
+	global->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print), v8::PropertyAttribute::ReadOnly);
+
 	global_template.Set(isolate, global);
 	v8::Local<v8::ObjectTemplate> shallow = v8::ObjectTemplate::New(isolate);
 
