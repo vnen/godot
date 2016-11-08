@@ -33,6 +33,7 @@
 #include "os/file_access.h"
 #include "io/file_access_encrypted.h"
 #include "globals.h"
+#include "core_string_names.h"
 #include "core/os/os.h"
 #include "object_type_db.h"
 
@@ -446,6 +447,12 @@ void JavaScriptInstance::_run() {
 	if (maybe_inst.IsEmpty()) return;
 
 	v8::Local<v8::Object> inst = maybe_inst.ToLocalChecked();
+	v8::Local<v8::External> field = v8::Local<v8::External>::Cast(inst->GetInternalField(0));
+	Variant::CallError err;
+	void* ptr = field->Value();
+	if (ptr) {
+		static_cast<Object*>(ptr)->call(CoreStringNames::get_singleton()->_free, NULL, 0, err);
+	}
 	inst->SetInternalField(0, v8::External::New(isolate, owner));
 	inst->SetInternalField(1, v8::Boolean::New(isolate, true));
 
