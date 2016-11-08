@@ -100,8 +100,6 @@ v8::Local<v8::Value> JavaScriptAccessors::variant_to_js(v8::Isolate * p_isolate,
 		} break;
 		case Variant::STRING: {
 			val = v8::String::NewFromUtf8(p_isolate, String(p_variant).utf8().get_data());
-			String tst(p_variant);
-			print_line("str: " + tst);
 		} break;
 		case Variant::INT: {
 			val = v8::Integer::New(p_isolate, int(p_variant));
@@ -125,10 +123,16 @@ JavaScriptAccessors::JavaScriptAccessors(v8::Isolate* p_isolate) {
 	v8::EscapableHandleScope handle_scope(p_isolate);
 
 	v8::Local<v8::FunctionTemplate> Node2D_template_func = v8::FunctionTemplate::New(p_isolate, JavaScriptBinding::Node2D_constructor);
-	v8::Local<v8::ObjectTemplate> Node2D_template = Node2D_template_func->InstanceTemplate();
-	Node2D_template->SetInternalFieldCount(1);
+	v8::Local<v8::ObjectTemplate> Node2D_template = Node2D_template_func->PrototypeTemplate();
+	Node2D_template_func->InstanceTemplate()->SetInternalFieldCount(2);
 	Node2D_template->SetAccessor(v8::String::NewFromUtf8(p_isolate, "name"), JavaScriptAccessors::get_string, JavaScriptAccessors::set_string);
-	Node2D_template->Set(v8::String::NewFromUtf8(p_isolate, "get_name"), v8::FunctionTemplate::New(p_isolate, JavaScriptBinding::get_name));
+
+	//v8::Local<v8::Signature> sig = v8::Signature::New(p_isolate);
+
+
+	Node2D_template->Set(v8::String::NewFromUtf8(p_isolate, "get_name"), v8::FunctionTemplate::New(p_isolate, JavaScriptBinding::get_name
+		, v8::Local<v8::Value>(), v8::Local<v8::Signature>(), 0, v8::ConstructorBehavior::kThrow)
+	, v8::PropertyAttribute::DontEnum);
 
 	JavaScriptBinding::Node2D_template.Reset(p_isolate, handle_scope.Escape(Node2D_template_func));
 
@@ -147,9 +151,7 @@ void JavaScriptBinding::Node2D_constructor(const v8::FunctionCallbackInfo<v8::Va
 
 	v8::HandleScope scope(isolate);
 
-	Node2D* node2d = memnew(Node2D);
-
-	args.This()->SetInternalField(0, v8::External::New(args.GetIsolate(), node2d));
+	args.This()->SetInternalField(1, v8::Boolean::New(isolate, false));
 	args.GetReturnValue().Set(args.This());
 }
 
@@ -157,7 +159,7 @@ void JavaScriptBinding::get_name(const v8::FunctionCallbackInfo<v8::Value>& p_ar
 
 	v8::Isolate *isolate = p_args.GetIsolate();
 
-	if (p_args.This()->InternalFieldCount() != 1) {
+	if (p_args.This()->InternalFieldCount() != 2) {
 		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "invalid call"));
 	}
 
@@ -166,14 +168,20 @@ void JavaScriptBinding::get_name(const v8::FunctionCallbackInfo<v8::Value>& p_ar
 	Node2D* node2d = static_cast<Node2D*>(ptr);
 
 	v8::String::Utf8Value holder(p_args.Callee()->GetName());
-	print_line(*holder);
-
 	StringName method_name(*holder);
-	MethodBind* method = ObjectTypeDB::get_method(node2d->get_type_name(), method_name);
-	Variant::CallError err;
 
-	if (method) {
-		v8::Local<v8::Value> js_result = JavaScriptAccessors::variant_to_js(isolate, method->call(node2d, NULL, 0, err));
+	// Is internal
+	if (v8::Local<v8::Boolean>::Cast(p_args.This()->GetInternalField(1))->IsTrue()) {
+		MethodBind* method = ObjectTypeDB::get_method(node2d->get_type_name(), method_name);
+		Variant::CallError err;
+
+		if (method) {
+			v8::Local<v8::Value> js_result = JavaScriptAccessors::variant_to_js(isolate, method->call(node2d, NULL, 0, err));
+			p_args.GetReturnValue().Set(js_result);
+		}
+		p_args.GetReturnValue().Set(v8::Undefined(isolate));
+	} else {
+		v8::Local<v8::Value> js_result = JavaScriptAccessors::variant_to_js(isolate, Variant(node2d).call(method_name));
 		p_args.GetReturnValue().Set(js_result);
 	}
 }

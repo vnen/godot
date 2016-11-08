@@ -75,6 +75,8 @@ public:
 
 	virtual bool can_instance() const;
 
+	virtual Variant call(const StringName& p_method, const Variant** p_args, int p_argcount, Variant::CallError &r_error);
+
 	virtual Ref<Script> get_base_script() const; //for script inheritance
 
 	virtual StringName get_instance_base_type() const; // this may not work in all scripts, will return empty if so
