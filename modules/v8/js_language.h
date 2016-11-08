@@ -183,7 +183,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 
 	static Map<String, StringName> types;
 
-	void _add_class(const String &p_type);
+	void _add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent = v8::Local<v8::FunctionTemplate>());
 	
 public:
 

@@ -43,14 +43,39 @@
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 Map<String, StringName> JavaScriptLanguage::types;
 
-void JavaScriptLanguage::_add_class(const String &p_type) {
+void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent) {
 
+	String type(p_type);
+	// Ignore proxy classes
+	if (type.begins_with("_")) return;
+	// Change object name to avoid conflict with JavaScript's own Object
+	if (p_type == "Object") type = String("GodotObject");
+
+	types.insert(type, p_type);
+
+	v8::Isolate::Scope isolate_scope(isolate);
 	v8::HandleScope handle_scope(isolate);
+	v8::EscapableHandleScope escapable_scope(isolate);
+
 	v8::Local<v8::FunctionTemplate> local_constructor = v8::FunctionTemplate::New(isolate, Bindings::js_constructor);
 	local_constructor->InstanceTemplate()->SetInternalFieldCount(2);
-	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, p_type.utf8().get_data()), local_constructor, v8::PropertyAttribute::ReadOnly);
 
+	local_constructor = escapable_scope.Escape(local_constructor);
 
+	if (!p_parent.IsEmpty()) {
+		local_constructor->Inherit(p_parent);
+	}
+
+	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, type.utf8().get_data()), local_constructor, v8::PropertyAttribute::ReadOnly);
+
+	List<StringName> sub_types;
+	ObjectTypeDB::get_inheriters_from(p_type, &sub_types);
+
+	for (List<StringName>::Element *E = sub_types.front(); E; E = E->next()) {
+		StringName parent = ObjectTypeDB::type_inherits_from(E->get());
+		if (parent != p_type) continue;
+		_add_class(E->get(), local_constructor);
+	}
 }
 
 void JavaScriptLanguage::init() {
@@ -77,18 +102,8 @@ void JavaScriptLanguage::init() {
 	global_template.Set(isolate, global);
 	v8::Local<v8::ObjectTemplate> shallow = v8::ObjectTemplate::New(isolate);
 
-	// Store the type reference
-	List<StringName> type_names;
-	ObjectTypeDB::get_type_list(&type_names);
-
-	for (List<StringName>::Element *E = type_names.front(); E; E = E->next()) {
-		String t(E->get());
-		// Skips the singletons
-		if (t.begins_with("_") || t == "Object") continue;
-		types.insert(t, E->get());
-
-		_add_class(t);
-	}
+	// Register type bindings in a tree fashion
+	_add_class(StringName("Object"));
 }
 
 void JavaScriptLanguage::finish() {
