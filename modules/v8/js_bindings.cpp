@@ -30,8 +30,8 @@
 #include "js_bindings.h"
 #include "variant.h"
 #include "scene/2d/node_2d.h"
+#include "object.h"
 #include "object_type_db.h"
-#include "core_string_names.h"
 #include "v8.h"
 
 JavaScriptAccessors* JavaScriptAccessors::singleton = NULL;
@@ -124,21 +124,22 @@ JavaScriptAccessors::JavaScriptAccessors(v8::Isolate* p_isolate) {
 
 	v8::Local<v8::FunctionTemplate> Node2D_template_func = v8::FunctionTemplate::New(p_isolate, JavaScriptBinding::Node2D_constructor);
 	v8::Local<v8::ObjectTemplate> Node2D_template = Node2D_template_func->PrototypeTemplate();
+	Node2D_template_func->SetClassName(v8::String::NewFromUtf8(p_isolate, "Node2D"));
 	Node2D_template_func->InstanceTemplate()->SetInternalFieldCount(2);
 	Node2D_template->SetAccessor(v8::String::NewFromUtf8(p_isolate, "name"), JavaScriptAccessors::get_string, JavaScriptAccessors::set_string);
 
 	//v8::Local<v8::Signature> sig = v8::Signature::New(p_isolate);
 
-
-	Node2D_template->Set(v8::String::NewFromUtf8(p_isolate, "get_name"), v8::FunctionTemplate::New(p_isolate, JavaScriptBinding::get_name
-		, v8::Local<v8::Value>(), v8::Local<v8::Signature>(), 0, v8::ConstructorBehavior::kThrow)
-	, v8::PropertyAttribute::DontEnum);
+	v8::Local<v8::FunctionTemplate> get_name = v8::FunctionTemplate::New(p_isolate, JavaScriptBinding::get_name);
+	Node2D_template->Set(v8::String::NewFromUtf8(p_isolate, "get_name"), get_name, v8::PropertyAttribute::ReadOnly);
 
 	JavaScriptBinding::Node2D_template.Reset(p_isolate, handle_scope.Escape(Node2D_template_func));
 
 }
 
 JavaScriptAccessors::~JavaScriptAccessors() {}
+
+Map<String, StringName> JavaScriptBinding::types;
 
 void JavaScriptBinding::Node2D_constructor(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
@@ -149,8 +150,15 @@ void JavaScriptBinding::Node2D_constructor(const v8::FunctionCallbackInfo<v8::Va
 		return;
 	}
 
-	v8::HandleScope scope(isolate);
+	v8::String::Utf8Value type_name_js(args.Callee()->GetName());
+	String type_name(*type_name_js);
+	if (JavaScriptBinding::types.has(type_name)) {
+		StringName type_string_name = JavaScriptBinding::types[type_name];
 
+		if (ObjectTypeDB::can_instance(type_string_name)) {
+			args.This()->SetInternalField(0, v8::External::New(isolate, ObjectTypeDB::instance(type_string_name)));
+		}
+	}
 	args.This()->SetInternalField(1, v8::Boolean::New(isolate, false));
 	args.GetReturnValue().Set(args.This());
 }

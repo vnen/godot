@@ -43,22 +43,27 @@ JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 
 void JavaScriptLanguage::init() {
 
-	using namespace v8;
-
 	// Initialize V8.
-	V8::InitializeICUDefaultLocation(OS::get_singleton()->get_executable_path().utf8().get_data());
-	V8::InitializeExternalStartupData(OS::get_singleton()->get_executable_path().utf8().get_data());
-	platform = platform::CreateDefaultPlatform();
-	V8::InitializePlatform(platform);
-	V8::Initialize();
+	v8::V8::InitializeICUDefaultLocation(OS::get_singleton()->get_executable_path().utf8().get_data());
+	v8::V8::InitializeExternalStartupData(OS::get_singleton()->get_executable_path().utf8().get_data());
+	platform = v8::platform::CreateDefaultPlatform();
+	v8::V8::InitializePlatform(platform);
+	v8::V8::Initialize();
 
 	// Create the isolate
 	create_params.array_buffer_allocator = &allocator;
 
-	isolate = Isolate::New(create_params);
+	isolate = v8::Isolate::New(create_params);
 	isolate->Enter();
 
 	JavaScriptAccessors make_access(isolate);
+
+	List<StringName> type_names;
+	ObjectTypeDB::get_type_list(&type_names);
+
+	for (List<StringName>::Element *E = type_names.front(); E; E = E->next()) {
+		JavaScriptBinding::types.insert(String(E->get()), E->get());
+	}
 }
 
 void JavaScriptLanguage::finish() {

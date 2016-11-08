@@ -30,6 +30,9 @@
 #ifndef JS_BINDINGS_H
 #define JS_BINDINGS_H
 
+#include "map.h"
+#include "string_db.h"
+#include "ustring.h"
 #include "v8.h"
 
 class Variant;
@@ -57,6 +60,9 @@ public:
 };
 
 class JavaScriptBinding {
+
+	friend class JavaScriptLanguage;
+	static Map<String, StringName> types;
 
 public:
 
