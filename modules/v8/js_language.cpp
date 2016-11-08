@@ -41,6 +41,17 @@
 #include "libplatform/libplatform.h"
 
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
+Map<String, StringName> JavaScriptLanguage::types;
+
+void JavaScriptLanguage::_add_class(const String &p_type) {
+
+	v8::HandleScope handle_scope(isolate);
+	v8::Local<v8::FunctionTemplate> local_constructor = v8::FunctionTemplate::New(isolate, Bindings::js_constructor);
+	local_constructor->InstanceTemplate()->SetInternalFieldCount(2);
+	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, p_type.utf8().get_data()), local_constructor, v8::PropertyAttribute::ReadOnly);
+
+
+}
 
 void JavaScriptLanguage::init() {
 
@@ -57,13 +68,26 @@ void JavaScriptLanguage::init() {
 	isolate = v8::Isolate::New(create_params);
 	isolate->Enter();
 
-	JavaScriptAccessors make_access(isolate);
+	v8::Isolate::Scope isolate_scope(isolate);
+	v8::HandleScope scope(isolate);
+	//v8::EscapableHandleScope escapable_scope(isolate);
 
+	// Global template
+	v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate, v8::FunctionTemplate::New(isolate, Bindings::js_constructor));
+	global_template.Set(isolate, global);
+	v8::Local<v8::ObjectTemplate> shallow = v8::ObjectTemplate::New(isolate);
+
+	// Store the type reference
 	List<StringName> type_names;
 	ObjectTypeDB::get_type_list(&type_names);
 
 	for (List<StringName>::Element *E = type_names.front(); E; E = E->next()) {
-		JavaScriptBinding::types.insert(String(E->get()), E->get());
+		String t(E->get());
+		// Skips the singletons
+		if (t.begins_with("_") || t == "Object") continue;
+		types.insert(t, E->get());
+
+		_add_class(t);
 	}
 }
 
@@ -212,14 +236,7 @@ Error JavaScript::reload(bool p_keep_state) {
 	v8::Isolate::Scope isolate_scope(isolate);
 	v8::HandleScope handle_scope(isolate);
 
-	// Global template
-	v8::Local<v8::ObjectTemplate> global_template = v8::ObjectTemplate::New(isolate);
-	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print));
-
-	v8::Local<v8::FunctionTemplate> node2d = JavaScriptBinding::Node2D_template.Get(isolate);
-	global_template->Set(v8::String::NewFromUtf8(isolate, "Node2D"), node2d, v8::PropertyAttribute::None);
-
-	v8::Local<v8::Context> ctx = v8::Context::New(isolate, NULL, global_template);
+	v8::Local<v8::Context> ctx = v8::Context::New(isolate, NULL, JavaScriptLanguage::get_singleton()->global_template.Get(isolate));
 
 	v8::Context::Scope scope(ctx);
 
@@ -573,15 +590,8 @@ JavaScriptInstance::JavaScriptInstance() {
 	v8::HandleScope scope(isolate);
 	v8::EscapableHandleScope handle_scope(isolate);
 
-	// Global template
-	v8::Local<v8::ObjectTemplate> global_template = v8::ObjectTemplate::New(isolate);
-	global_template->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print));
-
-	v8::Local<v8::FunctionTemplate> node2d = JavaScriptBinding::Node2D_template.Get(isolate);
-	global_template->Set(v8::String::NewFromUtf8(isolate, "Node2D"), node2d, v8::PropertyAttribute::None);
-
 	// Create a context for this instance
-	v8::Local<v8::Context> local_context = v8::Context::New(isolate, NULL, global_template);
+	v8::Local<v8::Context> local_context = v8::Context::New(isolate, NULL, JavaScriptLanguage::get_singleton()->global_template.Get(isolate));
 	v8::Context::Scope local_context_scope(local_context);
 	context = v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context>>(isolate, handle_scope.Escape(local_context));
 
@@ -595,3 +605,13 @@ JavaScriptInstance::~JavaScriptInstance() {
 	if(!instance.IsEmpty())
 		instance.SetWeak();
 }
+
+void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+	print_line("constructor");
+}
+
+void JavaScriptLanguage::Bindings::js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args) {}
+
+void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args) {}
+
+void JavaScriptLanguage::Bindings::js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args) {}

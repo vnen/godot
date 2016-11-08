@@ -204,7 +204,7 @@ bool JavaScriptLanguage::validate(const String & p_script, int & r_line_error, i
 		return false;
 	}
 
-	MaybeLocal<Value> result = script.ToLocalChecked()->Run(context);
+	/*MaybeLocal<Value> result = script.ToLocalChecked()->Run(context);
 
 
 	if (result.IsEmpty()) {
@@ -239,7 +239,7 @@ bool JavaScriptLanguage::validate(const String & p_script, int & r_line_error, i
 			}
 
 		}
-	}
+	}*/
 
 	return true;
 }

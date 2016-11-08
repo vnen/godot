@@ -176,10 +176,24 @@ class JavaScriptLanguage : public ScriptLanguage {
 	v8::Isolate::CreateParams create_params;
 	v8::Platform *platform;
 	v8::Isolate *isolate;
+	v8::Eternal<v8::ObjectTemplate> global_template;
+	v8::Eternal<v8::ObjectTemplate> shallow_template;
 
 	GodotV8ArrayAllocator allocator;
+
+	static Map<String, StringName> types;
+
+	void _add_class(const String &p_type);
 	
 public:
+
+	class Bindings {
+	public:
+		static void js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+		static void js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+		static void js_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args);
+		static void js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args);
+	};
 
 	_FORCE_INLINE_ static JavaScriptLanguage* get_singleton() { return singleton; }
 
