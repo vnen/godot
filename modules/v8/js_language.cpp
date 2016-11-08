@@ -59,6 +59,7 @@ void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8
 
 	v8::Local<v8::FunctionTemplate> local_constructor = v8::FunctionTemplate::New(isolate, Bindings::js_constructor);
 	local_constructor->InstanceTemplate()->SetInternalFieldCount(2);
+	local_constructor->PrototypeTemplate()->SetHandler(v8::NamedPropertyHandlerConfiguration(Bindings::js_getter, Bindings::js_setter));
 
 	local_constructor = escapable_scope.Escape(local_constructor);
 
@@ -625,12 +626,54 @@ JavaScriptInstance::~JavaScriptInstance() {
 		instance.SetWeak();
 }
 
-void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
-	print_line("constructor");
+Object * JavaScriptLanguage::Bindings::unwrap(const v8::Local<v8::Object>& p_value) {
+
+	v8::Local<v8::External> field = v8::Local<v8::External>::Cast(p_value->GetInternalField(0));
+	void* ptr = field->Value();
+	return static_cast<Object*>(ptr);
 }
 
-void JavaScriptLanguage::Bindings::js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args) {}
+void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+	print_line("constructor");
+	// Set the object as JS created by default
+	p_args.This()->SetInternalField(1, v8::Boolean::New(p_args.GetIsolate(), true));
+}
 
-void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args) {}
+void JavaScriptLanguage::Bindings::js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+	print_line("js_method");
+}
 
-void JavaScriptLanguage::Bindings::js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args) {}
+void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
+
+	v8::Isolate *isolate = p_args.GetIsolate();
+
+	if (p_args.This()->InternalFieldCount() != 2) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Invalid JavaScript object"));
+	}
+
+	Object* obj = unwrap(p_args.This());
+
+	v8::String::Utf8Value name(p_name);
+	StringName prop(*name);
+
+	v8::Local<v8::Value> js_result;
+	// If the object is external to JavaScript, just use variant get/call
+	if (v8::Local<v8::Boolean>::Cast(p_args.This()->GetInternalField(1))->IsFalse()) {
+		js_result = JavaScriptFunctions::variant_getter(isolate, prop, Variant(obj));
+
+	// Internal object, looks for the property/function internally
+	} else {
+		js_result = JavaScriptFunctions::object_getter(isolate, prop, Variant(obj));
+	}
+
+	if (!js_result.IsEmpty()) {
+		p_args.GetReturnValue().Set(js_result);
+	}
+
+	print_line("js_getter " + String(*name));
+}
+
+void JavaScriptLanguage::Bindings::js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
+	v8::String::Utf8Value name(p_name);
+	print_line("js_setter " + String(*name));
+}

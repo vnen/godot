@@ -188,6 +188,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 public:
 
 	class Bindings {
+		static Object* unwrap(const v8::Local<v8::Object> &p_value);
 	public:
 		static void js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 		static void js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args);

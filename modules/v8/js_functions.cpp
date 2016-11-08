@@ -33,6 +33,24 @@
 
 #include "v8.h"
 
+v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate, const Variant & p_var) {
+	return v8::Undefined(p_isolate);
+}
+
+Variant & JavaScriptFunctions::js_to_variant(v8::Isolate * p_isolate, const v8::Local<v8::Value>& p_value) {
+	return Variant();
+}
+
+v8::Local<v8::Value> JavaScriptFunctions::variant_getter(v8::Isolate * p_isolate, const StringName & p_prop, const Variant & p_var) {
+	return v8::Undefined(p_isolate);
+}
+
+v8::Local<v8::Value> JavaScriptFunctions::object_getter(v8::Isolate * p_isolate, const StringName & p_prop, const Object * p_var) {
+	return v8::Undefined(p_isolate);
+}
+
+void JavaScriptFunctions::variant_call(const v8::FunctionCallbackInfo<v8::Value>& args) {}
+
 void JavaScriptFunctions::print(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 	if (args.Length() < 1) return;

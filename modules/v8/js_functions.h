@@ -30,11 +30,29 @@
 #ifndef JS_FUNCTIONS_H
 #define JS_FUNCTIONS_H
 
+#include "object.h"
+#include "variant.h"
+
 #include "v8.h"
 
 class JavaScriptFunctions {
 
 public:
+
+	/****** VARIANT <-> JAVASCRIPT ******/
+
+	// Convert a Variant type to a JavaScript type
+	static v8::Local<v8::Value> variant_to_js(v8::Isolate* p_isolate, const Variant &p_var);
+	// Convert a JavaScript type to a Variant type
+	static Variant &js_to_variant(v8::Isolate* p_isolate, const v8::Local<v8::Value> &p_value);
+	// Use Variant get/call depending on the status
+	static v8::Local<v8::Value> variant_getter(v8::Isolate* p_isolate, const StringName &p_prop, const Variant &p_var);
+	// Use Object reflectin to get/call depending on the status
+	static v8::Local<v8::Value> object_getter(v8::Isolate* p_isolate, const StringName &p_prop, const Object *p_var);
+	// Function to return if the property is a method
+	static void variant_call(const v8::FunctionCallbackInfo<v8::Value>& args);
+
+	/****** JAVASCRIPT GLOBAL FUNCTIONS ******/
 
 	static void print(const v8::FunctionCallbackInfo<v8::Value>& args);
 };
