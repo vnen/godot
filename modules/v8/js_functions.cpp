@@ -28,6 +28,7 @@
 /*************************************************************************/
 
 #include "js_functions.h"
+#include "js_language.h"
 
 #include "object_type_db.h"
 #include "variant.h"
@@ -44,11 +45,69 @@ Object * JavaScriptFunctions::unwrap_object(const v8::Local<v8::Object>& p_value
 }
 
 v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate, const Variant & p_var) {
-	return v8::Integer::New(p_isolate, 42);
+
+	v8::EscapableHandleScope scope(p_isolate);
+
+	v8::Local<v8::Value> val;
+
+	switch (p_var.get_type()) {
+		case Variant::BOOL: {
+			val = v8::Boolean::New(p_isolate, bool(p_var));
+		} break;
+		case Variant::STRING: {
+			val = v8::String::NewFromUtf8(p_isolate, String(p_var).utf8().get_data());
+		} break;
+		case Variant::INT: {
+			val = v8::Integer::New(p_isolate, int(p_var));
+		} break;
+		case Variant::REAL: {
+			val = v8::Number::New(p_isolate, double(p_var));
+		} break;
+		case Variant::OBJECT: {
+			Object *obj = (Object*)p_var;
+			if (obj && JavaScriptLanguage::constructors.has(obj->get_type())) {
+				v8::Local<v8::Function> constructor = JavaScriptLanguage::constructors[obj->get_type()].Get(p_isolate)->GetFunction();
+				v8::Local<v8::Object> instance = constructor->NewInstance(0, NULL);
+				instance->SetInternalField(0, v8::External::New(p_isolate, obj));
+				// Set as external to JavaScript
+				instance->SetInternalField(1, v8::Boolean::New(p_isolate, false));
+				val = instance;
+			}
+		} break;
+		default: {
+			val = v8::Null(p_isolate);
+		}
+	}
+
+	return scope.Escape(val);
 }
 
 Variant JavaScriptFunctions::js_to_variant(v8::Isolate * p_isolate, const v8::Local<v8::Value>& p_value) {
-	return Variant(42);
+
+	if (p_value->IsNull() || p_value->IsUndefined()) {
+		return Variant();
+	}
+	if (p_value->IsBoolean()) {
+		return Variant(p_value->BooleanValue());
+	}
+	if (p_value->IsString()) {
+		v8::String::Utf8Value v(p_value);
+		return Variant(String(*v));
+	}
+	if (p_value->IsInt32() || p_value->IsUint32()) {
+		return Variant(p_value->IntegerValue());
+	}
+	if (p_value->IsNumber()) {
+		return Variant(p_value->NumberValue());
+	}
+	if (p_value->IsObject()) {
+		if (v8::Local<v8::Object>::Cast(p_value)->InternalFieldCount() == 2) {
+			Object *obj = unwrap_object(v8::Local<v8::Object>::Cast(p_value));
+			return Variant(obj);
+		}
+	}
+
+	return Variant();
 }
 
 v8::Local<v8::Value> JavaScriptFunctions::variant_getter(v8::Isolate * p_isolate, const StringName & p_prop, Variant & p_var) {
@@ -119,7 +178,7 @@ void JavaScriptFunctions::variant_call(const v8::FunctionCallbackInfo<v8::Value>
 		return;
 	}
 
-	Object* obj = unwrap_object(p_args.This());
+	Variant obj(unwrap_object(p_args.This()));
 
 	if (!obj) {
 		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Empty JavaScript object"));
@@ -132,7 +191,12 @@ void JavaScriptFunctions::variant_call(const v8::FunctionCallbackInfo<v8::Value>
 	Vector<Variant*> args;
 	Variant::CallError err;
 
-	Variant result = Variant(obj).call(method, (const Variant**)args.ptr(), args.size(), err);
+	for (int i = 0; i < p_args.Length(); i++) {
+		Variant arg = js_to_variant(isolate, p_args[i]);
+		args.push_back(&arg);
+	}
+
+	Variant result = obj.call(method, (const Variant**)args.ptr(), args.size(), err);
 	if (err.error == Variant::CallError::CALL_OK) {
 		p_args.GetReturnValue().Set(variant_to_js(isolate, result));
 	}
@@ -162,6 +226,18 @@ void JavaScriptFunctions::object_call(const v8::FunctionCallbackInfo<v8::Value>&
 		Vector<Variant*> args;
 		Variant::CallError err;
 
+		if (method->get_argument_count() != p_args.Length()) {
+			isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Wrong number of arguments"));
+			return;
+		}
+
+		for (int i = 0; i < p_args.Length(); i++) {
+			Variant arg = js_to_variant(isolate, p_args[i]);
+			if (method->get_argument_type(i) == Variant::NODE_PATH) {
+				arg = NodePath(String(arg));
+			}
+			args.push_back(new Variant(arg));
+		}
 		Variant result = method->call(obj, (const Variant**)args.ptr(), args.size(), err);
 		if (err.error == Variant::CallError::CALL_OK) {
 			p_args.GetReturnValue().Set(variant_to_js(isolate, result));

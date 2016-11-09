@@ -41,7 +41,7 @@
 #include "libplatform/libplatform.h"
 
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
-Map<String, StringName> JavaScriptLanguage::types;
+Map<String, v8::Eternal<v8::FunctionTemplate> > JavaScriptLanguage::constructors;
 
 void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent) {
 
@@ -50,8 +50,6 @@ void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8
 	if (type.begins_with("_")) return;
 	// Change object name to avoid conflict with JavaScript's own Object
 	if (p_type == "Object") type = String("GodotObject");
-
-	types.insert(type, p_type);
 
 	v8::Isolate::Scope isolate_scope(isolate);
 	v8::HandleScope handle_scope(isolate);
@@ -68,6 +66,7 @@ void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8
 	}
 
 	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, type.utf8().get_data()), local_constructor, v8::PropertyAttribute::ReadOnly);
+	constructors.insert(type, v8::Eternal<v8::FunctionTemplate>(isolate, local_constructor));
 
 	List<StringName> sub_types;
 	ObjectTypeDB::get_inheriters_from(p_type, &sub_types);
@@ -665,7 +664,7 @@ void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v
 		p_args.GetReturnValue().Set(js_result);
 	}
 
-	print_line("js_getter " + String(*name));
+	//print_line("js_getter " + String(*name));
 
 	// Let this handler do nothing so it pass to other handlers
 }
