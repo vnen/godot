@@ -66,8 +66,8 @@ v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate,
 		case Variant::OBJECT: {
 			Object *obj = (Object*)p_var;
 			if (obj && JavaScriptLanguage::constructors.has(obj->get_type())) {
-				v8::Local<v8::Function> constructor = JavaScriptLanguage::constructors[obj->get_type()].Get(p_isolate)->GetFunction();
-				v8::Local<v8::Object> instance = constructor->NewInstance(0, NULL);
+				v8::Local<v8::ObjectTemplate> constructor = JavaScriptLanguage::constructors[obj->get_type()].Get(p_isolate)->InstanceTemplate();
+				v8::Local<v8::Object> instance = constructor->NewInstance();
 				instance->SetInternalField(0, v8::External::New(p_isolate, obj));
 				// Set as external to JavaScript
 				instance->SetInternalField(1, v8::Boolean::New(p_isolate, false));
@@ -110,17 +110,17 @@ Variant JavaScriptFunctions::js_to_variant(v8::Isolate * p_isolate, const v8::Lo
 	return Variant();
 }
 
-v8::Local<v8::Value> JavaScriptFunctions::variant_getter(v8::Isolate * p_isolate, const StringName & p_prop, Variant & p_var) {
+v8::Local<v8::Value> JavaScriptFunctions::variant_getter(v8::Isolate * p_isolate, const StringName & p_prop, Object *p_obj) {
 
 	bool valid = false;
 	String prop(p_prop);
-	Variant result = p_var.get(prop, &valid);
+	Variant result = p_obj->get(prop, &valid);
 
 	if (valid) {
 		return variant_to_js(p_isolate, result);
 	}
 
-	if (p_var.has_method(p_prop)) {
+	if ( p_obj->has_method(p_prop)) {
 		v8::EscapableHandleScope escape_scope(p_isolate);
 		v8::Local<v8::Function> func = v8::FunctionTemplate::New(p_isolate, JavaScriptFunctions::variant_call)->GetFunction();
 		func->SetName(v8::String::NewFromUtf8(p_isolate, prop.utf8().get_data()));
@@ -254,5 +254,6 @@ void JavaScriptFunctions::print(const v8::FunctionCallbackInfo<v8::Value>& args)
 	v8::HandleScope scope(args.GetIsolate());
 	v8::Local<v8::Value> arg = args[0];
 	v8::String::Utf8Value value(arg);
-	print_line(*value);
+	if(*value)
+		print_line(*value);
 }

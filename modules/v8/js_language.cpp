@@ -265,8 +265,13 @@ Error JavaScript::reload(bool p_keep_state) {
 			get_source_code().utf8().get_data(),
 			v8::NewStringType::kNormal).ToLocalChecked();
 
+	if (origin) {
+		memdelete(origin);
+	}
+	origin = memnew(v8::ScriptOrigin(v8::String::NewFromUtf8(isolate, path.utf8().get_data())));
+
 	v8::TryCatch trycatch(isolate);
-	v8::MaybeLocal<v8::Script> script = v8::Script::Compile(ctx, source);
+	v8::MaybeLocal<v8::Script> script = v8::Script::Compile(ctx, source, origin);
 
 	if (script.IsEmpty()) {
 		return ERR_COMPILATION_FAILED;
@@ -373,6 +378,7 @@ Error JavaScript::load_source_code(const String & p_path) {
 JavaScript::JavaScript() {
 	compiled = false;
 	tool = false;
+	origin = NULL;
 }
 
 JavaScript::~JavaScript() {
@@ -653,7 +659,7 @@ void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v
 
 	// If the object is external to JavaScript, just use variant get/call
 	if (v8::Local<v8::Boolean>::Cast(p_args.This()->GetInternalField(1))->IsFalse()) {
-		js_result = JavaScriptFunctions::variant_getter(isolate, prop, Variant(obj));
+		js_result = JavaScriptFunctions::variant_getter(isolate, prop, obj);
 
 	// Internal object, looks for the property/function internally
 	} else {

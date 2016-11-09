@@ -57,6 +57,7 @@ class JavaScript : public Script {
 	friend class JavaScriptInstance;
 	Set<Object*> instances;
 	v8::Persistent<v8::Function, v8::CopyablePersistentTraits<v8::Function> > constructor;
+	v8::ScriptOrigin *origin;
 	bool compiled;
 
 	bool tool;

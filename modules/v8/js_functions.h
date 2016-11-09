@@ -49,7 +49,7 @@ public:
 	// Convert a JavaScript type to a Variant type
 	static Variant js_to_variant(v8::Isolate* p_isolate, const v8::Local<v8::Value> &p_value);
 	// Use Variant get/call depending if it's property or method
-	static v8::Local<v8::Value> variant_getter(v8::Isolate* p_isolate, const StringName &p_prop, Variant &p_var);
+	static v8::Local<v8::Value> variant_getter(v8::Isolate* p_isolate, const StringName &p_prop, Object *p_obj);
 	// Use Object reflection to get/call depending if it's property or method
 	static v8::Local<v8::Value> object_getter(v8::Isolate* p_isolate, const StringName &p_prop, Object *p_obj);
 	// Setter for any object
