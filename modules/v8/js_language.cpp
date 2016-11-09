@@ -127,7 +127,7 @@ String JavaScriptLanguage::get_type() const {
 }
 
 String JavaScriptLanguage::get_extension() const {
-	
+
 	return "js";
 }
 
@@ -616,7 +616,7 @@ JavaScriptInstance::JavaScriptInstance() {
 	context = v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context>>(isolate, handle_scope.Escape(local_context));
 
 	compiled = false;
-	
+
 }
 
 JavaScriptInstance::~JavaScriptInstance() {
@@ -624,13 +624,6 @@ JavaScriptInstance::~JavaScriptInstance() {
 		context.SetWeak();
 	if(!instance.IsEmpty())
 		instance.SetWeak();
-}
-
-Object * JavaScriptLanguage::Bindings::unwrap(const v8::Local<v8::Object>& p_value) {
-
-	v8::Local<v8::External> field = v8::Local<v8::External>::Cast(p_value->GetInternalField(0));
-	void* ptr = field->Value();
-	return static_cast<Object*>(ptr);
 }
 
 void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
@@ -649,21 +642,23 @@ void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v
 
 	if (p_args.This()->InternalFieldCount() != 2) {
 		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Invalid JavaScript object"));
+		return;
 	}
 
-	Object* obj = unwrap(p_args.This());
+	Object* obj = JavaScriptFunctions::unwrap_object(p_args.This());
 
 	v8::String::Utf8Value name(p_name);
 	StringName prop(*name);
 
 	v8::Local<v8::Value> js_result;
+
 	// If the object is external to JavaScript, just use variant get/call
 	if (v8::Local<v8::Boolean>::Cast(p_args.This()->GetInternalField(1))->IsFalse()) {
 		js_result = JavaScriptFunctions::variant_getter(isolate, prop, Variant(obj));
 
 	// Internal object, looks for the property/function internally
 	} else {
-		js_result = JavaScriptFunctions::object_getter(isolate, prop, Variant(obj));
+		js_result = JavaScriptFunctions::object_getter(isolate, prop, obj);
 	}
 
 	if (!js_result.IsEmpty()) {
@@ -671,6 +666,8 @@ void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v
 	}
 
 	print_line("js_getter " + String(*name));
+
+	// Let this handler do nothing so it pass to other handlers
 }
 
 void JavaScriptLanguage::Bindings::js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
