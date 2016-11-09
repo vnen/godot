@@ -44,11 +44,11 @@ Object * JavaScriptFunctions::unwrap_object(const v8::Local<v8::Object>& p_value
 }
 
 v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate, const Variant & p_var) {
-	return v8::Undefined(p_isolate);
+	return v8::Integer::New(p_isolate, 42);
 }
 
 Variant JavaScriptFunctions::js_to_variant(v8::Isolate * p_isolate, const v8::Local<v8::Value>& p_value) {
-	return Variant();
+	return Variant(42);
 }
 
 v8::Local<v8::Value> JavaScriptFunctions::variant_getter(v8::Isolate * p_isolate, const StringName & p_prop, Variant & p_var) {
@@ -88,6 +88,23 @@ v8::Local<v8::Value> JavaScriptFunctions::object_getter(v8::Isolate * p_isolate,
 		func->SetName(v8::String::NewFromUtf8(p_isolate, prop.utf8().get_data()));
 
 		return escape_scope.Escape(func);
+	}
+
+	return v8::Local<v8::Value>();
+}
+
+v8::Local<v8::Value> JavaScriptFunctions::object_setter(v8::Isolate * p_isolate, const StringName & p_prop, v8::Local<v8::Value>& p_value, Object * p_obj) {
+
+	bool valid = false;
+	String prop(p_prop);
+	Variant result = p_obj->get(prop, &valid);
+
+	if (valid) {
+		p_obj->set(p_prop, js_to_variant(p_isolate, p_value), &valid);
+
+		if (valid) {
+			return p_value;
+		}
 	}
 
 	return v8::Local<v8::Value>();

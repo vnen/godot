@@ -671,6 +671,24 @@ void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v
 }
 
 void JavaScriptLanguage::Bindings::js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
+
+	v8::Isolate *isolate = p_args.GetIsolate();
+
+	if (p_args.This()->InternalFieldCount() != 2) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Invalid JavaScript object"));
+		return;
+	}
+
+	Object* obj = JavaScriptFunctions::unwrap_object(p_args.This());
+
 	v8::String::Utf8Value name(p_name);
+	StringName prop(*name);
+
+	v8::Local<v8::Value> js_result = JavaScriptFunctions::object_setter(isolate, prop, p_value, obj);
+
+	if (!js_result.IsEmpty()) {
+		p_args.GetReturnValue().Set(p_value);
+	}
+
 	print_line("js_setter " + String(*name));
 }

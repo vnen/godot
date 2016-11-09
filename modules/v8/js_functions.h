@@ -51,7 +51,9 @@ public:
 	// Use Variant get/call depending if it's property or method
 	static v8::Local<v8::Value> variant_getter(v8::Isolate* p_isolate, const StringName &p_prop, Variant &p_var);
 	// Use Object reflection to get/call depending if it's property or method
-	static v8::Local<v8::Value> object_getter(v8::Isolate* p_isolate, const StringName &p_prop, Object *p_var);
+	static v8::Local<v8::Value> object_getter(v8::Isolate* p_isolate, const StringName &p_prop, Object *p_obj);
+	// Setter for any object
+	static v8::Local<v8::Value> object_setter(v8::Isolate* p_isolate, const StringName &p_prop, v8::Local<v8::Value> &p_value, Object *p_obj);
 	// Variant call method implementation
 	static void variant_call(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 	// Object call method implementation
