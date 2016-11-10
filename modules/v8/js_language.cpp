@@ -29,7 +29,6 @@
 
 #include "js_language.h"
 #include "js_functions.h"
-#include "js_bindings.h"
 #include "os/file_access.h"
 #include "io/file_access_encrypted.h"
 #include "globals.h"
@@ -549,21 +548,18 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 	v8::MaybeLocal<v8::Value> func_val = inst->Get(ctx, v8::String::NewFromUtf8(isolate, m.utf8().get_data()));
 
 	if (func_val.IsEmpty() || !func_val.ToLocalChecked()->IsFunction()) {
-		if (owner) {
-			MethodBind* method = ObjectTypeDB::get_method(owner->get_type_name(), p_method);
-			if (method) {
-				return method->call(owner, p_args, p_argcount, r_error);
-			} else {
-				r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
-				return Variant();
-			}
-		}
 		r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
 		return Variant();
 	}
 
+	Vector <v8::Local<v8::Value> > args;
+	args.resize(p_argcount);
+	for (int i = 0; i < p_argcount; i++) {
+		args[i] = JavaScriptFunctions::variant_to_js(isolate, *(p_args[i]));
+	}
+
 	v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(func_val.ToLocalChecked());
-	v8::MaybeLocal<v8::Value> func_result = func->CallAsFunction(ctx, inst, 0, NULL);
+	v8::MaybeLocal<v8::Value> func_result = func->CallAsFunction(ctx, inst, p_argcount, args.ptr());
 
 	if (func_result.IsEmpty()) {
 		r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
@@ -571,8 +567,7 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 	}
 
 	r_error.error = Variant::CallError::CALL_OK;
-	return Variant();
-
+	return JavaScriptFunctions::js_to_variant(isolate, func_result.ToLocalChecked());
 }
 
 void JavaScriptInstance::call_multilevel(const StringName & p_method, const Variant ** p_args, int p_argcount) {
