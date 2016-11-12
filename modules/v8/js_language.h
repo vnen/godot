@@ -184,6 +184,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 
 	friend class JavaScriptFunctions;
 	static Map<String, v8::Eternal<v8::FunctionTemplate> > constructors;
+	static Map<String, v8::Eternal<v8::Object> > singletons;
 
 	void _add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent = v8::Local<v8::FunctionTemplate>());
 	
@@ -196,6 +197,9 @@ public:
 		static void js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 		static void js_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args);
 		static void js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args);
+
+		static void js_singleton_method(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+		static void js_singleton_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args);
 	};
 
 	_FORCE_INLINE_ static JavaScriptLanguage* get_singleton() { return singleton; }

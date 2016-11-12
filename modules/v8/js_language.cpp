@@ -41,12 +41,15 @@
 
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 Map<String, v8::Eternal<v8::FunctionTemplate> > JavaScriptLanguage::constructors;
+Map<String, v8::Eternal<v8::Object> > JavaScriptLanguage::singletons;
 
 void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent) {
 
 	String type(p_type);
-	// Ignore proxy classes
+	// Ignore proxy classes and singletons
 	if (type.begins_with("_")) return;
+	if (Globals::get_singleton()->has_singleton(type)) return;
+
 	// Change object name to avoid conflict with JavaScript's own Object
 	if (p_type == "Object") type = String("GodotObject");
 
@@ -55,6 +58,7 @@ void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8
 	v8::EscapableHandleScope escapable_scope(isolate);
 
 	v8::Local<v8::FunctionTemplate> local_constructor = v8::FunctionTemplate::New(isolate, Bindings::js_constructor);
+	local_constructor->SetClassName(v8::String::NewFromUtf8(isolate, type.utf8().get_data()));
 	local_constructor->InstanceTemplate()->SetInternalFieldCount(2);
 	local_constructor->PrototypeTemplate()->SetHandler(v8::NamedPropertyHandlerConfiguration(Bindings::js_getter, Bindings::js_setter));
 
@@ -107,6 +111,26 @@ void JavaScriptLanguage::init() {
 
 	// Register type bindings in a tree fashion
 	_add_class(StringName("Object"));
+
+	// Register singletons
+	List<StringName> types;
+	List<Globals::Singleton> singletons;
+	Globals::get_singleton()->get_singletons(&singletons);
+
+	for (List<Globals::Singleton>::Element *E = singletons.front(); E; E = E->next()) {
+
+		String singleton_name = E->get().name;
+
+		v8::EscapableHandleScope singleton_scope(isolate);
+
+		v8::Local<v8::FunctionTemplate> singleton_constructor = v8::FunctionTemplate::New(isolate);
+		singleton_constructor->SetClassName(v8::String::NewFromUtf8(isolate, singleton_name.utf8().get_data()));
+
+		v8::Local<v8::ObjectTemplate> singleton = v8::ObjectTemplate::New(isolate, singleton_constructor);
+		singleton->SetHandler(v8::NamedPropertyHandlerConfiguration(Bindings::js_singleton_getter));
+
+		global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, singleton_name.utf8().get_data()), singleton_scope.Escape(singleton), v8::PropertyAttribute::ReadOnly);
+	}
 }
 
 void JavaScriptLanguage::finish() {
@@ -499,6 +523,12 @@ void JavaScriptInstance::_run() {
 
 	instance = v8::Persistent<v8::Object, v8::CopyablePersistentTraits<v8::Object> >(isolate, inst);
 
+	v8::Local<v8::Object> global = ctx->Global();
+
+	for (Map<String, v8::Eternal<v8::Object> >::Element *E = JavaScriptLanguage::singletons.front(); E; E = E->next()) {
+		global->Set(v8::String::NewFromUtf8(isolate, E->key().utf8().get_data()), E->value().Get(isolate));
+	}
+
 	compiled = true;
 }
 
@@ -691,4 +721,40 @@ void JavaScriptLanguage::Bindings::js_setter(v8::Local<v8::Name> p_name, v8::Loc
 	}
 
 	print_line("js_setter " + String(*name));
+}
+
+void JavaScriptLanguage::Bindings::js_singleton_method(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+	v8::String::Utf8Value c(p_args.This()->GetConstructorName());
+	String singleton_name(*c);
+
+	v8::String::Utf8Value p(p_args.Callee()->GetName());
+	String prop(*p);
+
+	Object *singleton = Globals::get_singleton()->get_singleton_object(singleton_name);
+
+	Array args;
+	args.resize(p_args.Length());
+
+	for (int i = 0; i < p_args.Length(); i++) {
+		args[i] = JavaScriptFunctions::js_to_variant(p_args.GetIsolate(), p_args[i]);
+	}
+
+	Variant result = singleton->callv(prop, args);
+	p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(p_args.GetIsolate(), result));
+}
+
+void JavaScriptLanguage::Bindings::js_singleton_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
+	v8::String::Utf8Value c(p_args.This()->GetConstructorName());
+	String singleton_name(*c);
+
+	v8::String::Utf8Value p(p_name);
+	String prop(*p);
+
+	Object *singleton = Globals::get_singleton()->get_singleton_object(singleton_name);
+	if (singleton && singleton->has_method(prop)) {
+		v8::Local<v8::Function> method = v8::FunctionTemplate::New(p_args.GetIsolate(), Bindings::js_singleton_method)->GetFunction();
+
+		method->SetName(v8::String::NewFromUtf8(p_args.GetIsolate(), prop.utf8().get_data()));
+		p_args.GetReturnValue().Set(method);
+	}
 }
