@@ -504,31 +504,27 @@ void JavaScriptInstance::_run() {
 	v8::HandleScope handle_scope(isolate);
 
 	v8::Local<v8::Context> ctx = context.Get(isolate);
+	ctx->Enter();
 
 	v8::Context::Scope context_scope(ctx);
 
+	v8::TryCatch trycatch(isolate);
+
 	v8::Local<v8::Function> cons = script->constructor.Get(isolate);
-	v8::MaybeLocal<v8::Object> maybe_inst = cons->NewInstance(ctx);
+	v8::Local<v8::Value> args[] = { v8::External::New(isolate, owner) };
+	v8::MaybeLocal<v8::Value> maybe_inst = cons->CallAsConstructor(ctx, 1, args);
+
+	if (trycatch.HasCaught()) {
+		v8::String::Utf8Value e(trycatch.Exception()->ToDetailString());
+		ERR_EXPLAIN(String(*e));
+		ERR_FAIL();
+	}
 
 	if (maybe_inst.IsEmpty()) return;
 
-	v8::Local<v8::Object> inst = maybe_inst.ToLocalChecked();
-	v8::Local<v8::External> field = v8::Local<v8::External>::Cast(inst->GetInternalField(0));
-	Variant::CallError err;
-	void* ptr = field->Value();
-	if (ptr) {
-		static_cast<Object*>(ptr)->call(CoreStringNames::get_singleton()->_free, NULL, 0, err);
-	}
-	inst->SetInternalField(0, v8::External::New(isolate, owner));
-	inst->SetInternalField(1, v8::Boolean::New(isolate, true));
+	v8::Local<v8::Object> inst = v8::Local<v8::Object>::Cast(maybe_inst.ToLocalChecked());
 
 	instance = v8::Persistent<v8::Object, v8::CopyablePersistentTraits<v8::Object> >(isolate, inst);
-
-	v8::Local<v8::Object> global = ctx->Global();
-
-	for (Map<String, v8::Eternal<v8::Object> >::Element *E = JavaScriptLanguage::singletons.front(); E; E = E->next()) {
-		global->Set(v8::String::NewFromUtf8(isolate, E->key().utf8().get_data()), E->value().Get(isolate));
-	}
 
 	compiled = true;
 }
@@ -659,6 +655,10 @@ JavaScriptInstance::~JavaScriptInstance() {
 
 void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
 	print_line("constructor");
+
+	if (p_args.Length() == 1) {
+		p_args.This()->SetInternalField(0, p_args[0]);
+	}
 	// Set the object as JS created by default
 	p_args.This()->SetInternalField(1, v8::Boolean::New(p_args.GetIsolate(), true));
 }
@@ -677,6 +677,10 @@ void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v
 	}
 
 	Object* obj = JavaScriptFunctions::unwrap_object(p_args.This());
+	if (obj == NULL) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Missing internal object"));
+		return;
+	}
 
 	v8::String::Utf8Value name(p_name);
 	StringName prop(*name);
