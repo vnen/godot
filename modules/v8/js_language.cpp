@@ -46,6 +46,8 @@ Map<String, v8::Eternal<v8::Object> > JavaScriptLanguage::singletons;
 void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent) {
 
 	String type(p_type);
+	// Test
+	if (type == "BaseButton") return;
 	// Ignore proxy classes and singletons
 	if (type.begins_with("_")) return;
 	if (Globals::get_singleton()->has_singleton(type)) return;
@@ -60,7 +62,17 @@ void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8
 	v8::Local<v8::FunctionTemplate> local_constructor = v8::FunctionTemplate::New(isolate, Bindings::js_constructor);
 	local_constructor->SetClassName(v8::String::NewFromUtf8(isolate, type.utf8().get_data()));
 	local_constructor->InstanceTemplate()->SetInternalFieldCount(2);
-	local_constructor->PrototypeTemplate()->SetHandler(v8::NamedPropertyHandlerConfiguration(Bindings::js_getter, Bindings::js_setter));
+
+	v8::Local<v8::ObjectTemplate> templ = local_constructor->PrototypeTemplate();
+
+	List<MethodInfo> methods;
+	ObjectTypeDB::get_method_list(p_type, &methods, true);
+
+	for (List<MethodInfo>::Element *E = methods.front(); E; E = E->next()) {
+		if (E->get().flags & (METHOD_FLAG_VIRTUAL | METHOD_FLAG_NOSCRIPT)) continue;
+		v8::Local<v8::FunctionTemplate> method = v8::FunctionTemplate::New(isolate, Bindings::js_method);
+		local_constructor->PrototypeTemplate()->Set(v8::String::NewFromUtf8(isolate, E->get().name.utf8().get_data()), method);
+	}
 
 	local_constructor = escapable_scope.Escape(local_constructor);
 
@@ -654,7 +666,6 @@ JavaScriptInstance::~JavaScriptInstance() {
 }
 
 void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
-	print_line("constructor");
 
 	if (p_args.Length() == 1) {
 		p_args.This()->SetInternalField(0, p_args[0]);
@@ -664,7 +675,55 @@ void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo
 }
 
 void JavaScriptLanguage::Bindings::js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
-	print_line("js_method");
+
+	v8::Isolate *isolate = p_args.GetIsolate();
+
+	if (p_args.This()->InternalFieldCount() != 2) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Invalid JavaScript object"));
+		return;
+	}
+
+	Object* obj = JavaScriptFunctions::unwrap_object(p_args.This());
+
+	if (!obj) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Empty JavaScript object"));
+		return;
+	}
+
+	v8::String::Utf8Value m(p_args.Callee()->GetName());
+	String method_name(*m);
+
+	Vector<Variant*> args;
+	args.resize(p_args.Length());
+	for (int i = 0; i < args.size(); i++) {
+		args[i] = new Variant(JavaScriptFunctions::js_to_variant(isolate, p_args[i]));
+	}
+
+	Variant::CallError err;
+
+	// If the object is external to JavaScript, just use variant get/call
+	if (v8::Local<v8::Boolean>::Cast(p_args.This()->GetInternalField(1))->IsFalse()) {
+		Variant result = obj->call(method_name, (const Variant**)args.ptr(), args.size(), err);
+
+		if (err.error == Variant::CallError::CALL_OK) {
+			p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+		} else {
+			isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Error calling method"));
+		}
+
+	// Internal object, looks for the property/function internally
+	} else {
+		MethodBind *method = ObjectTypeDB::get_method(obj->get_type_name(), method_name);
+		if (method) {
+			Variant result = method->call(obj, (const Variant**)args.ptr(), args.size(), err);
+
+			if (err.error == Variant::CallError::CALL_OK) {
+				p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+			} else {
+				isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Error calling method"));
+			}
+		}
+	}
 }
 
 void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
