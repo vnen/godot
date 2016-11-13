@@ -65,10 +65,15 @@ v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate,
 		} break;
 		case Variant::OBJECT: {
 			Object *obj = (Object*)p_var;
-			if (obj && JavaScriptLanguage::constructors.has(obj->get_type())) {
-				v8::Local<v8::ObjectTemplate> constructor = JavaScriptLanguage::constructors[obj->get_type()].Get(p_isolate)->InstanceTemplate();
-				v8::Local<v8::Object> instance = constructor->NewInstance();
-				instance->SetInternalField(0, v8::External::New(p_isolate, obj));
+
+			if (obj) {
+				v8::Local<v8::Context> ctx = p_isolate->GetCurrentContext();
+				v8::Local<v8::Function> constructor = v8::Local<v8::Function>::Cast(ctx->Global()->Get(
+					v8::String::NewFromUtf8(p_isolate, obj->get_type().utf8().get_data())));
+
+				// Call the constructor with the object as argument
+				v8::Local<v8::Value> cargs[] = { v8::External::New(p_isolate, obj) };
+				v8::Local<v8::Object> instance = v8::Local<v8::Object>::Cast(constructor->CallAsConstructor(1, cargs));
 				// Set as external to JavaScript
 				instance->SetInternalField(1, v8::Boolean::New(p_isolate, false));
 				val = instance;

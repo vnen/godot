@@ -40,8 +40,6 @@
 #include "libplatform/libplatform.h"
 
 JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
-Map<String, v8::Eternal<v8::FunctionTemplate> > JavaScriptLanguage::constructors;
-Map<String, v8::Eternal<v8::Object> > JavaScriptLanguage::singletons;
 
 void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent) {
 
@@ -81,7 +79,6 @@ void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8
 	}
 
 	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, type.utf8().get_data()), local_constructor, v8::PropertyAttribute::ReadOnly);
-	constructors.insert(type, v8::Eternal<v8::FunctionTemplate>(isolate, local_constructor));
 
 	List<StringName> sub_types;
 	ObjectTypeDB::get_inheriters_from(p_type, &sub_types);

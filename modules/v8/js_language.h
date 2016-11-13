@@ -183,8 +183,6 @@ class JavaScriptLanguage : public ScriptLanguage {
 	GodotV8ArrayAllocator allocator;
 
 	friend class JavaScriptFunctions;
-	static Map<String, v8::Eternal<v8::FunctionTemplate> > constructors;
-	static Map<String, v8::Eternal<v8::Object> > singletons;
 
 	void _add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent = v8::Local<v8::FunctionTemplate>());
 	
