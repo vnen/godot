@@ -731,67 +731,6 @@ void JavaScriptLanguage::Bindings::js_method(const v8::FunctionCallbackInfo<v8::
 	}
 }
 
-void JavaScriptLanguage::Bindings::js_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
-
-	v8::Isolate *isolate = p_args.GetIsolate();
-
-	if (p_args.This()->InternalFieldCount() != 2) {
-		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Invalid JavaScript object"));
-		return;
-	}
-
-	Object* obj = JavaScriptFunctions::unwrap_object(p_args.This());
-	if (obj == NULL) {
-		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Missing internal object"));
-		return;
-	}
-
-	v8::String::Utf8Value name(p_name);
-	StringName prop(*name);
-
-	v8::Local<v8::Value> js_result;
-
-	// If the object is external to JavaScript, just use variant get/call
-	if (v8::Local<v8::Boolean>::Cast(p_args.This()->GetInternalField(1))->IsFalse()) {
-		js_result = JavaScriptFunctions::variant_getter(isolate, prop, obj);
-
-	// Internal object, looks for the property/function internally
-	} else {
-		js_result = JavaScriptFunctions::object_getter(isolate, prop, obj);
-	}
-
-	if (!js_result.IsEmpty()) {
-		p_args.GetReturnValue().Set(js_result);
-	}
-
-	//print_line("js_getter " + String(*name));
-
-	// Let this handler do nothing so it pass to other handlers
-}
-
-void JavaScriptLanguage::Bindings::js_setter(v8::Local<v8::Name> p_name, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
-
-	v8::Isolate *isolate = p_args.GetIsolate();
-
-	if (p_args.This()->InternalFieldCount() != 2) {
-		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Invalid JavaScript object"));
-		return;
-	}
-
-	Object* obj = JavaScriptFunctions::unwrap_object(p_args.This());
-
-	v8::String::Utf8Value name(p_name);
-	StringName prop(*name);
-
-	v8::Local<v8::Value> js_result = JavaScriptFunctions::object_setter(isolate, prop, p_value, obj);
-
-	if (!js_result.IsEmpty()) {
-		p_args.GetReturnValue().Set(p_value);
-	}
-
-	print_line("js_setter " + String(*name));
-}
-
 void JavaScriptLanguage::Bindings::js_singleton_method(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
 	v8::String::Utf8Value c(p_args.This()->GetConstructorName());
 	String singleton_name(*c);
@@ -810,20 +749,4 @@ void JavaScriptLanguage::Bindings::js_singleton_method(const v8::FunctionCallbac
 
 	Variant result = singleton->callv(prop, args);
 	p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(p_args.GetIsolate(), result));
-}
-
-void JavaScriptLanguage::Bindings::js_singleton_getter(v8::Local<v8::Name> p_name, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
-	v8::String::Utf8Value c(p_args.This()->GetConstructorName());
-	String singleton_name(*c);
-
-	v8::String::Utf8Value p(p_name);
-	String prop(*p);
-
-	Object *singleton = Globals::get_singleton()->get_singleton_object(singleton_name);
-	if (singleton && singleton->has_method(prop)) {
-		v8::Local<v8::Function> method = v8::FunctionTemplate::New(p_args.GetIsolate(), Bindings::js_singleton_method)->GetFunction();
-
-		method->SetName(v8::String::NewFromUtf8(p_args.GetIsolate(), prop.utf8().get_data()));
-		p_args.GetReturnValue().Set(method);
-	}
 }
