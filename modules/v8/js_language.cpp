@@ -140,7 +140,15 @@ void JavaScriptLanguage::init() {
 		singleton_constructor->SetClassName(v8::String::NewFromUtf8(isolate, singleton_name.utf8().get_data()));
 
 		v8::Local<v8::ObjectTemplate> singleton = v8::ObjectTemplate::New(isolate, singleton_constructor);
-		singleton->SetHandler(v8::NamedPropertyHandlerConfiguration(Bindings::js_singleton_getter));
+
+		List<MethodInfo> methods;
+		E->get().ptr->get_method_list(&methods);
+
+		for (List<MethodInfo>::Element *E = methods.front(); E; E = E->next()) {
+			if (E->get().flags & (METHOD_FLAG_VIRTUAL | METHOD_FLAG_NOSCRIPT)) continue;
+			v8::Local<v8::FunctionTemplate> method = v8::FunctionTemplate::New(isolate, Bindings::js_singleton_method);
+			singleton->Set(v8::String::NewFromUtf8(isolate, E->get().name.utf8().get_data()), method);
+		}
 
 		global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, singleton_name.utf8().get_data()), singleton_scope.Escape(singleton), v8::PropertyAttribute::ReadOnly);
 	}
