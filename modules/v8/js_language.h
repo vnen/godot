@@ -179,6 +179,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 	v8::Isolate *isolate;
 	v8::Eternal<v8::ObjectTemplate> global_template;
 	v8::Eternal<v8::ObjectTemplate> shallow_template;
+	v8::Eternal<v8::UnboundScript> global_script;
 
 	GodotV8ArrayAllocator allocator;
 

@@ -29,6 +29,7 @@
 
 #include "js_language.h"
 #include "js_functions.h"
+#include "js/global.js.h"
 #include "os/file_access.h"
 #include "io/file_access_encrypted.h"
 #include "globals.h"
@@ -114,7 +115,6 @@ void JavaScriptLanguage::init() {
 
 	// Add global functions
 	global->Set(v8::String::NewFromUtf8(isolate, "print"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::print), v8::PropertyAttribute::ReadOnly);
-	global->Set(v8::String::NewFromUtf8(isolate, "range"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::range), v8::PropertyAttribute::ReadOnly);
 
 	global_template.Set(isolate, global);
 	v8::Local<v8::ObjectTemplate> shallow = v8::ObjectTemplate::New(isolate);
@@ -149,6 +149,16 @@ void JavaScriptLanguage::init() {
 
 		global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, singleton_name.utf8().get_data()), singleton_scope.Escape(singleton), v8::PropertyAttribute::ReadOnly);
 	}
+
+	// Create JS globals
+	v8::EscapableHandleScope global_scope(isolate);
+	v8::Local<v8::Context> context = v8::Context::New(isolate);
+	v8::Context::Scope context_scope(context);
+
+	v8::Local<v8::String> global_js = v8::String::NewFromUtf8(isolate, javascript_global_module);
+	v8::ScriptCompiler::Source global_js_src(global_js);
+	v8::Local<v8::UnboundScript> global_js_script = v8::ScriptCompiler::CompileUnbound(isolate, &global_js_src);
+	global_script.Set(isolate, global_scope.Escape(global_js_script));
 }
 
 void JavaScriptLanguage::finish() {
@@ -310,6 +320,10 @@ Error JavaScript::reload(bool p_keep_state) {
 		memdelete(origin);
 	}
 	origin = memnew(v8::ScriptOrigin(v8::String::NewFromUtf8(isolate, path.utf8().get_data())));
+
+	v8::Local<v8::UnboundScript> global_script = JavaScriptLanguage::get_singleton()->global_script.Get(isolate);
+	v8::Local<v8::Script> global_js_bound_script = global_script->BindToCurrentContext();
+	global_js_bound_script->Run();
 
 	v8::TryCatch trycatch(isolate);
 	v8::MaybeLocal<v8::Script> script = v8::Script::Compile(ctx, source, origin);
@@ -602,6 +616,7 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 		args[i] = JavaScriptFunctions::variant_to_js(isolate, *(p_args[i]));
 	}
 
+	v8::TryCatch trycatch(isolate);
 	v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(func_val.ToLocalChecked());
 	v8::MaybeLocal<v8::Value> func_result = func->CallAsFunction(ctx, inst, p_argcount, args.ptr());
 

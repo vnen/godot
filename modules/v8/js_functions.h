@@ -52,7 +52,6 @@ public:
 	/****** JAVASCRIPT GLOBAL FUNCTIONS ******/
 
 	static void print(const v8::FunctionCallbackInfo<v8::Value>& p_args);
-	static void range(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 };
 
 #endif

@@ -11,10 +11,10 @@ libs = [
 	"DbgHelp"
 ]
 
+env.make_js_header("js/global.js")
+
 env.Append(CPPPATH=["#modules/v8/thirdparty/include"])
 env.Append(LIBPATH=["#modules/v8/thirdparty"])
 env.Append(LINKFLAGS=[l+".lib" for l in libs])
-
-
 
 Export('env')
