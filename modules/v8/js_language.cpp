@@ -672,6 +672,11 @@ JavaScriptInstance::~JavaScriptInstance() {
 
 void JavaScriptLanguage::Bindings::js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
 
+	if (!p_args.IsConstructCall()) {
+		p_args.GetIsolate()->ThrowException(v8::String::NewFromUtf8(p_args.GetIsolate(), "Can't call type as a function"));
+		return;
+	}
+
 	if (p_args.Length() == 1) {
 		p_args.This()->SetInternalField(0, p_args[0]);
 	}
