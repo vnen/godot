@@ -309,6 +309,8 @@ Error JavaScript::reload(bool p_keep_state) {
 	v8::Local<v8::Context> ctx = v8::Context::New(isolate, NULL, JavaScriptLanguage::get_singleton()->global_template.Get(isolate));
 
 	v8::Context::Scope scope(ctx);
+	ctx->Global()->Set(v8::String::NewFromUtf8(isolate, "__filename"), v8::String::NewFromUtf8(isolate, get_path().utf8().get_data()));
+	ctx->Global()->Set(v8::String::NewFromUtf8(isolate, "__dirname"), v8::String::NewFromUtf8(isolate, get_path().get_base_dir().utf8().get_data()));
 
 	v8::Local<v8::String> source =
 		v8::String::NewFromUtf8(
@@ -532,18 +534,20 @@ bool ResourceFormatSaverJavaScript::recognize(const RES & p_resource) const {
 void JavaScriptInstance::_run() {
 
 	v8::Isolate::Scope isolate_scope(isolate);
-	v8::HandleScope handle_scope(isolate);
+	v8::HandleScope scope(isolate);
+	v8::EscapableHandleScope handle_scope(isolate);
 
-	v8::Local<v8::Context> ctx = context.Get(isolate);
-	ctx->Enter();
+	// Create a context for this instance
+	v8::Local<v8::Context> local_context = v8::Context::New(isolate, NULL, JavaScriptLanguage::get_singleton()->global_template.Get(isolate));
+	v8::Context::Scope local_context_scope(local_context);
 
-	v8::Context::Scope context_scope(ctx);
+	v8::Context::Scope context_scope(local_context);
 
 	v8::TryCatch trycatch(isolate);
 
 	v8::Local<v8::Function> cons = script->constructor.Get(isolate);
 	v8::Local<v8::Value> args[] = { v8::External::New(isolate, owner) };
-	v8::MaybeLocal<v8::Value> maybe_inst = cons->CallAsConstructor(ctx, 1, args);
+	v8::MaybeLocal<v8::Value> maybe_inst = cons->CallAsConstructor(local_context, 1, args);
 
 	if (trycatch.HasCaught()) {
 		v8::String::Utf8Value e(trycatch.Exception()->ToDetailString());
@@ -557,6 +561,7 @@ void JavaScriptInstance::_run() {
 
 	instance = v8::Persistent<v8::Object, v8::CopyablePersistentTraits<v8::Object> >(isolate, inst);
 
+	context = v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context>>(isolate, handle_scope.Escape(local_context));
 	compiled = true;
 }
 
@@ -621,6 +626,10 @@ Variant JavaScriptInstance::call(const StringName & p_method, const Variant ** p
 	v8::MaybeLocal<v8::Value> func_result = func->CallAsFunction(ctx, inst, p_argcount, args.ptr());
 
 	if (func_result.IsEmpty()) {
+		if (trycatch.HasCaught()) {
+			v8::String::Utf8Value ex(trycatch.Exception()->ToString());
+			ERR_PRINT(*ex);
+		}
 		r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
 		return Variant();
 	}
@@ -664,16 +673,6 @@ ScriptLanguage * JavaScriptInstance::get_language() {
 JavaScriptInstance::JavaScriptInstance() {
 
 	isolate = JavaScriptLanguage::get_singleton()->isolate;
-
-	v8::Isolate::Scope isolate_scope(isolate);
-	v8::HandleScope scope(isolate);
-	v8::EscapableHandleScope handle_scope(isolate);
-
-	// Create a context for this instance
-	v8::Local<v8::Context> local_context = v8::Context::New(isolate, NULL, JavaScriptLanguage::get_singleton()->global_template.Get(isolate));
-	v8::Context::Scope local_context_scope(local_context);
-	context = v8::Persistent<v8::Context, v8::CopyablePersistentTraits<v8::Context>>(isolate, handle_scope.Escape(local_context));
-
 	compiled = false;
 
 }
