@@ -117,6 +117,15 @@ Variant JavaScriptFunctions::js_to_variant(v8::Isolate * p_isolate, const v8::Lo
 
 /****** JAVASCRIPT FUNCTIONS ******/
 
+void JavaScriptFunctions::require(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+	v8::Isolate* isolate = p_args.GetIsolate();
+
+	v8::String::Utf8Value name(isolate->GetCallingContext()->Global()->Get(v8::String::NewFromUtf8(isolate, "__dirname")));
+	print_line(*name);
+
+	p_args.GetReturnValue().SetUndefined();
+}
+
 void JavaScriptFunctions::print(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 	if (args.Length() < 1) return;

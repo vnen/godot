@@ -51,6 +51,7 @@ public:
 
 	/****** JAVASCRIPT GLOBAL FUNCTIONS ******/
 
+	static void require(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 	static void print(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 };
 
