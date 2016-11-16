@@ -14,7 +14,9 @@ def make_js_header(target, source, env):
 
 		line = fs.readline()
 		while(line):
-			fd.write('"' + line.replace("\n", "") + '"\n');
+			line = line.replace('"', '\\"')
+			line = line.replace("\n", "\\n")
+			fd.write('"' + line + '"\n');
 			line = fs.readline();
 
 		fd.write(";\n")
