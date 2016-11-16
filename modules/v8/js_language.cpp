@@ -155,10 +155,17 @@ void JavaScriptLanguage::init() {
 	v8::Local<v8::Context> context = v8::Context::New(isolate);
 	v8::Context::Scope context_scope(context);
 
+	v8::TryCatch trycatch(isolate);
+
 	v8::Local<v8::String> global_js = v8::String::NewFromUtf8(isolate, javascript_global_module);
 	v8::ScriptCompiler::Source global_js_src(global_js);
 	v8::Local<v8::UnboundScript> global_js_script = v8::ScriptCompiler::CompileUnbound(isolate, &global_js_src);
 	global_script.Set(isolate, global_scope.Escape(global_js_script));
+
+	if (trycatch.HasCaught()) {
+		v8::String::Utf8Value ex(trycatch.Exception());
+		ERR_PRINT(*ex);
+	}
 }
 
 void JavaScriptLanguage::finish() {
@@ -323,11 +330,17 @@ Error JavaScript::reload(bool p_keep_state) {
 	}
 	origin = memnew(v8::ScriptOrigin(v8::String::NewFromUtf8(isolate, path.utf8().get_data())));
 
+	v8::TryCatch trycatch(isolate);
+
 	v8::Local<v8::UnboundScript> global_script = JavaScriptLanguage::get_singleton()->global_script.Get(isolate);
 	v8::Local<v8::Script> global_js_bound_script = global_script->BindToCurrentContext();
 	global_js_bound_script->Run();
 
-	v8::TryCatch trycatch(isolate);
+	if (trycatch.HasCaught()) {
+		v8::String::Utf8Value ex(trycatch.Exception());
+		ERR_PRINT(*ex);
+	}
+
 	v8::MaybeLocal<v8::Script> script = v8::Script::Compile(ctx, source, origin);
 
 	if (script.IsEmpty()) {
