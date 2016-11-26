@@ -53,6 +53,13 @@ public:
 
 	static void require(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 	static void print(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+
+	/****** BUILT-IN TYPES ******/
+	/* VECTOR2 */
+	static void Vector2_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args); // constructor
+	static void Vector2_add(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+	static void Vector2_length(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+	static void Vector2_length_squared(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 };
 
 #endif

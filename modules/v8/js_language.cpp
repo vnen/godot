@@ -151,6 +151,19 @@ void JavaScriptLanguage::init() {
 		global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, singleton_name.utf8().get_data()), singleton_scope.Escape(singleton), v8::PropertyAttribute::ReadOnly);
 	}
 
+	// Built-in types
+	// Vector2
+	v8::Local<v8::FunctionTemplate> Vector2_constructor = v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_constructor);
+	Vector2_constructor->SetClassName(v8::String::NewFromUtf8(isolate, "Vector2"));
+	Vector2_constructor->InstanceTemplate()->SetInternalFieldCount(1);
+	v8::Local<v8::ObjectTemplate> Vector2_prototype = Vector2_constructor->PrototypeTemplate();
+	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "add"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_add));
+	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_length));
+	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length_squared"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_length_squared));
+
+	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, "Vector2"), Vector2_constructor);
+
+
 	// Create JS globals
 	v8::EscapableHandleScope global_scope(isolate);
 	v8::Local<v8::Context> context = v8::Context::New(isolate);

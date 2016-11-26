@@ -30,6 +30,7 @@
 #include "js_functions.h"
 #include "js_language.h"
 
+#include "math_2d.h"
 #include "object_type_db.h"
 #include "variant.h"
 #include "vector.h"
@@ -78,6 +79,19 @@ v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate,
 				instance->SetInternalField(1, v8::Boolean::New(p_isolate, false));
 				val = instance;
 			}
+		} break;
+		case Variant::VECTOR2: {
+			Vector2 vec = p_var;
+
+			v8::Local<v8::Context> ctx = p_isolate->GetCurrentContext();
+			v8::Local<v8::Function> constructor = v8::Local<v8::Function>::Cast(ctx->Global()->Get(
+				v8::String::NewFromUtf8(p_isolate, "Vector2")));
+
+			// Call the constructor with the Vector2 arguments
+			v8::Local<v8::Value> cargs[] = { v8::Number::New(p_isolate, vec.x), v8::Number::New(p_isolate, vec.y) };
+			v8::Local<v8::Object> instance = v8::Local<v8::Object>::Cast(constructor->CallAsConstructor(2, cargs));
+
+			val = instance;
 		} break;
 		default: {
 			val = v8::Null(p_isolate);
@@ -135,4 +149,47 @@ void JavaScriptFunctions::print(const v8::FunctionCallbackInfo<v8::Value>& args)
 	v8::String::Utf8Value value(arg);
 	if(*value)
 		print_line(*value);
+}
+
+void JavaScriptFunctions::Vector2_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+	v8::Isolate* isolate = p_args.GetIsolate();
+
+	if (!p_args.IsConstructCall()) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Can't call type as a function"));
+		return;
+	}
+
+	switch (p_args.Length()) {
+		case 0: {
+			p_args.This()->SetInternalField(0, v8::External::New(isolate, memnew(Vector2)));
+			return;
+		} break;
+		case 2: {
+			Vector2 *vec = memnew(Vector2);
+			vec->x = p_args[0]->NumberValue();
+			vec->y = p_args[1]->NumberValue();
+			p_args.This()->SetInternalField(0, v8::External::New(isolate, vec));
+			return;
+		} break;
+		default:
+			break;
+	}
+}
+
+void JavaScriptFunctions::Vector2_add(const v8::FunctionCallbackInfo<v8::Value>& p_args) {}
+
+void JavaScriptFunctions::Vector2_length(const v8::FunctionCallbackInfo<v8::Value>& p_args) {}
+
+void JavaScriptFunctions::Vector2_length_squared(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+
+	v8::Isolate* isolate = p_args.GetIsolate();
+
+	if (p_args.Length() != 0) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Too many arguments"));
+		return;
+	}
+
+	Vector2* vec = static_cast<Vector2*>(v8::Local<v8::External>::Cast(p_args.This()->GetInternalField(0))->Value());
+
+	p_args.GetReturnValue().Set(vec->length_squared());
 }
