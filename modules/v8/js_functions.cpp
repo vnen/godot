@@ -30,6 +30,8 @@
 #include "js_functions.h"
 #include "js_language.h"
 
+#include "os/dir_access.h"
+#include "os/file_access.h"
 #include "math_2d.h"
 #include "object_type_db.h"
 #include "variant.h"
@@ -129,13 +131,80 @@ Variant JavaScriptFunctions::js_to_variant(v8::Isolate * p_isolate, const v8::Lo
 	return Variant();
 }
 
+Variant::Type JavaScriptFunctions::type_from_string(const String & p_type) {
+
+	// Only for binding purpose. Missing types here can be handled with JS types.
+
+	// Math Types
+	if (p_type == "Vector2")
+		return Variant::VECTOR2;
+	if (p_type == "Rect2")
+		return Variant::RECT2;
+	if (p_type == "Vector3")
+		return Variant::VECTOR3;
+	if (p_type == "Matrix32")
+		return Variant::MATRIX32;
+	if (p_type == "Plane")
+		return Variant::PLANE;
+	if (p_type == "Quat")
+		return Variant::QUAT;
+	if (p_type == "AABB")
+		return Variant::_AABB;
+	if (p_type == "Matrix3")
+		return Variant::MATRIX3;
+	if (p_type == "Transform")
+		return Variant::TRANSFORM;
+
+	// Misc Types
+	if (p_type == "Color")
+		return Variant::COLOR;
+	if (p_type == "Image")
+		return Variant::IMAGE;
+	if (p_type == "NodePath")
+		return Variant::NODE_PATH;
+	if (p_type == "RID")
+		return Variant::_RID;
+	if (p_type == "InputEvent")
+		return Variant::INPUT_EVENT;
+
+	// Should never get here
+	return Variant::NIL;
+}
+
 /****** JAVASCRIPT FUNCTIONS ******/
 
 void JavaScriptFunctions::require(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
 	v8::Isolate* isolate = p_args.GetIsolate();
 
-	v8::String::Utf8Value name(isolate->GetCallingContext()->Global()->Get(v8::String::NewFromUtf8(isolate, "__dirname")));
-	print_line(*name);
+	v8::String::Utf8Value dir(isolate->GetCallingContext()->Global()->Get(v8::String::NewFromUtf8(isolate, "__dirname")));
+	v8::String::Utf8Value file(p_args[0]->ToString());
+
+	String path = String(*dir).plus_file(*file);
+
+	if (DirAccess::exists(path)) {
+		Error err = OK;
+		FileAccess *access = FileAccess::open(path, FileAccess::READ, &err);
+
+		if (err != OK) {
+			isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Error opening file"));
+			return;
+		}
+
+		String content;
+		String l = access->get_line();
+		while (!access->eof_reached()) {
+			content += l + "\n";
+			l = access->get_line();
+		}
+		content += l;
+
+		v8::Local<v8::String> source = v8::String::NewFromUtf8(isolate, content.utf8().get_data());
+		v8::Local<v8::Script> script = v8::Script::Compile(source, v8::String::NewFromUtf8(isolate, path.utf8().get_data()));
+		v8::Local<v8::Value> result = script->Run();
+
+		p_args.GetReturnValue().Set(result);
+	}
+
 
 	p_args.GetReturnValue().SetUndefined();
 }
@@ -190,6 +259,10 @@ void JavaScriptFunctions::Vector2_length_squared(const v8::FunctionCallbackInfo<
 	}
 
 	Vector2* vec = static_cast<Vector2*>(v8::Local<v8::External>::Cast(p_args.This()->GetInternalField(0))->Value());
+	Variant var_vec = Variant(*vec);
 
-	p_args.GetReturnValue().Set(vec->length_squared());
+	Variant::CallError err;
+	Variant res = var_vec.call("length_squared", NULL, 0, err);
+
+	p_args.GetReturnValue().Set(double(res));
 }

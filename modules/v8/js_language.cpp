@@ -45,8 +45,6 @@ JavaScriptLanguage* JavaScriptLanguage::singleton = NULL;
 void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent) {
 
 	String type(p_type);
-	// Test
-	if (type == "BaseButton") return;
 	// Ignore proxy classes and singletons
 	if (type.begins_with("_")) return;
 	if (Globals::get_singleton()->has_singleton(type)) return;
@@ -153,13 +151,20 @@ void JavaScriptLanguage::init() {
 
 	// Built-in types
 	// Vector2
-	v8::Local<v8::FunctionTemplate> Vector2_constructor = v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_constructor);
+	/*v8::Local<v8::FunctionTemplate> Vector2_constructor = v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_constructor);
 	Vector2_constructor->SetClassName(v8::String::NewFromUtf8(isolate, "Vector2"));
 	Vector2_constructor->InstanceTemplate()->SetInternalFieldCount(1);
 	v8::Local<v8::ObjectTemplate> Vector2_prototype = Vector2_constructor->PrototypeTemplate();
 	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "add"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_add));
 	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_length));
-	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length_squared"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_length_squared));
+	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length_squared"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_length_squared));*/
+
+	v8::Local<v8::FunctionTemplate> Vector2_constructor = v8::FunctionTemplate::New(isolate, Bindings::js_builtin_constructor);
+	Vector2_constructor->SetClassName(v8::String::NewFromUtf8(isolate, "Vector2"));
+	Vector2_constructor->InstanceTemplate()->SetInternalFieldCount(2);
+	v8::Local<v8::ObjectTemplate> Vector2_prototype = Vector2_constructor->PrototypeTemplate();
+	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length_squared"), v8::FunctionTemplate::New(isolate, Bindings::js_builtin_method));
+	Vector2_prototype->SetAccessor(v8::String::NewFromUtf8(isolate, "x"), Bindings::js_builtin_getter, Bindings::js_builtin_setter);
 
 	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, "Vector2"), Vector2_constructor);
 
@@ -795,4 +800,102 @@ void JavaScriptLanguage::Bindings::js_singleton_method(const v8::FunctionCallbac
 
 	Variant result = singleton->callv(prop, args);
 	p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(p_args.GetIsolate(), result));
+}
+
+void JavaScriptLanguage::Bindings::js_builtin_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+
+	v8::Isolate *isolate = p_args.GetIsolate();
+
+	if (!p_args.IsConstructCall()) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Can't call type as a function"));
+		return;
+	}
+
+	v8::String::Utf8Value t(p_args.Callee()->GetName());
+	String type_name(*t);
+	Variant::Type type = JavaScriptFunctions::type_from_string(type_name);
+	
+	Vector<Variant*> args;
+	args.resize(p_args.Length());
+	for (int i = 0; i < p_args.Length(); i++) {
+		Variant *arg = new Variant(JavaScriptFunctions::js_to_variant(isolate, p_args[i]));
+		args[i] = arg;
+	}
+
+	Variant::CallError err;
+	Variant result = Variant::construct(type, (const Variant**) args.ptr(), args.size(), err);
+
+	if (err.error != Variant::CallError::CALL_OK) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Error calling constructor"));
+		return;
+	}
+
+	p_args.This()->SetInternalField(0, v8::External::New(isolate, new Variant(result)));
+	p_args.This()->SetInternalField(1, v8::Integer::New(isolate, int(type)));
+}
+
+void JavaScriptLanguage::Bindings::js_builtin_method(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+
+	v8::Isolate *isolate = p_args.GetIsolate();
+
+	if (p_args.IsConstructCall()) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Can't call function as constructor"));
+		return;
+	}
+
+	void* ptr = v8::Local<v8::External>::Cast(p_args.This()->GetInternalField(0))->Value();
+	Variant *obj = static_cast<Variant*>(ptr);
+	Variant::Type type = Variant::Type(v8::Local<v8::Integer>::Cast(p_args.This()->GetInternalField(1))->IntegerValue());
+
+	v8::String::Utf8Value method_name(p_args.Callee()->GetName());
+
+	Vector<Variant*> args;
+	args.resize(p_args.Length());
+	for (int i = 0; i < p_args.Length(); i++) {
+		args[i] = &JavaScriptFunctions::js_to_variant(isolate, p_args[i]);
+	}
+
+	Variant::CallError err;
+	Variant result = obj->call(*method_name, (const Variant**)args.ptr(), args.size(), err);
+
+	if (err.error != Variant::CallError::CALL_OK) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Error calling method"));
+		return;
+	}
+
+	p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+}
+
+void JavaScriptLanguage::Bindings::js_builtin_getter(v8::Local<v8::Name> p_prop, const v8::PropertyCallbackInfo<v8::Value>& p_args) {
+
+	v8::String::Utf8Value prop(p_prop);
+
+	Variant *obj = static_cast<Variant*>(v8::Local<v8::External>::Cast(p_args.This()->GetInternalField(0))->Value());
+
+	if (Variant::has_numeric_constant(obj->get_type(), *prop)) {
+		int result = Variant::get_numeric_constant_value(obj->get_type(), *prop);
+		p_args.GetReturnValue().Set(result);
+		return;
+	}
+
+	bool valid = false;
+	Variant result = obj->get(String(*prop), &valid);
+
+	if (valid) {
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(p_args.GetIsolate(), result));
+	}
+}
+
+void JavaScriptLanguage::Bindings::js_builtin_setter(v8::Local<v8::Name> p_prop, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<void>& p_args) {
+
+	v8::String::Utf8Value prop(p_prop);
+
+	Variant *obj = static_cast<Variant*>(v8::Local<v8::External>::Cast(p_args.This()->GetInternalField(0))->Value());
+
+	bool valid = false;
+	obj->set(*prop, JavaScriptFunctions::js_to_variant(p_args.GetIsolate(), p_value), &valid);
+
+	if (valid) {
+		p_args.GetReturnValue().Set(p_value);
+	}
 }

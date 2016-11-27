@@ -48,6 +48,8 @@ public:
 	static v8::Local<v8::Value> variant_to_js(v8::Isolate* p_isolate, const Variant &p_var);
 	// Convert a JavaScript type to a Variant type
 	static Variant js_to_variant(v8::Isolate* p_isolate, const v8::Local<v8::Value> &p_value);
+	// Convert a String to a Variant type
+	static Variant::Type type_from_string(const String &p_type);
 
 	/****** JAVASCRIPT GLOBAL FUNCTIONS ******/
 

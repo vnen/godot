@@ -194,8 +194,11 @@ public:
 	public:
 		static void js_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args);
 		static void js_method(const v8::FunctionCallbackInfo<v8::Value>& p_args);
-
 		static void js_singleton_method(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+		static void js_builtin_constructor(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+		static void js_builtin_method(const v8::FunctionCallbackInfo<v8::Value>& p_args);
+		static void js_builtin_getter(v8::Local<v8::Name> p_prop, const v8::PropertyCallbackInfo<v8::Value>& p_args);
+		static void js_builtin_setter(v8::Local<v8::Name> p_prop, v8::Local<v8::Value> p_value, const v8::PropertyCallbackInfo<void>& p_args);
 	};
 
 	_FORCE_INLINE_ static JavaScriptLanguage* get_singleton() { return singleton; }
