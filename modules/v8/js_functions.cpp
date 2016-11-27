@@ -47,6 +47,13 @@ Object * JavaScriptFunctions::unwrap_object(const v8::Local<v8::Object>& p_value
 	return static_cast<Object*>(ptr);
 }
 
+Variant * JavaScriptFunctions::unwrap_variant(const v8::Local<v8::Object>& p_value) {
+
+	v8::Local<v8::External> field = v8::Local<v8::External>::Cast(p_value->GetInternalField(0));
+	void* ptr = field->Value();
+	return static_cast<Variant*>(ptr);
+}
+
 v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate, const Variant & p_var) {
 
 	v8::EscapableHandleScope scope(p_isolate);
@@ -82,16 +89,33 @@ v8::Local<v8::Value> JavaScriptFunctions::variant_to_js(v8::Isolate * p_isolate,
 				val = instance;
 			}
 		} break;
-		case Variant::VECTOR2: {
-			Vector2 vec = p_var;
+			// Math types
+		case Variant::VECTOR2:
+		case Variant::RECT2:
+		case Variant::VECTOR3:
+		case Variant::MATRIX32:
+		case Variant::PLANE:
+		case Variant::QUAT:
+		case Variant::_AABB:
+		case Variant::MATRIX3:
+		case Variant::TRANSFORM:
+			// Misc types
+		case Variant::COLOR:
+		case Variant::IMAGE:
+		case Variant::NODE_PATH:
+		case Variant::_RID:
+		case Variant::INPUT_EVENT: {
+
+			Variant* obj = new Variant(p_var);
 
 			v8::Local<v8::Context> ctx = p_isolate->GetCurrentContext();
 			v8::Local<v8::Function> constructor = v8::Local<v8::Function>::Cast(ctx->Global()->Get(
-				v8::String::NewFromUtf8(p_isolate, "Vector2")));
+				v8::String::NewFromUtf8(p_isolate, Variant::get_type_name(p_var.get_type()).utf8().get_data())));
 
-			// Call the constructor with the Vector2 arguments
-			v8::Local<v8::Value> cargs[] = { v8::Number::New(p_isolate, vec.x), v8::Number::New(p_isolate, vec.y) };
-			v8::Local<v8::Object> instance = v8::Local<v8::Object>::Cast(constructor->CallAsConstructor(2, cargs));
+			// Call the constructor with the no arguments
+			v8::Local<v8::Object> instance = v8::Local<v8::Object>::Cast(constructor->CallAsConstructor(0, NULL));
+			// Set the inner object manually
+			instance->SetInternalField(0, v8::External::New(p_isolate, obj));
 
 			val = instance;
 		} break;
@@ -122,9 +146,15 @@ Variant JavaScriptFunctions::js_to_variant(v8::Isolate * p_isolate, const v8::Lo
 		return Variant(p_value->NumberValue());
 	}
 	if (p_value->IsObject()) {
-		if (v8::Local<v8::Object>::Cast(p_value)->InternalFieldCount() == 2) {
-			Object *obj = unwrap_object(v8::Local<v8::Object>::Cast(p_value));
-			return Variant(obj);
+		v8::Local<v8::Object> js_obj = v8::Local<v8::Object>::Cast(p_value);
+		if (js_obj->InternalFieldCount() == 2) {
+			if (js_obj->GetInternalField(1)->IsBoolean()) {
+				Object *obj = unwrap_object(js_obj);
+				return Variant(obj);
+			} else {
+				Variant *var = unwrap_variant(js_obj);
+				return *var;
+			}
 		}
 	}
 

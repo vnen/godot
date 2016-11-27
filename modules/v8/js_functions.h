@@ -39,6 +39,7 @@ class JavaScriptFunctions {
 
 	friend class JavaScriptLanguage;
 	static Object* unwrap_object(const v8::Local<v8::Object> &p_value);
+	static Variant* unwrap_variant(const v8::Local<v8::Object> &p_value);
 
 public:
 
