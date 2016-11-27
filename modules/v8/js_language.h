@@ -186,6 +186,7 @@ class JavaScriptLanguage : public ScriptLanguage {
 	friend class JavaScriptFunctions;
 
 	void _add_class(const StringName &p_type, const v8::Local<v8::FunctionTemplate> &p_parent = v8::Local<v8::FunctionTemplate>());
+	void _add_builtin_type(Variant::Type p_type);
 	
 public:
 

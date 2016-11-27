@@ -89,6 +89,40 @@ void JavaScriptLanguage::_add_class(const StringName &p_type, const v8::Local<v8
 	}
 }
 
+void JavaScriptLanguage::_add_builtin_type(Variant::Type p_type) {
+
+	String type_name = Variant::get_type_name(p_type);
+
+	Variant::CallError cerror;
+	Variant v = Variant::construct(p_type, NULL, 0, cerror);
+
+	v8::Local<v8::FunctionTemplate> constructor = v8::FunctionTemplate::New(isolate, Bindings::js_builtin_constructor);
+	constructor->SetClassName(v8::String::NewFromUtf8(isolate,type_name.utf8().get_data()));
+	constructor->InstanceTemplate()->SetInternalFieldCount(2);
+
+	v8::Local<v8::ObjectTemplate> prototype = constructor->PrototypeTemplate();
+
+	List<MethodInfo> methods;
+	v.get_method_list(&methods);
+
+	for (List<MethodInfo>::Element *E = methods.front(); E; E = E->next()) {
+		prototype->Set(
+			v8::String::NewFromUtf8(isolate, E->get().name.utf8().get_data()),
+			v8::FunctionTemplate::New(isolate, Bindings::js_builtin_method),
+			v8::ReadOnly);
+	}
+
+	List<PropertyInfo> properties;
+	v.get_property_list(&properties);
+	for (List<PropertyInfo>::Element *E = properties.front();E;E = E->next()) {
+		prototype->SetAccessor(
+			v8::String::NewFromUtf8(isolate, E->get().name.utf8().get_data()),
+			Bindings::js_builtin_getter, Bindings::js_builtin_setter);
+	}
+
+	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, type_name.utf8().get_data()), constructor, v8::ReadOnly);
+}
+
 void JavaScriptLanguage::init() {
 
 	// Initialize V8.
@@ -149,25 +183,29 @@ void JavaScriptLanguage::init() {
 		global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, singleton_name.utf8().get_data()), singleton_scope.Escape(singleton), v8::PropertyAttribute::ReadOnly);
 	}
 
-	// Built-in types
-	// Vector2
-	/*v8::Local<v8::FunctionTemplate> Vector2_constructor = v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_constructor);
-	Vector2_constructor->SetClassName(v8::String::NewFromUtf8(isolate, "Vector2"));
-	Vector2_constructor->InstanceTemplate()->SetInternalFieldCount(1);
-	v8::Local<v8::ObjectTemplate> Vector2_prototype = Vector2_constructor->PrototypeTemplate();
-	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "add"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_add));
-	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_length));
-	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length_squared"), v8::FunctionTemplate::New(isolate, JavaScriptFunctions::Vector2_length_squared));*/
+	static const Variant::Type builtin_types[] = {
+		// Math types
+		Variant::VECTOR2,
+		Variant::RECT2,
+		Variant::VECTOR3,
+		Variant::MATRIX32,
+		Variant::PLANE,
+		Variant::QUAT,
+		Variant::_AABB,
+		Variant::MATRIX3,
+		Variant::TRANSFORM,
+		// Misc types
+		Variant::COLOR,
+		Variant::IMAGE,
+		Variant::NODE_PATH,
+		Variant::_RID,
+		Variant::INPUT_EVENT,
+		Variant::NIL
+	};
 
-	v8::Local<v8::FunctionTemplate> Vector2_constructor = v8::FunctionTemplate::New(isolate, Bindings::js_builtin_constructor);
-	Vector2_constructor->SetClassName(v8::String::NewFromUtf8(isolate, "Vector2"));
-	Vector2_constructor->InstanceTemplate()->SetInternalFieldCount(2);
-	v8::Local<v8::ObjectTemplate> Vector2_prototype = Vector2_constructor->PrototypeTemplate();
-	Vector2_prototype->Set(v8::String::NewFromUtf8(isolate, "length_squared"), v8::FunctionTemplate::New(isolate, Bindings::js_builtin_method));
-	Vector2_prototype->SetAccessor(v8::String::NewFromUtf8(isolate, "x"), Bindings::js_builtin_getter, Bindings::js_builtin_setter);
-
-	global_template.Get(isolate)->Set(v8::String::NewFromUtf8(isolate, "Vector2"), Vector2_constructor);
-
+	for (int i = 0; builtin_types[i] != Variant::NIL; i++) {
+		_add_builtin_type(builtin_types[i]);
+	}
 
 	// Create JS globals
 	v8::EscapableHandleScope global_scope(isolate);
