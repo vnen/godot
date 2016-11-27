@@ -112,6 +112,27 @@ void JavaScriptLanguage::_add_builtin_type(Variant::Type p_type) {
 			v8::ReadOnly);
 	}
 
+	// Add operators
+	static const char* operators[]{
+		"add",
+		"subtract",
+		"divide",
+		"multiply",
+		"negate",
+		"is_equal",
+		"is_less",
+		"is_less_or_equal",
+		"is_greater",
+		"is_greater_or_equal",
+		NULL
+	};
+	for (int i = 0; operators[i] != NULL; i++) {
+		prototype->Set(
+			v8::String::NewFromUtf8(isolate, operators[i]),
+			v8::FunctionTemplate::New(isolate, Bindings::js_builtin_op),
+			v8::ReadOnly);
+	}
+
 	List<PropertyInfo> properties;
 	v.get_property_list(&properties);
 	for (List<PropertyInfo>::Element *E = properties.front();E;E = E->next()) {
@@ -935,5 +956,53 @@ void JavaScriptLanguage::Bindings::js_builtin_setter(v8::Local<v8::Name> p_prop,
 
 	if (valid) {
 		p_args.GetReturnValue().Set(p_value);
+	}
+}
+
+void JavaScriptLanguage::Bindings::js_builtin_op(const v8::FunctionCallbackInfo<v8::Value>& p_args) {
+
+	v8::Isolate *isolate = p_args.GetIsolate();
+
+	if (p_args.IsConstructCall()) {
+		isolate->ThrowException(v8::String::NewFromUtf8(isolate, "Can't call function as constructor"));
+		return;
+	}
+
+	v8::String::Utf8Value method_name_char(p_args.Callee()->GetName());
+	String method_name(*method_name_char);
+
+	Variant* var = JavaScriptFunctions::unwrap_variant(p_args.This());
+
+	// TODO: separate this into one function per operator?
+	if (method_name == "add") {
+		Variant result = Variant::evaluate(Variant::OP_ADD, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "subtract") {
+		Variant result = Variant::evaluate(Variant::OP_SUBSTRACT, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "divide") {
+		Variant result = Variant::evaluate(Variant::OP_DIVIDE, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "multiply") {
+		Variant result = Variant::evaluate(Variant::OP_MULTIPLY, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "negate") {
+		Variant result = Variant::evaluate(Variant::OP_NEGATE, *var, Variant());
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "is_equal") {
+		Variant result = Variant::evaluate(Variant::OP_EQUAL, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "is_less") {
+		Variant result = Variant::evaluate(Variant::OP_LESS, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "is_less_or_equal") {
+		Variant result = Variant::evaluate(Variant::OP_LESS_EQUAL, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "is_greater") {
+		Variant result = Variant::evaluate(Variant::OP_GREATER, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
+	} else if (method_name == "is_greater_or_equal") {
+		Variant result = Variant::evaluate(Variant::OP_GREATER_EQUAL, *var, JavaScriptFunctions::js_to_variant(isolate, p_args[0]));
+		p_args.GetReturnValue().Set(JavaScriptFunctions::variant_to_js(isolate, result));
 	}
 }
