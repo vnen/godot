@@ -1,4 +1,4 @@
-/*************************************************************************/
+﻿/*************************************************************************/
 /*  text_edit.h                                                          */
 /*************************************************************************/
 /*                       This file is part of:                           */
@@ -137,13 +137,37 @@ class TextEdit : public Control {
 			String data;
 		};
 
+		struct Block {
+			enum BlockType {
+				BLOCK_COMMENT,
+				BLOCK_BRACE,
+				BLOCK_BRACKET,
+				BLOCK_INDENT,
+			} type;
+			int start_line;
+			int end_line;
+			int indent_level;
+			bool folded;
+			List<Block *> children;
+			Block *parent;
+			Block() {
+				parent = NULL;
+			}
+			~Block() {
+				for (int i = 0; i < children.size(); i++)
+					memdelete(children[i]);
+			}
+		};
+
 	private:
 		const Vector<ColorRegion> *color_regions;
 		mutable Vector<Line> text;
+		List<Block *> blocks;
 		Ref<Font> font;
 		int indent_size;
 
 		void _update_line_cache(int p_line) const;
+		void _update_blocks();
 
 	public:
 		void set_indent_size(int p_indent_size);
@@ -157,11 +181,13 @@ class TextEdit : public Control {
 		bool is_marked(int p_line) const { return text[p_line].marked; }
 		void set_breakpoint(int p_line, bool p_breakpoint) { text[p_line].breakpoint = p_breakpoint; }
 		bool is_breakpoint(int p_line) const { return text[p_line].breakpoint; }
+		Block *get_block_starting_in(int p_line) const;
 		void insert(int p_at, const String &p_text);
 		void remove(int p_at);
 		int size() const { return text.size(); }
 		void clear();
 		void clear_caches();
+		_FORCE_INLINE_ const List<Block *> &get_blocks() { return blocks; }
 		_FORCE_INLINE_ const String &operator[](int p_line) const { return text[p_line].data; }
 		Text() { indent_size = 4; }
 	};
@@ -243,6 +269,8 @@ class TextEdit : public Control {
 	int line_length_guideline_col;
 	bool draw_breakpoint_gutter;
 	int breakpoint_gutter_width;
+	bool code_folding_enabled;
+	int code_folding_gutter_width;
 
 	bool highlight_all_occurrences;
 	bool scroll_past_end_of_file_enabled;

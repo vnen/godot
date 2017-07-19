@@ -1,4 +1,4 @@
-/*************************************************************************/
+﻿/*************************************************************************/
 /*  text_edit.cpp                                                        */
 /*************************************************************************/
 /*                       This file is part of:                           */
@@ -260,6 +260,17 @@ void TextEdit::Text::set(int p_line, const String &p_text) {
 
 	text[p_line].width_cache = -1;
 	text[p_line].data = p_text;
+	_update_blocks();
+}
+
+TextEdit::Text::Block *TextEdit::Text::get_block_starting_in(int p_line) const {
+
+	for (int i = 0; i < blocks.size(); i++) {
+		if (blocks[i]->start_line > p_line) return NULL;
+		if (blocks[i]->start_line == p_line) return blocks[i];
+	}
+
+	return NULL;
 }
 
 void TextEdit::Text::insert(int p_at, const String &p_text) {
@@ -270,10 +281,61 @@ void TextEdit::Text::insert(int p_at, const String &p_text) {
 	line.width_cache = -1;
 	line.data = p_text;
 	text.insert(p_at, line);
+	_update_blocks();
 }
 void TextEdit::Text::remove(int p_at) {
 
 	text.remove(p_at);
+	_update_blocks();
+}
+
+void TextEdit::Text::_update_blocks() {
+	blocks.clear();
+
+	Block *open_comment_block = NULL;
+	Block *parent_block = NULL;
+
+	for (int line_num = 0; line_num < text.size(); line_num++) {
+
+		String line = text[line_num].data;
+
+		// Comments
+		if (line.find("\"\"\"") != -1) {
+
+			int triple_quotes_count = 0;
+			int last_triple_quotes_pos = line.find("\"\"\"");
+			while (last_triple_quotes_pos != -1) {
+				last_triple_quotes_pos = line.find("\"\"\"", last_triple_quotes_pos + 3);
+				triple_quotes_count++;
+			}
+
+			if (triple_quotes_count % 2 == 1) {
+				if (open_comment_block == NULL) {
+					open_comment_block = memnew(Block);
+					open_comment_block->type = Block::BLOCK_COMMENT;
+					open_comment_block->start_line = line_num;
+					open_comment_block->end_line = -1;
+					open_comment_block->folded = false;
+					open_comment_block->indent_level = 1;
+
+					blocks.push_back(open_comment_block);
+
+					if (parent_block == NULL) {
+						parent_block = open_comment_block;
+					} else {
+						parent_block->children.push_back(open_comment_block);
+						open_comment_block->parent = parent_block;
+					}
+				} else {
+					open_comment_block->end_line = line_num;
+					open_comment_block = NULL;
+				}
+			}
+		} else {
+			// Ignore anything if still inside a comment
+			if (open_comment_block != NULL) continue;
+		}
+	}
 }
 
 void TextEdit::_update_scrollbars() {
@@ -450,7 +512,7 @@ void TextEdit::_notification(int p_what) {
 			_update_scrollbars();
 
 			RID ci = get_canvas_item();
-			int xmargin_beg = cache.style_normal->get_margin(MARGIN_LEFT) + cache.line_number_w + cache.breakpoint_gutter_width;
+			int xmargin_beg = cache.style_normal->get_margin(MARGIN_LEFT) + cache.line_number_w + cache.breakpoint_gutter_width + code_folding_gutter_width;
 			int xmargin_end = cache.size.width - cache.style_normal->get_margin(MARGIN_RIGHT);
 			//let's do it easy for now:
 			cache.style_normal->draw(ci, Rect2(Point2(), cache.size));
@@ -659,7 +721,11 @@ void TextEdit::_notification(int p_what) {
 
 			String line_num_padding = line_numbers_zero_padded ? "0" : " ";
 
-			for (int i = 0; i < visible_rows; i++) {
+			int block_idx = 0;
+			List<Text::Block *> blocks = text.get_blocks();
+
+			int folded_rows = 0;
+			for (int i = 0; i < visible_rows + folded_rows; i++) {
 
 				int line = i + cursor.line_ofs;
 
@@ -670,7 +736,7 @@ void TextEdit::_notification(int p_what) {
 
 				int char_margin = xmargin_beg - cursor.x_ofs;
 				int char_ofs = 0;
-				int ofs_y = i * get_row_height() + cache.line_spacing / 2;
+				int ofs_y = (i - folded_rows) * get_row_height() + cache.line_spacing / 2;
 				bool prev_is_char = false;
 				bool prev_is_number = false;
 				bool in_keyword = false;
@@ -705,6 +771,17 @@ void TextEdit::_notification(int p_what) {
 
 				if (line == cursor.line) {
 					VisualServer::get_singleton()->canvas_item_add_rect(ci, Rect2(0, ofs_y, xmargin_end, get_row_height()), cache.current_line_color);
+				}
+
+				if (code_folding_enabled && block_idx < blocks.size()) {
+					Text::Block *block = blocks[block_idx];
+
+					if (block->start_line == line) {
+						char fold = '-';
+						if (block->folded) fold = '+';
+						cache.font->draw_char(ci, Point2(xmargin_beg - code_folding_gutter_width, ofs_y + cache.font->get_ascent()), fold);
+						block_idx++;
+					}
 				}
 
 				// draw breakpoint marker
@@ -1031,6 +1108,15 @@ void TextEdit::_notification(int p_what) {
 							int caret_w = (block_caret) ? char_w : 1;
 							VisualServer::get_singleton()->canvas_item_add_rect(ci, Rect2(cursor_pos, Size2i(caret_w, get_row_height())), cache.caret_color);
 						}
+					}
+				}
+
+				if (code_folding_enabled) {
+					Text::Block *starting_block = text.get_block_starting_in(line);
+					if (starting_block != NULL && starting_block->folded) {
+						int to_fold = 1 + (starting_block->end_line - starting_block->start_line);
+						folded_rows += to_fold;
+						i += to_fold;
 					}
 				}
 			}
@@ -1524,6 +1610,17 @@ void TextEdit::_gui_input(const Ref<InputEvent> &p_gui_input) {
 						set_line_as_breakpoint(row, !is_line_set_as_breakpoint(row));
 						emit_signal("breakpoint_toggled", row);
 						return;
+					}
+				}
+
+				// Fold/unfold code
+				if (code_folding_enabled) {
+					int gutter = cache.style_normal->get_margin(MARGIN_LEFT) + cache.line_number_w + cache.breakpoint_gutter_width;
+					if (mb->get_position().x > gutter && mb->get_position().x <= gutter + code_folding_gutter_width) {
+						Text::Block *block = text.get_block_starting_in(row);
+						if (block != NULL) {
+							block->folded = !block->folded;
+						}
 					}
 				}
 
@@ -4643,6 +4740,8 @@ TextEdit::TextEdit() {
 	cache.line_number_w = 1;
 	cache.breakpoint_gutter_width = 0;
 	breakpoint_gutter_width = 0;
+	code_folding_enabled = true;
+	code_folding_gutter_width = 20;
 
 	indent_size = 4;
 	text.set_indent_size(indent_size);
