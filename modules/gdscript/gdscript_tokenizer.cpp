@@ -121,6 +121,7 @@ const char *GDScriptTokenizer::token_names[TK_MAX] = {
 	"'.'",
 	"'?'",
 	"':'",
+	"'->'",
 	"'$'",
 	"'\\n'",
 	"PI",
@@ -701,6 +702,9 @@ void GDScriptTokenizerText::_advance() {
 					_make_token(TK_OP_MINUS_MINUS);
 					INCPOS(1);
 				*/
+				} else if (GETCHAR(1) == '>') {
+					_make_token(TK_FORWARD_ARROW);
+					INCPOS(1);
 				} else {
 					_make_token(TK_OP_SUB);
 				}

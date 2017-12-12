@@ -33,8 +33,16 @@
 #include "gdscript.h"
 #include "io/resource_loader.h"
 #include "os/file_access.h"
+
 #include "print_string.h"
 #include "script_language.h"
+
+#define GDSCRIPT_DEBUG_TYPES
+#ifdef GDSCRIPT_DEBUG_TYPES
+#define GDPARSER_DEBUG_PRINT(m_text) print_line(m_text)
+#else
+#define GDPARSER_DEBUG_PRINT(m_text)
+#endif
 
 template <class T>
 T *GDScriptParser::alloc_node() {
@@ -2473,6 +2481,21 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 
 				int var_line = tokenizer->get_token_line();
 
+				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
+					// Has type
+					tokenizer->advance();
+
+					if (!tokenizer->is_token_literal()) {
+						_set_error("Expected type for local variable.");
+						return;
+					}
+
+					StringName type = tokenizer->get_token_literal();
+					GDPARSER_DEBUG_PRINT("got local var type: " + String(type));
+
+					tokenizer->advance();
+				}
+
 				//must know when the local variable is declared
 				LocalVarNode *lv = alloc_node<LocalVarNode>();
 				lv->name = n;
@@ -3244,6 +3267,21 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 						tokenizer->advance();
 
+						if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
+							// Has type
+							tokenizer->advance();
+
+							if (!tokenizer->is_token_literal(0, false)) {
+								_set_error("Expected type for function argument");
+								return;
+							}
+
+							StringName type = tokenizer->get_token_literal();
+							GDPARSER_DEBUG_PRINT("got function type: " + String(type));
+
+							tokenizer->advance();
+						}
+
 						if (defaulting && tokenizer->get_token() != GDScriptTokenizer::TK_OP_ASSIGN) {
 
 							_set_error("Default parameter expected.");
@@ -3294,6 +3332,21 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				}
 
 				tokenizer->advance();
+
+				if (tokenizer->get_token() == GDScriptTokenizer::TK_FORWARD_ARROW) {
+					// Has type
+					tokenizer->advance();
+
+					if (!tokenizer->is_token_literal()) {
+						_set_error("Expected function return type.");
+						return;
+					}
+
+					StringName type = tokenizer->get_token_literal();
+					GDPARSER_DEBUG_PRINT("got function return: " + String(type));
+
+					tokenizer->advance();
+				}
 
 				BlockNode *block = alloc_node<BlockNode>();
 				block->parent_class = p_class;
@@ -4050,6 +4103,22 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				rpc_mode = ScriptInstance::RPC_MODE_DISABLED;
 
+				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
+					// Type information
+					tokenizer->advance();
+
+					if (!tokenizer->is_token_literal(0, false)) {
+
+						_set_error("Expected variable type.");
+						return;
+					}
+
+					StringName type = tokenizer->get_token_literal();
+					GDPARSER_DEBUG_PRINT("got member var type: " + String(type));
+
+					tokenizer->advance();
+				}
+
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_OP_ASSIGN) {
 
 #ifdef DEBUG_ENABLED
@@ -4207,6 +4276,21 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				constant.identifier = tokenizer->get_token_literal();
 				tokenizer->advance();
+
+				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
+					// Has type
+					tokenizer->advance();
+
+					if (!tokenizer->is_token_literal()) {
+						_set_error("Expected type for constant.");
+						return;
+					}
+
+					StringName type = tokenizer->get_token_literal();
+					GDPARSER_DEBUG_PRINT("got const type: " + String(type));
+
+					tokenizer->advance();
+				}
 
 				if (tokenizer->get_token() != GDScriptTokenizer::TK_OP_ASSIGN) {
 					_set_error("Constant expects assignment.");

@@ -1726,6 +1726,7 @@ void GDScriptLanguage::get_reserved_words(List<String> *p_words) const {
 		"NAN",
 		"self",
 		"true",
+		"void",
 		// functions
 		"assert",
 		"breakpoint",
