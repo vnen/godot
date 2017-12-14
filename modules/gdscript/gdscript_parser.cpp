@@ -3284,6 +3284,8 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				Vector<StringName> arguments;
 				Vector<Node *> default_values;
+				Vector<DataType> argument_types;
+				DataType return_type;
 
 				int fnline = tokenizer->get_token_line();
 
@@ -3313,20 +3315,17 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 						tokenizer->advance();
 
+						DataType datatype;
+
 						if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
 							// Has type
-							tokenizer->advance();
-
-							if (!tokenizer->is_token_literal(0, false)) {
+							if (!_parse_type(&datatype)) {
 								_set_error("Expected type for function argument");
 								return;
 							}
-
-							StringName type = tokenizer->get_token_literal();
-							GDPARSER_DEBUG_PRINT("got function type: " + String(type));
-
-							tokenizer->advance();
 						}
+
+						argument_types.push_back(datatype);
 
 						if (defaulting && tokenizer->get_token() != GDScriptTokenizer::TK_OP_ASSIGN) {
 
@@ -3342,6 +3341,12 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 							Node *defval = _parse_and_reduce_expression(p_class, _static);
 							if (!defval || error_set)
 								return;
+
+							if (!_is_type_compatible(&datatype, defval->get_datatype())) {
+								// type mismatch
+								_set_error("Invalid type for argument default value.");
+								return;
+							}
 
 							OperatorNode *on = alloc_node<OperatorNode>();
 							on->op = OperatorNode::OP_ASSIGN;
@@ -3381,17 +3386,10 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_FORWARD_ARROW) {
 					// Has type
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal()) {
-						_set_error("Expected function return type.");
+					if (!_parse_type(&return_type, true)) {
+						_set_error("Expected type for function return.");
 						return;
 					}
-
-					StringName type = tokenizer->get_token_literal();
-					GDPARSER_DEBUG_PRINT("got function return: " + String(type));
-
-					tokenizer->advance();
 				}
 
 				BlockNode *block = alloc_node<BlockNode>();
@@ -3460,6 +3458,8 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				function->name = name;
 				function->arguments = arguments;
 				function->default_values = default_values;
+				function->argument_types = argument_types;
+				function->return_type = return_type;
 				function->_static = _static;
 				function->line = fnline;
 
@@ -4489,7 +4489,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 	}
 }
 
-bool GDScriptParser::_parse_type(DataType* p_datatype) {
+bool GDScriptParser::_parse_type(DataType* p_datatype, bool p_can_be_void) {
 	tokenizer->advance();
 
 	p_datatype->has_type = true;
@@ -4512,6 +4512,9 @@ bool GDScriptParser::_parse_type(DataType* p_datatype) {
 #endif
 		case GDScriptTokenizer::TK_IDENTIFIER: {
 			p_datatype->base_type = tokenizer->get_token_identifier();
+			if (!p_can_be_void && p_datatype->base_type == "void") {
+				return false;
+			}
 			p_datatype->variant_type = Variant::OBJECT;
 		} break;
 		case GDScriptTokenizer::TK_BUILT_IN_TYPE: {

@@ -143,7 +143,10 @@ public:
 		StringName name;
 		Vector<StringName> arguments;
 		Vector<Node *> default_values;
+		Vector<DataType> argument_types;
 		BlockNode *body;
+		DataType return_type;
+		virtual DataType *get_datatype() { return &return_type; }
 
 		FunctionNode() {
 			type = TYPE_FUNCTION;
@@ -546,7 +549,7 @@ private:
 	void _parse_block(BlockNode *p_block, bool p_static);
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
-	bool _parse_type(DataType* p_datatype);
+	bool _parse_type(DataType* p_datatype, bool p_can_be_void = false);
 	bool _is_type_compatible(DataType* p_type_a, DataType* p_type_b);
 	bool _end_statement();
 
