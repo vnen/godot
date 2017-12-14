@@ -39,6 +39,17 @@
 
 class GDScriptParser {
 public:
+	struct DataType {
+		StringName base_type;
+		Variant::Type variant_type;
+		bool has_type; // No type defined/a true variant
+
+		DataType() {
+			has_type = false;
+			variant_type = Variant::NIL;
+		}
+	};
+
 	struct Node {
 
 		enum Type {
@@ -65,6 +76,8 @@ public:
 		int column;
 		Type type;
 
+		virtual DataType *get_datatype() { return NULL; }
+
 		virtual ~Node() {}
 	};
 
@@ -90,6 +103,7 @@ public:
 			int line;
 			Node *expression;
 			ScriptInstance::RPCMode rpc_mode;
+			DataType data_type;
 		};
 		struct Constant {
 			StringName identifier;
@@ -185,17 +199,28 @@ public:
 			type = TYPE_LOCAL_VAR;
 			assign = NULL;
 		}
+		DataType data_type;
+		virtual DataType *get_datatype() { return &data_type; };
 	};
 
 	struct ConstantNode : public Node {
 		Variant value;
+		DataType constant_type;
+		virtual DataType *get_datatype() { return &constant_type; }
 		ConstantNode() { type = TYPE_CONSTANT; }
 	};
 
 	struct ArrayNode : public Node {
 
 		Vector<Node *> elements;
-		ArrayNode() { type = TYPE_ARRAY; }
+		DataType array_type;
+		virtual DataType *get_datatype() { return &array_type; }
+		ArrayNode() {
+			type = TYPE_ARRAY;
+			array_type.has_type = true;
+			array_type.variant_type = Variant::ARRAY;
+		}
+
 	};
 
 	struct DictionaryNode : public Node {
@@ -207,7 +232,13 @@ public:
 		};
 
 		Vector<Pair> elements;
-		DictionaryNode() { type = TYPE_DICTIONARY; }
+		DataType dict_type;
+		virtual DataType *get_datatype() { return &dict_type; }
+		DictionaryNode() {
+			type = TYPE_DICTIONARY;
+			dict_type.has_type = true;
+			dict_type.variant_type = Variant::DICTIONARY;
+		}
 	};
 
 	struct SelfNode : public Node {
@@ -273,6 +304,8 @@ public:
 		Operator op;
 
 		Vector<Node *> arguments;
+		DataType return_type;
+		virtual DataType *get_datatype() { return &return_type; }
 		OperatorNode() { type = TYPE_OPERATOR; }
 	};
 
@@ -513,6 +546,8 @@ private:
 	void _parse_block(BlockNode *p_block, bool p_static);
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
+	bool _parse_type(DataType* p_datatype);
+	bool _is_type_compatible(DataType* p_type_a, DataType* p_type_b);
 	bool _end_statement();
 
 	Error _parse(const String &p_base_path);

@@ -37,7 +37,7 @@
 #include "print_string.h"
 #include "script_language.h"
 
-#define GDSCRIPT_DEBUG_TYPES
+//#define GDSCRIPT_DEBUG_TYPES
 #ifdef GDSCRIPT_DEBUG_TYPES
 #define GDPARSER_DEBUG_PRINT(m_text) print_line(m_text)
 #else
@@ -339,6 +339,11 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			OperatorNode *op = alloc_node<OperatorNode>();
 			op->op = OperatorNode::OP_CALL;
 
+			// Set expression type
+			op->return_type.has_type = true;
+			op->return_type.variant_type = Variant::OBJECT;
+			op->return_type.base_type = StringName("Node");
+
 			op->arguments.push_back(alloc_node<SelfNode>());
 
 			IdentifierNode *funcname = alloc_node<IdentifierNode>();
@@ -361,6 +366,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = tokenizer->get_token_constant();
+			constant->constant_type.variant_type = constant->value.get_type();
+			constant->constant_type.has_type = true;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_PI) {
@@ -368,6 +375,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_PI;
+			constant->constant_type.variant_type = Variant::REAL;
+			constant->constant_type.has_type = true;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_TAU) {
@@ -375,6 +384,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_TAU;
+			constant->constant_type.variant_type = Variant::REAL;
+			constant->constant_type.has_type = true;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_INF) {
@@ -382,6 +393,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_INF;
+			constant->constant_type.variant_type = Variant::REAL;
+			constant->constant_type.has_type = true;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_NAN) {
@@ -389,6 +402,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_NAN;
+			constant->constant_type.variant_type = Variant::REAL;
+			constant->constant_type.has_type = true;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PR_PRELOAD) {
@@ -1327,6 +1342,11 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				op->line = op_line; //line might have been changed from a \n
 				expression[i].is_op = false;
 				expression[i].node = op;
+				// The type of this node is the same as its argument
+				DataType *arg_type = expression[i + 1].node->get_datatype();
+				if (arg_type) {
+					op->return_type = *arg_type;
+				}
 				expression.remove(i + 1);
 			}
 
@@ -1501,6 +1521,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 			OperatorNode *op = static_cast<OperatorNode *>(p_node);
 
 			bool all_constants = true;
+			bool all_have_type = true;
 			int last_not_constant = -1;
 
 			for (int i = 0; i < op->arguments.size(); i++) {
@@ -1509,6 +1530,10 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 				if (op->arguments[i]->type != Node::TYPE_CONSTANT) {
 					all_constants = false;
 					last_not_constant = i;
+				}
+				DataType *datatype = op->arguments[i]->get_datatype();
+				if (!(datatype && datatype->has_type)) {
+					all_have_type = false;
 				}
 			}
 
@@ -1591,6 +1616,8 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 
 					ConstantNode *cn = alloc_node<ConstantNode>();
 					cn->value = v;
+					cn->constant_type.has_type = true;
+					cn->constant_type.variant_type = v.get_type();
 					return cn;
 
 				} else if (op->arguments[0]->type == Node::TYPE_BUILT_IN_FUNCTION && last_not_constant == 0) {
@@ -1620,6 +1647,8 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 
 					ConstantNode *cn = alloc_node<ConstantNode>();
 					cn->value = v;
+					cn->constant_type.has_type = true;
+					cn->constant_type.variant_type = v.get_type();
 					return cn;
 
 				} /*else if (op->arguments[0]->type==Node::TYPE_CONSTANT && op->arguments[1]->type==Node::TYPE_IDENTIFIER) {
@@ -1658,6 +1687,11 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 
 					ConstantNode *cn = alloc_node<ConstantNode>();
 					cn->value = v;
+					cn->constant_type.has_type = true;
+					cn->constant_type.variant_type = v.get_type();
+					if (v.get_type() == Variant::OBJECT) {
+						cn->constant_type.base_type = ((Object*)v)->get_class_name();
+					}
 					return cn;
 				}
 
@@ -1711,6 +1745,8 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 	}                                                                                                      \
 	ConstantNode *cn = alloc_node<ConstantNode>();                                                         \
 	cn->value = res;                                                                                       \
+	cn->constant_type.has_type = true;                                                                     \
+	cn->constant_type.variant_type = res.get_type();                                                       \
 	return cn;
 
 #define _REDUCE_BINARY(m_vop)                                                                                                                         \
@@ -1724,6 +1760,8 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 	}                                                                                                                                                 \
 	ConstantNode *cn = alloc_node<ConstantNode>();                                                                                                    \
 	cn->value = res;                                                                                                                                  \
+	cn->constant_type.has_type = true;                                                                                                                \
+    cn->constant_type.variant_type = res.get_type();                                                                                                  \
 	return cn;
 
 			switch (op->op) {
@@ -2481,23 +2519,21 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 
 				int var_line = tokenizer->get_token_line();
 
+				LocalVarNode *lv = alloc_node<LocalVarNode>();
+
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
 					// Has type
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal()) {
+					if (!_parse_type(&lv->data_type)) {
 						_set_error("Expected type for local variable.");
 						return;
 					}
 
-					StringName type = tokenizer->get_token_literal();
-					GDPARSER_DEBUG_PRINT("got local var type: " + String(type));
-
-					tokenizer->advance();
+					GDPARSER_DEBUG_PRINT("got local var type: ");
+					GDPARSER_DEBUG_PRINT("variant  : " + Variant::get_type_name(lv->get_datatype()->variant_type));
+					GDPARSER_DEBUG_PRINT("base type: " + String(lv->get_datatype()->base_type));
 				}
 
 				//must know when the local variable is declared
-				LocalVarNode *lv = alloc_node<LocalVarNode>();
 				lv->name = n;
 				p_block->statements.push_back(lv);
 
@@ -2506,6 +2542,10 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_OP_ASSIGN) {
 
 					tokenizer->advance();
+
+					int assign_line = tokenizer->get_token_line();
+					int assign_column = tokenizer->get_token_column();
+
 					Node *subexpr = _parse_and_reduce_expression(p_block, p_static);
 					if (!subexpr) {
 						if (_recover_from_completion()) {
@@ -2514,10 +2554,16 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 						return;
 					}
 
+					if (!_is_type_compatible(lv->get_datatype(), subexpr->get_datatype())) {
+						_set_error("Expression type is incompatible with variable type.", assign_line, assign_column);
+						return;
+					}
+
 					lv->assign = subexpr;
 					assigned = subexpr;
 				} else {
 
+					// TODO: Get default value for type?
 					ConstantNode *c = alloc_node<ConstantNode>();
 					c->value = Variant();
 					assigned = c;
@@ -4441,6 +4487,68 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 			} break;
 		}
 	}
+}
+
+bool GDScriptParser::_parse_type(DataType* p_datatype) {
+	tokenizer->advance();
+
+	p_datatype->has_type = true;
+
+	switch (tokenizer->get_token()) {
+		// No string typing for now
+		// Would be same logic as `extends` but doesn't look good
+#if 0
+		case GDScriptTokenizer::TK_CONSTANT: {
+			Variant constant = tokenizer->get_token_constant();
+			if (constant.get_type() != Variant::STRING) {
+
+				_set_error("Type constrain must be a string.");
+				return;
+			}
+
+			p_datatype->base_type = StringName(constant);
+			p_datatype->variant_type = Variant::OBJECT;
+		} break;
+#endif
+		case GDScriptTokenizer::TK_IDENTIFIER: {
+			p_datatype->base_type = tokenizer->get_token_identifier();
+			p_datatype->variant_type = Variant::OBJECT;
+		} break;
+		case GDScriptTokenizer::TK_BUILT_IN_TYPE: {
+			p_datatype->variant_type = tokenizer->get_token_type();
+		} break;
+		default: {
+			return false;
+		}
+	}
+
+	tokenizer->advance();
+	return true;
+}
+
+bool GDScriptParser::_is_type_compatible(DataType* p_type_a, DataType* p_type_b) {
+	// Defaults to true since if the check isn't possible should be
+	// assumed to be until it fails
+	bool is_compatible = true;
+
+	if (!p_type_a | !p_type_b) {
+		// No datatype to check
+		return is_compatible;
+	}
+	if (!p_type_a->has_type || !p_type_b->has_type) {
+		// Datatypes aren't detected by the parser
+		return is_compatible;
+	}
+
+	is_compatible = p_type_a->variant_type == p_type_b->variant_type;
+
+	if (p_type_a->variant_type == Variant::OBJECT && p_type_b->variant_type == Variant::NIL ||
+		p_type_a->variant_type == Variant::NIL && p_type_b->variant_type == Variant::OBJECT) {
+		// Nil is compatible with Object
+		is_compatible = true;
+	}
+
+	return is_compatible;
 }
 
 void GDScriptParser::_set_error(const String &p_error, int p_line, int p_column) {
