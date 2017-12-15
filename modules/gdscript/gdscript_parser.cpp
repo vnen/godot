@@ -1690,7 +1690,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 					cn->constant_type.has_type = true;
 					cn->constant_type.variant_type = v.get_type();
 					if (v.get_type() == Variant::OBJECT) {
-						cn->constant_type.base_type = ((Object*)v)->get_class_name();
+						cn->constant_type.base_type = ((Object *)v)->get_class_name();
 					}
 					return cn;
 				}
@@ -1761,7 +1761,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 	ConstantNode *cn = alloc_node<ConstantNode>();                                                                                                    \
 	cn->value = res;                                                                                                                                  \
 	cn->constant_type.has_type = true;                                                                                                                \
-    cn->constant_type.variant_type = res.get_type();                                                                                                  \
+	cn->constant_type.variant_type = res.get_type();                                                                                                  \
 	return cn;
 
 			switch (op->op) {
@@ -2543,8 +2543,13 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 
 					tokenizer->advance();
 
+#ifdef DEBUG_ENABLED
 					int assign_line = tokenizer->get_token_line();
 					int assign_column = tokenizer->get_token_column();
+#else
+					int assign_line = 0;
+					int assign_column = 0;
+#endif
 
 					Node *subexpr = _parse_and_reduce_expression(p_block, p_static);
 					if (!subexpr) {
@@ -4150,25 +4155,37 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				rpc_mode = ScriptInstance::RPC_MODE_DISABLED;
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
-					// Type information
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal(0, false)) {
-
-						_set_error("Expected variable type.");
+					// Has type
+					if (!_parse_type(&member.data_type)) {
+						_set_error("Expected member variable type.");
 						return;
 					}
+				}
 
-					StringName type = tokenizer->get_token_literal();
-					GDPARSER_DEBUG_PRINT("got member var type: " + String(type));
+				// Export uses member explicit type by default
+				if (autoexport && member.data_type.has_type) {
+					member._export.usage |= PROPERTY_USAGE_SCRIPT_VARIABLE;
+					member._export.type = member.data_type.variant_type;
 
-					tokenizer->advance();
+					// If the type is an object, look at the class db to see if it's a resource
+					if (member.data_type.variant_type == Variant::OBJECT) {
+						if (!ClassDB::is_parent_class(member.data_type.base_type, "Resource")) {
+							_set_error("Exported type is not a built-in type or resource.");
+							return;
+						}
+						member._export.hint = PROPERTY_HINT_RESOURCE_TYPE;
+						member._export.hint_string = member.data_type.base_type;
+					}
 				}
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_OP_ASSIGN) {
 
 #ifdef DEBUG_ENABLED
 					int line = tokenizer->get_token_line();
+					int assign_column = tokenizer->get_token_column();
+#else
+					int line = 0;
+					int assign_column = 0;
 #endif
 					tokenizer->advance();
 
@@ -4177,6 +4194,11 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 						if (_recover_from_completion()) {
 							break;
 						}
+						return;
+					}
+
+					if (!_is_type_compatible(&member.data_type, subexpr->get_datatype())) {
+						_set_error("Invalid type for member variable default value.", line, assign_column);
 						return;
 					}
 
@@ -4196,50 +4218,46 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 					member.expression = subexpr;
 
-					if (autoexport) {
-						if (1) /*(subexpr->type==Node::TYPE_ARRAY) {
+					if (autoexport && !member.data_type.has_type) {
+						if (subexpr->type != Node::TYPE_CONSTANT) {
 
-							member._export.type=Variant::ARRAY;
+							_set_error("Type-less export needs a constant expression assigned to infer type.");
+							return;
+						}
 
-						} else if (subexpr->type==Node::TYPE_DICTIONARY) {
+						ConstantNode *cn = static_cast<ConstantNode *>(subexpr);
+						if (cn->value.get_type() == Variant::NIL) {
 
-							member._export.type=Variant::DICTIONARY;
-
-						} else*/ {
-
-							if (subexpr->type != Node::TYPE_CONSTANT) {
-
-								_set_error("Type-less export needs a constant expression assigned to infer type.");
+							_set_error("Can't accept a null constant expression for inferring export type.");
+							return;
+						}
+						member._export.type = cn->value.get_type();
+						member._export.usage |= PROPERTY_USAGE_SCRIPT_VARIABLE;
+						if (cn->value.get_type() == Variant::OBJECT) {
+							Object *obj = cn->value;
+							Resource *res = Object::cast_to<Resource>(obj);
+							if (res == NULL) {
+								_set_error("Exported constant not a type or resource.");
 								return;
 							}
-
-							ConstantNode *cn = static_cast<ConstantNode *>(subexpr);
-							if (cn->value.get_type() == Variant::NIL) {
-
-								_set_error("Can't accept a null constant expression for inferring export type.");
-								return;
-							}
-							member._export.type = cn->value.get_type();
-							member._export.usage |= PROPERTY_USAGE_SCRIPT_VARIABLE;
-							if (cn->value.get_type() == Variant::OBJECT) {
-								Object *obj = cn->value;
-								Resource *res = Object::cast_to<Resource>(obj);
-								if (res == NULL) {
-									_set_error("Exported constant not a type or resource.");
-									return;
-								}
-								member._export.hint = PROPERTY_HINT_RESOURCE_TYPE;
-								member._export.hint_string = res->get_class();
-							}
+							member._export.hint = PROPERTY_HINT_RESOURCE_TYPE;
+							member._export.hint_string = res->get_class();
 						}
 					}
 #ifdef TOOLS_ENABLED
+					if (member.data_type.has_type) {
+						// Construct default value if there's a type but nothing was assigned
+						Variant::CallError err;
+						member.default_value = Variant::construct(member.data_type.variant_type, NULL, 0, err);
+					}
 					if (subexpr->type == Node::TYPE_CONSTANT && member._export.type != Variant::NIL) {
 
 						ConstantNode *cn = static_cast<ConstantNode *>(subexpr);
 						if (cn->value.get_type() != Variant::NIL) {
 							member.default_value = cn->value;
 						}
+						cn->constant_type.has_type = true;
+						cn->constant_type.variant_type = cn->value.get_type();
 					}
 #endif
 
@@ -4266,7 +4284,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				} else {
 
-					if (autoexport) {
+					if (autoexport && !member.data_type.has_type) {
 
 						_set_error("Type-less export needs a constant expression assigned to infer type.");
 						return;
@@ -4325,23 +4343,24 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
 					// Has type
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal()) {
+					if (!_parse_type(&constant.data_type)) {
 						_set_error("Expected type for constant.");
 						return;
 					}
-
-					StringName type = tokenizer->get_token_literal();
-					GDPARSER_DEBUG_PRINT("got const type: " + String(type));
-
-					tokenizer->advance();
 				}
 
 				if (tokenizer->get_token() != GDScriptTokenizer::TK_OP_ASSIGN) {
 					_set_error("Constant expects assignment.");
 					return;
 				}
+
+#ifdef DEBUG_ENABLED
+				int assign_line = tokenizer->get_token_line();
+				int assign_column = tokenizer->get_token_column();
+#else
+				int assign_line = 0;
+				int assign_column = 0;
+#endif
 
 				tokenizer->advance();
 
@@ -4354,14 +4373,19 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				}
 
 				if (subexpr->type != Node::TYPE_CONSTANT) {
-					_set_error("Expected constant expression");
+					_set_error("Expected constant expression.");
 				}
+
+				if (!_is_type_compatible(&constant.data_type, subexpr->get_datatype())) {
+					_set_error("Invalid type for constant value.", assign_line, assign_column);
+				}
+
 				constant.expression = subexpr;
 
 				p_class->constant_expressions.push_back(constant);
 
 				if (!_end_statement()) {
-					_set_error("Expected end of statement (constant)");
+					_set_error("Expected end of statement (constant).");
 					return;
 				}
 
@@ -4437,12 +4461,18 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 							last_assign = last_assign + 1;
 							ConstantNode *cn = alloc_node<ConstantNode>();
 							cn->value = last_assign;
+							cn->constant_type.has_type = true;
+							cn->constant_type.variant_type = Variant::INT;
 							constant.expression = cn;
 						}
 
 						if (tokenizer->get_token() == GDScriptTokenizer::TK_COMMA) {
 							tokenizer->advance();
 						}
+
+						// Enum constants are always integers
+						constant.data_type.has_type = true;
+						constant.data_type.variant_type = Variant::INT;
 
 						if (enum_name != "") {
 							const ConstantNode *cn = static_cast<const ConstantNode *>(constant.expression);
@@ -4456,8 +4486,12 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				if (enum_name != "") {
 					ClassNode::Constant enum_constant;
 					enum_constant.identifier = enum_name;
+					enum_constant.data_type.has_type = true;
+					enum_constant.data_type.variant_type = Variant::DICTIONARY;
 					ConstantNode *cn = alloc_node<ConstantNode>();
 					cn->value = enum_dict;
+					cn->constant_type.has_type = true;
+					cn->constant_type.variant_type = Variant::DICTIONARY;
 					enum_constant.expression = cn;
 					p_class->constant_expressions.push_back(enum_constant);
 				}
@@ -4489,14 +4523,14 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 	}
 }
 
-bool GDScriptParser::_parse_type(DataType* p_datatype, bool p_can_be_void) {
+bool GDScriptParser::_parse_type(DataType *p_datatype, bool p_can_be_void) {
 	tokenizer->advance();
 
 	p_datatype->has_type = true;
 
 	switch (tokenizer->get_token()) {
-		// No string typing for now
-		// Would be same logic as `extends` but doesn't look good
+	// No string typing for now
+	// Would be same logic as `extends` but doesn't look good
 #if 0
 		case GDScriptTokenizer::TK_CONSTANT: {
 			Variant constant = tokenizer->get_token_constant();
@@ -4529,7 +4563,7 @@ bool GDScriptParser::_parse_type(DataType* p_datatype, bool p_can_be_void) {
 	return true;
 }
 
-bool GDScriptParser::_is_type_compatible(DataType* p_type_a, DataType* p_type_b) {
+bool GDScriptParser::_is_type_compatible(DataType *p_type_a, DataType *p_type_b) {
 	// Defaults to true since if the check isn't possible should be
 	// assumed to be until it fails
 	bool is_compatible = true;
@@ -4546,7 +4580,7 @@ bool GDScriptParser::_is_type_compatible(DataType* p_type_a, DataType* p_type_b)
 	is_compatible = p_type_a->variant_type == p_type_b->variant_type;
 
 	if (p_type_a->variant_type == Variant::OBJECT && p_type_b->variant_type == Variant::NIL ||
-		p_type_a->variant_type == Variant::NIL && p_type_b->variant_type == Variant::OBJECT) {
+			p_type_a->variant_type == Variant::NIL && p_type_b->variant_type == Variant::OBJECT) {
 		// Nil is compatible with Object
 		is_compatible = true;
 	}

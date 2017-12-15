@@ -108,6 +108,7 @@ public:
 		struct Constant {
 			StringName identifier;
 			Node *expression;
+			DataType data_type;
 		};
 
 		struct Signal {
@@ -223,7 +224,6 @@ public:
 			array_type.has_type = true;
 			array_type.variant_type = Variant::ARRAY;
 		}
-
 	};
 
 	struct DictionaryNode : public Node {
@@ -549,8 +549,8 @@ private:
 	void _parse_block(BlockNode *p_block, bool p_static);
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
-	bool _parse_type(DataType* p_datatype, bool p_can_be_void = false);
-	bool _is_type_compatible(DataType* p_type_a, DataType* p_type_b);
+	bool _parse_type(DataType *p_datatype, bool p_can_be_void = false);
+	bool _is_type_compatible(DataType *p_type_a, DataType *p_type_b);
 	bool _end_statement();
 
 	Error _parse(const String &p_base_path);
