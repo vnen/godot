@@ -90,6 +90,8 @@ public:
 
 	Control *get_base_control();
 
+	void set_plugin_enabled(const String &p_plugin, bool p_enabled);
+
 	Error save_scene();
 	void save_scene_as(const String &p_scene, bool p_with_preview = true);
 

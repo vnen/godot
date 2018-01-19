@@ -235,6 +235,10 @@ Control *EditorInterface::get_base_control() {
 	return EditorNode::get_singleton()->get_gui_base();
 }
 
+void EditorInterface::set_plugin_enabled(const String &p_plugin, bool p_enabled) {
+	EditorNode::get_singleton()->set_addon_plugin_enabled(p_plugin, p_enabled);
+}
+
 Error EditorInterface::save_scene() {
 	if (!get_edited_scene_root())
 		return ERR_CANT_CREATE;
@@ -270,6 +274,8 @@ void EditorInterface::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("make_mesh_previews", "meshes", "preview_size"), &EditorInterface::_make_mesh_previews);
 	ClassDB::bind_method(D_METHOD("select_file", "p_file"), &EditorInterface::select_file);
 	ClassDB::bind_method(D_METHOD("get_selected_path"), &EditorInterface::get_selected_path);
+
+	ClassDB::bind_method(D_METHOD("set_plugin_enabled", "plugin", "enabled"), &EditorInterface::set_plugin_enabled);
 
 	ClassDB::bind_method(D_METHOD("save_scene"), &EditorInterface::save_scene);
 	ClassDB::bind_method(D_METHOD("save_scene_as", "path", "with_preview"), &EditorInterface::save_scene_as, DEFVAL(true));
