@@ -192,6 +192,8 @@ public:
 	struct IdentifierNode : public Node {
 
 		StringName name;
+		DataType datatype;
+		virtual DataType *get_datatype() { return &datatype; }
 		IdentifierNode() { type = TYPE_IDENTIFIER; }
 	};
 

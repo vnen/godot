@@ -507,6 +507,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = res;
+			constant->constant_type.has_type = true;
+			constant->constant_type.variant_type = Variant::OBJECT;
+			constant->constant_type.base_type = res->get_class_name();
 
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PR_YIELD) {
@@ -736,6 +739,11 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 					//check from constants
 					ConstantNode *constant = alloc_node<ConstantNode>();
 					constant->value = GDScriptLanguage::get_singleton()->get_global_array()[GDScriptLanguage::get_singleton()->get_global_map()[identifier]];
+					constant->constant_type.has_type = true;
+					constant->constant_type.variant_type = constant->value.get_type();
+					if (constant->value.get_type() == Variant::OBJECT) {
+						constant->constant_type.base_type = ((Object *)constant->value)->get_class_name();
+					}
 					expr = constant;
 					bfn = true;
 				}
@@ -744,6 +752,28 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			if (!bfn) {
 				IdentifierNode *id = alloc_node<IdentifierNode>();
 				id->name = identifier;
+				bool type_found = false;
+				// Check global variable
+				for (int i = 0; i < cln->variables.size(); i++) {
+					if (cln->variables[i].identifier == identifier) {
+						id->datatype = cln->variables[i].data_type;
+						type_found = true;
+						break;
+					}
+				}
+				FunctionNode *cfn = current_function;
+				if (!type_found && cfn) {
+					// Check current function arguments
+					for (int i = 0; i < cfn->arguments.size(); i++) {
+						if (cfn->arguments[i] == identifier) {
+							id->datatype = cfn->argument_types[i];
+							type_found = true;
+							break;
+						}
+					}
+					// TODO: Check current block and parents for variables
+				}
+
 				expr = id;
 			}
 
@@ -2567,10 +2597,15 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 					lv->assign = subexpr;
 					assigned = subexpr;
 				} else {
-
-					// TODO: Get default value for type?
 					ConstantNode *c = alloc_node<ConstantNode>();
-					c->value = Variant();
+					// Get default value for tyoe
+					if (lv->data_type.has_type) {
+						Variant::CallError ce;
+						c->value = Variant::construct(lv->data_type.variant_type, NULL, 0, ce);
+						c->constant_type = lv->data_type;
+					} else {
+						c->value = Variant();
+					}
 					assigned = c;
 				}
 				//must be added later, to avoid self-referencing.
@@ -2899,14 +2934,28 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 					p_block->statements.push_back(cf_return);
 					if (!_end_statement()) {
 						return;
+					} else {
+						// If the return type is anything other than void, this should error out
+						DataType *type = current_function->get_datatype();
+						if (type && type->has_type && type->variant_type != Variant::NIL) {
+							_set_error("Missing return value.");
+							return;
+						}
 					}
 				} else {
 					//expect expression
+					int line = tokenizer->get_token_line();
+					int column = tokenizer->get_token_column();
 					Node *retexpr = _parse_and_reduce_expression(p_block, p_static);
 					if (!retexpr) {
 						if (_recover_from_completion()) {
 							break;
 						}
+						return;
+					}
+					// Return type must match current function
+					if (!_is_type_compatible(current_function->get_datatype(), retexpr->get_datatype())) {
+						_set_error("Return value type does not match function return type.", line, column);
 						return;
 					}
 					cf_return->arguments.push_back(retexpr);
@@ -3481,6 +3530,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				current_block = block;
 				_parse_block(block, _static);
 				current_block = NULL;
+				current_function = NULL;
 
 				//arguments
 			} break;
@@ -4546,10 +4596,15 @@ bool GDScriptParser::_parse_type(DataType *p_datatype, bool p_can_be_void) {
 #endif
 		case GDScriptTokenizer::TK_IDENTIFIER: {
 			p_datatype->base_type = tokenizer->get_token_identifier();
-			if (!p_can_be_void && p_datatype->base_type == "void") {
-				return false;
+			if (p_datatype->base_type == "void") {
+				if (!p_can_be_void) {
+					return false;
+				} else {
+					p_datatype->variant_type == Variant::NIL;
+				}
+			} else {
+				p_datatype->variant_type = Variant::OBJECT;
 			}
-			p_datatype->variant_type = Variant::OBJECT;
 		} break;
 		case GDScriptTokenizer::TK_BUILT_IN_TYPE: {
 			p_datatype->variant_type = tokenizer->get_token_type();
@@ -4579,9 +4634,8 @@ bool GDScriptParser::_is_type_compatible(DataType *p_type_a, DataType *p_type_b)
 
 	is_compatible = p_type_a->variant_type == p_type_b->variant_type;
 
-	if (p_type_a->variant_type == Variant::OBJECT && p_type_b->variant_type == Variant::NIL ||
-			p_type_a->variant_type == Variant::NIL && p_type_b->variant_type == Variant::OBJECT) {
-		// Nil is compatible with Object
+	if (p_type_a->variant_type == Variant::OBJECT && p_type_b->variant_type == Variant::NIL) {
+		// Object variable can have Nil, but not the other way around
 		is_compatible = true;
 	}
 
