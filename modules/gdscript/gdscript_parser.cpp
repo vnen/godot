@@ -526,6 +526,10 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 			OperatorNode *yield = alloc_node<OperatorNode>();
 			yield->op = OperatorNode::OP_YIELD;
+			// Yield should always return a GDScriptFunctionState
+			yield->return_type.has_type = true;
+			yield->return_type.variant_type = Variant::OBJECT;
+			yield->return_type.base_type = "GDScriptFunctionState";
 
 			while (tokenizer->get_token() == GDScriptTokenizer::TK_NEWLINE) {
 				tokenizer->advance();
@@ -644,6 +648,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 				ConstantNode *cn = alloc_node<ConstantNode>();
 				cn->value = Variant::get_numeric_constant_value(bi_type, identifier);
+				cn->constant_type.has_type = true;
+				cn->constant_type.variant_type = Variant::INT;
 				expr = cn;
 			}
 
@@ -701,6 +707,14 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 				IdentifierNode *id = alloc_node<IdentifierNode>();
 				id->name = identifier;
+				for (int i = 0; i < current_class->functions.size(); i++) {
+					if (current_class->functions[i]->name == identifier) {
+						DataType *data_type = current_class->functions[i]->get_datatype();
+						if (data_type && data_type->has_type) {
+							id->data_type = *data_type;
+						}
+					}
+				}
 				op->arguments.push_back(id);
 				tokenizer->advance(1);
 			}
@@ -756,7 +770,7 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				// Check global variable
 				for (int i = 0; i < cln->variables.size(); i++) {
 					if (cln->variables[i].identifier == identifier) {
-						id->datatype = cln->variables[i].data_type;
+						id->data_type = cln->variables[i].data_type;
 						type_found = true;
 						break;
 					}
@@ -766,12 +780,23 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 					// Check current function arguments
 					for (int i = 0; i < cfn->arguments.size(); i++) {
 						if (cfn->arguments[i] == identifier) {
-							id->datatype = cfn->argument_types[i];
+							id->data_type = cfn->argument_types[i];
 							type_found = true;
 							break;
 						}
 					}
-					// TODO: Check current block and parents for variables
+				}
+				BlockNode *bln = current_block;
+				while (!type_found && cfn && bln) {
+					for (int i = 0; i < bln->variables.size(); i++) {
+						if (bln->variables[i] == identifier) {
+							id->data_type = bln->variable_types[i];
+							type_found = true;
+							break;
+						}
+					}
+
+					bln = bln->parent_block;
 				}
 
 				expr = id;
@@ -2611,9 +2636,11 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 				//must be added later, to avoid self-referencing.
 				p_block->variables.push_back(n); //line?
 				p_block->variable_lines.push_back(var_line);
+				p_block->variable_types.push_back(lv->data_type);
 
 				IdentifierNode *id = alloc_node<IdentifierNode>();
 				id->name = n;
+				id->data_type = lv->data_type;
 
 				OperatorNode *op = alloc_node<OperatorNode>();
 				op->op = OperatorNode::OP_ASSIGN;
@@ -2892,9 +2919,11 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 				// inside this _parse_block
 				cf_for->body->variables.push_back(id->name);
 				cf_for->body->variable_lines.push_back(id->line);
+				cf_for->body->variable_types.push_back(id->data_type);
 				_parse_block(cf_for->body, p_static);
 				cf_for->body->variables.remove(0);
 				cf_for->body->variable_lines.remove(0);
+				cf_for->body->variable_types.remove(0);
 				current_block = p_block;
 
 				if (error_set)
@@ -2929,6 +2958,14 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 				ControlFlowNode *cf_return = alloc_node<ControlFlowNode>();
 				cf_return->cf_type = ControlFlowNode::CF_RETURN;
 
+#if DEBUG_ENABLED
+				int line = tokenizer->get_token_line();
+				int column = tokenizer->get_token_column();
+#else
+				int line = 0;
+				int column = 0;
+#endif
+
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_SEMICOLON || tokenizer->get_token() == GDScriptTokenizer::TK_NEWLINE || tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
 					//expect end of statement
 					p_block->statements.push_back(cf_return);
@@ -2938,14 +2975,19 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 						// If the return type is anything other than void, this should error out
 						DataType *type = current_function->get_datatype();
 						if (type && type->has_type && type->variant_type != Variant::NIL) {
-							_set_error("Missing return value.");
+							_set_error("Missing return value.", line, column);
 							return;
 						}
 					}
 				} else {
-					//expect expression
+				//expect expression
+#if DEBUG_ENABLED
 					int line = tokenizer->get_token_line();
 					int column = tokenizer->get_token_column();
+#else
+					int line = 0;
+					int column = 0;
+#endif
 					Node *retexpr = _parse_and_reduce_expression(p_block, p_static);
 					if (!retexpr) {
 						if (_recover_from_completion()) {
@@ -4573,10 +4615,10 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 	}
 }
 
-bool GDScriptParser::_parse_type(DataType *p_datatype, bool p_can_be_void) {
+bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 	tokenizer->advance();
 
-	p_datatype->has_type = true;
+	r_datatype->has_type = true;
 
 	switch (tokenizer->get_token()) {
 	// No string typing for now
@@ -4590,24 +4632,24 @@ bool GDScriptParser::_parse_type(DataType *p_datatype, bool p_can_be_void) {
 				return;
 			}
 
-			p_datatype->base_type = StringName(constant);
-			p_datatype->variant_type = Variant::OBJECT;
+			r_datatype->base_type = StringName(constant);
+			r_datatype->variant_type = Variant::OBJECT;
 		} break;
 #endif
 		case GDScriptTokenizer::TK_IDENTIFIER: {
-			p_datatype->base_type = tokenizer->get_token_identifier();
-			if (p_datatype->base_type == "void") {
+			r_datatype->base_type = tokenizer->get_token_identifier();
+			if (r_datatype->base_type == "void") {
 				if (!p_can_be_void) {
 					return false;
 				} else {
-					p_datatype->variant_type == Variant::NIL;
+					r_datatype->variant_type = Variant::NIL;
 				}
 			} else {
-				p_datatype->variant_type = Variant::OBJECT;
+				r_datatype->variant_type = Variant::OBJECT;
 			}
 		} break;
 		case GDScriptTokenizer::TK_BUILT_IN_TYPE: {
-			p_datatype->variant_type = tokenizer->get_token_type();
+			r_datatype->variant_type = tokenizer->get_token_type();
 		} break;
 		default: {
 			return false;

@@ -160,10 +160,12 @@ public:
 
 		ClassNode *parent_class;
 		BlockNode *parent_block;
-		Map<StringName, int> locals;
+		// Not used anywhere?
+		//Map<StringName, int> locals;
 		List<Node *> statements;
 		Vector<StringName> variables;
 		Vector<int> variable_lines;
+		Vector<DataType> variable_types;
 
 		Node *if_condition; //tiny hack to improve code completion on if () blocks
 
@@ -182,7 +184,15 @@ public:
 	struct TypeNode : public Node {
 
 		Variant::Type vtype;
-		TypeNode() { type = TYPE_TYPE; }
+		DataType data_type;
+		DataType *get_datatype() {
+			data_type.variant_type = vtype;
+			return &data_type;
+		}
+		TypeNode() {
+			data_type.has_type = true;
+			type = TYPE_TYPE;
+		}
 	};
 	struct BuiltInFunctionNode : public Node {
 		GDScriptFunctions::Function function;
@@ -192,8 +202,8 @@ public:
 	struct IdentifierNode : public Node {
 
 		StringName name;
-		DataType datatype;
-		virtual DataType *get_datatype() { return &datatype; }
+		DataType data_type;
+		virtual DataType *get_datatype() { return &data_type; }
 		IdentifierNode() { type = TYPE_IDENTIFIER; }
 	};
 
@@ -551,7 +561,7 @@ private:
 	void _parse_block(BlockNode *p_block, bool p_static);
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
-	bool _parse_type(DataType *p_datatype, bool p_can_be_void = false);
+	bool _parse_type(DataType *r_datatype, bool p_can_be_void = false);
 	bool _is_type_compatible(DataType *p_type_a, DataType *p_type_b);
 	bool _end_statement();
 
