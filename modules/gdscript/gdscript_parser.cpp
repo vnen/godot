@@ -1593,6 +1593,8 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 			}
 
 			if (op->op == OperatorNode::OP_IS) {
+				op->return_type.has_type = true;
+				op->return_type.variant_type = Variant::BOOL;
 				//nothing much
 				return op;
 			}
@@ -1621,14 +1623,20 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 
 					Variant::CallError ce;
 					Variant v;
+					DataType data_type;
 
 					if (op->arguments[0]->type == Node::TYPE_TYPE) {
 						TypeNode *tn = static_cast<TypeNode *>(op->arguments[0]);
 						v = Variant::construct(tn->vtype, vptr, ptrs.size(), ce);
-
+						data_type.has_type = true;
+						data_type.variant_type = tn->vtype;
 					} else {
 						GDScriptFunctions::Function func = static_cast<BuiltInFunctionNode *>(op->arguments[0])->function;
 						GDScriptFunctions::call(func, vptr, ptrs.size(), v, ce);
+						MethodInfo &info = GDScriptFunctions::get_info(func);
+						data_type.has_type = true;
+						data_type.variant_type = info.return_val.type;
+						data_type.base_type = info.return_val.class_name;
 					}
 
 					if (ce.error != Variant::CallError::CALL_OK) {
@@ -1671,11 +1679,41 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 
 					ConstantNode *cn = alloc_node<ConstantNode>();
 					cn->value = v;
-					cn->constant_type.has_type = true;
-					cn->constant_type.variant_type = v.get_type();
+					cn->constant_type = data_type;
 					return cn;
 
-				} else if (op->arguments[0]->type == Node::TYPE_BUILT_IN_FUNCTION && last_not_constant == 0) {
+				} else if (op->arguments[0]->type == Node::TYPE_BUILT_IN_FUNCTION) {
+					// Can't reduce but can get the return type and validate arguments
+					GDScriptFunctions::Function func = static_cast<BuiltInFunctionNode *>(op->arguments[0])->function;
+					MethodInfo &info = GDScriptFunctions::get_info(func);
+
+					if (false && (info.flags & METHOD_FLAG_VARARG) == 0) {
+						// Only check for arguments if not var arg
+						String errwhere = String("'") + GDScriptFunctions::get_func_name(func) + "'' intrinsic function";
+						if (op->arguments.size() - 1 < (info.arguments.size() - info.default_arguments.size())) {
+							_set_error("Too few arguments for " + errwhere + ".", op->line);
+							return p_node;
+						}
+						if (op->arguments.size() - 1 > info.arguments.size()) {
+							_set_error("Too many arguments for " + errwhere + ".", op->line);
+							return p_node;
+						}
+						for (int i = 1; i < op->arguments.size(); i++) {
+							DataType arg_type;
+							arg_type.has_type = true;
+							arg_type.variant_type = info.arguments[i - 1].type;
+							arg_type.base_type = info.arguments[i - 1].class_name;
+
+							if (!_is_type_compatible(&arg_type, op->arguments[i]->get_datatype())) {
+								_set_error("Invalid arguments for " + errwhere + ".", op->line);
+								return p_node;
+							}
+						}
+					}
+
+					op->return_type.has_type = true;
+					op->return_type.variant_type = info.return_val.type;
+					op->return_type.base_type = info.return_val.class_name;
 				}
 
 				return op; //don't reduce yet
@@ -1753,7 +1791,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 				return op;
 			}
 
-			//validate assignment (don't assign to cosntant expression
+			//validate assignment (don't assign to constant expression
 			switch (op->op) {
 
 				case OperatorNode::OP_ASSIGN:
