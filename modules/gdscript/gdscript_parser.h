@@ -76,7 +76,7 @@ public:
 		int column;
 		Type type;
 
-		virtual DataType *get_datatype() { return NULL; }
+		virtual DataType get_datatype() { return DataType(); }
 
 		virtual ~Node() {}
 	};
@@ -147,7 +147,7 @@ public:
 		Vector<DataType> argument_types;
 		BlockNode *body;
 		DataType return_type;
-		virtual DataType *get_datatype() { return &return_type; }
+		virtual DataType get_datatype() { return return_type; }
 
 		FunctionNode() {
 			type = TYPE_FUNCTION;
@@ -185,9 +185,9 @@ public:
 
 		Variant::Type vtype;
 		DataType data_type;
-		DataType *get_datatype() {
+		DataType get_datatype() {
 			data_type.variant_type = vtype;
-			return &data_type;
+			return data_type;
 		}
 		TypeNode() {
 			data_type.has_type = true;
@@ -203,7 +203,7 @@ public:
 
 		StringName name;
 		DataType data_type;
-		virtual DataType *get_datatype() { return &data_type; }
+		virtual DataType get_datatype() { return data_type; }
 		IdentifierNode() { type = TYPE_IDENTIFIER; }
 	};
 
@@ -216,13 +216,13 @@ public:
 			assign = NULL;
 		}
 		DataType data_type;
-		virtual DataType *get_datatype() { return &data_type; };
+		virtual DataType get_datatype() { return data_type; };
 	};
 
 	struct ConstantNode : public Node {
 		Variant value;
 		DataType constant_type;
-		virtual DataType *get_datatype() { return &constant_type; }
+		virtual DataType get_datatype() { return constant_type; }
 		ConstantNode() { type = TYPE_CONSTANT; }
 	};
 
@@ -230,7 +230,7 @@ public:
 
 		Vector<Node *> elements;
 		DataType array_type;
-		virtual DataType *get_datatype() { return &array_type; }
+		virtual DataType get_datatype() { return array_type; }
 		ArrayNode() {
 			type = TYPE_ARRAY;
 			array_type.has_type = true;
@@ -248,7 +248,7 @@ public:
 
 		Vector<Pair> elements;
 		DataType dict_type;
-		virtual DataType *get_datatype() { return &dict_type; }
+		virtual DataType get_datatype() { return dict_type; }
 		DictionaryNode() {
 			type = TYPE_DICTIONARY;
 			dict_type.has_type = true;
@@ -320,7 +320,7 @@ public:
 
 		Vector<Node *> arguments;
 		DataType return_type;
-		virtual DataType *get_datatype() { return &return_type; }
+		virtual DataType get_datatype() { return return_type; }
 		OperatorNode() { type = TYPE_OPERATOR; }
 	};
 
@@ -562,7 +562,7 @@ private:
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
 	bool _parse_type(DataType *r_datatype, bool p_can_be_void = false);
-	bool _is_type_compatible(DataType *p_type_a, DataType *p_type_b);
+	bool _is_type_compatible(const DataType &p_type_a, const DataType &p_type_b);
 	bool _end_statement();
 
 	Error _parse(const String &p_base_path);

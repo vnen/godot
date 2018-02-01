@@ -709,9 +709,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				id->name = identifier;
 				for (int i = 0; i < current_class->functions.size(); i++) {
 					if (current_class->functions[i]->name == identifier) {
-						DataType *data_type = current_class->functions[i]->get_datatype();
-						if (data_type && data_type->has_type) {
-							id->data_type = *data_type;
+						DataType &data_type = current_class->functions[i]->get_datatype();
+						if (data_type.has_type) {
+							id->data_type = data_type;
 						}
 					}
 				}
@@ -1398,9 +1398,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				expression[i].is_op = false;
 				expression[i].node = op;
 				// The type of this node is the same as its argument
-				DataType *arg_type = expression[i + 1].node->get_datatype();
-				if (arg_type) {
-					op->return_type = *arg_type;
+				DataType &arg_type = expression[i + 1].node->get_datatype();
+				if (arg_type.has_type) {
+					op->return_type = arg_type;
 				}
 				expression.remove(i + 1);
 			}
@@ -1586,8 +1586,8 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 					all_constants = false;
 					last_not_constant = i;
 				}
-				DataType *datatype = op->arguments[i]->get_datatype();
-				if (!(datatype && datatype->has_type)) {
+				DataType &datatype = op->arguments[i]->get_datatype();
+				if (!datatype.has_type) {
 					all_have_type = false;
 				}
 			}
@@ -1704,7 +1704,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 							arg_type.variant_type = info.arguments[i - 1].type;
 							arg_type.base_type = info.arguments[i - 1].class_name;
 
-							if (!_is_type_compatible(&arg_type, op->arguments[i]->get_datatype())) {
+							if (!_is_type_compatible(arg_type, op->arguments[i]->get_datatype())) {
 								_set_error("Invalid arguments for " + errwhere + ".", op->line);
 								return p_node;
 							}
@@ -3011,8 +3011,8 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 						return;
 					} else {
 						// If the return type is anything other than void, this should error out
-						DataType *type = current_function->get_datatype();
-						if (type && type->has_type && type->variant_type != Variant::NIL) {
+						DataType &type = current_function->get_datatype();
+						if (type.has_type && type.variant_type != Variant::NIL) {
 							_set_error("Missing return value.", line, column);
 							return;
 						}
@@ -3476,7 +3476,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 							if (!defval || error_set)
 								return;
 
-							if (!_is_type_compatible(&datatype, defval->get_datatype())) {
+							if (!_is_type_compatible(datatype, defval->get_datatype())) {
 								// type mismatch
 								_set_error("Invalid type for argument default value.");
 								return;
@@ -4327,7 +4327,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 						return;
 					}
 
-					if (!_is_type_compatible(&member.data_type, subexpr->get_datatype())) {
+					if (!_is_type_compatible(member.data_type, subexpr->get_datatype())) {
 						_set_error("Invalid type for member variable default value.", line, assign_column);
 						return;
 					}
@@ -4506,7 +4506,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 					_set_error("Expected constant expression.");
 				}
 
-				if (!_is_type_compatible(&constant.data_type, subexpr->get_datatype())) {
+				if (!_is_type_compatible(constant.data_type, subexpr->get_datatype())) {
 					_set_error("Invalid type for constant value.", assign_line, assign_column);
 				}
 
@@ -4698,23 +4698,19 @@ bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 	return true;
 }
 
-bool GDScriptParser::_is_type_compatible(DataType *p_type_a, DataType *p_type_b) {
+bool GDScriptParser::_is_type_compatible(const DataType &p_type_a, const DataType &p_type_b) {
 	// Defaults to true since if the check isn't possible should be
 	// assumed to be until it fails
 	bool is_compatible = true;
 
-	if (!p_type_a | !p_type_b) {
-		// No datatype to check
-		return is_compatible;
-	}
-	if (!p_type_a->has_type || !p_type_b->has_type) {
+	if (!p_type_a.has_type || !p_type_b.has_type) {
 		// Datatypes aren't detected by the parser
 		return is_compatible;
 	}
 
-	is_compatible = p_type_a->variant_type == p_type_b->variant_type;
+	is_compatible = p_type_a.variant_type == p_type_b.variant_type;
 
-	if (p_type_a->variant_type == Variant::OBJECT && p_type_b->variant_type == Variant::NIL) {
+	if (p_type_a.variant_type == Variant::OBJECT && p_type_b.variant_type == Variant::NIL) {
 		// Object variable can have Nil, but not the other way around
 		is_compatible = true;
 	}
