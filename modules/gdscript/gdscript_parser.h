@@ -40,7 +40,7 @@
 class GDScriptParser {
 public:
 	struct DataType {
-		StringName base_type;
+		StringName class_name;
 		Variant::Type variant_type;
 		bool has_type; // No type defined/a true variant
 
@@ -107,6 +107,7 @@ public:
 		};
 		struct Constant {
 			StringName identifier;
+			int line;
 			Node *expression;
 			DataType data_type;
 		};
@@ -187,6 +188,7 @@ public:
 		DataType data_type;
 		DataType get_datatype() {
 			data_type.variant_type = vtype;
+			data_type.class_name = "Object";
 			return data_type;
 		}
 		TypeNode() {
@@ -543,6 +545,8 @@ private:
 
 	ScriptInstance::RPCMode rpc_mode;
 
+	bool type_check;
+
 	void _set_error(const String &p_error, int p_line = -1, int p_column = -1);
 	bool _recover_from_completion();
 
@@ -562,8 +566,17 @@ private:
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
 	bool _parse_type(DataType *r_datatype, bool p_can_be_void = false);
-	bool _is_type_compatible(const DataType &p_type_a, const DataType &p_type_b);
 	bool _end_statement();
+
+	void _check_class_types(ClassNode *p_class);
+	void _check_function_types(FunctionNode *p_function);
+	void _check_block_types(BlockNode *p_block);
+	void _check_variable_assign_type(const ClassNode::Member &p_var, Node *p_assign);
+	DataType _lookup_node_type(Node *p_node, int p_line);
+	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line) const;
+	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const;
+	bool _is_type_compatible(const DataType &p_type_a, const DataType &p_type_b);
+	String _get_type_string(const DataType &p_type) const;
 
 	Error _parse(const String &p_base_path);
 
