@@ -33,7 +33,6 @@
 #include "gdscript.h"
 #include "io/resource_loader.h"
 #include "os/file_access.h"
-
 #include "print_string.h"
 #include "script_language.h"
 
@@ -4595,8 +4594,84 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 	// Members
 	for (int i = 0; i < p_class->variables.size(); i++) {
 		ClassNode::Member &v = p_class->variables[i];
+		if (!v.data_type.has_type) continue; // Don't bother with non-typed ones
+
 		_check_variable_assign_type(v, v.expression);
 		if (error_set) return;
+
+		// Check the export hint
+		if (v._export.type != Variant::NIL) {
+			DataType export_type;
+			export_type.has_type = true;
+			export_type.variant_type = v._export.type;
+			export_type.class_name = v._export.class_name;
+
+			if (!_is_type_compatible(v.data_type, export_type)) {
+				_set_error("Export hint type does not match the variable type.", v.line);
+				return;
+			}
+		}
+
+		// Check the setter and getter
+		if (v.setter == StringName() && v.getter == StringName()) continue;
+
+		bool found_getter = false;
+		bool found_setter = false;
+		for (int j = 0; j < p_class->functions.size(); j++) {
+			if (v.setter == p_class->functions[j]->name) {
+				found_setter = true;
+				FunctionNode *setter = p_class->functions[j];
+
+				if (setter->arguments.size() != 1) {
+					_set_error("Setter function needs to receive exactly 1 argument. See " + setter->name + " definition at line " + itos(setter->line) + ".", v.line);
+					return;
+				}
+				if (!_is_type_compatible(v.data_type, setter->argument_types[0])) {
+					_set_error("Setter argument type (" + _get_type_string(setter->argument_types[0]) + ") doesn't match the variable's type (" + _get_type_string(v.data_type) + "). See " + setter->name + " definition at line " + itos(setter->line) + ".", v.line);
+					return;
+				}
+				continue;
+			}
+			if (v.getter == p_class->functions[j]->name) {
+				found_getter = true;
+				FunctionNode *getter = p_class->functions[j];
+
+				if (getter->arguments.size() != 0) {
+					_set_error("Getter function can't receive arguments. See " + getter->name + " definition at line " + itos(getter->line) + ".", v.line);
+					return;
+				}
+				if (!_is_type_compatible(v.data_type, getter->get_datatype())) {
+					_set_error("Getter return type (" + _get_type_string(getter->get_datatype()) + ") doesn't match the variable's type (" + _get_type_string(v.data_type) + "). See " + getter->name + " definition at line " + itos(getter->line) + ".", v.line);
+					return;
+				}
+			}
+		}
+
+		if ((found_getter || v.getter == StringName()) && (found_setter || v.setter == StringName())) continue;
+
+		// Check for static functions
+		for (int j = 0; j < p_class->static_functions.size(); j++) {
+			if (v.setter == p_class->static_functions[j]->name) {
+				FunctionNode *setter = p_class->static_functions[j];
+				_set_error("Setter can't be a static function. See " + setter->name + " definition at line " + itos(setter->line) + ".", v.line);
+				return;
+			}
+			if (v.getter == p_class->static_functions[j]->name) {
+				FunctionNode *getter = p_class->static_functions[j];
+				_set_error("Getter can't be a static function. See " + getter->name + " definition at line " + itos(getter->line) + ".", v.line);
+				return;
+			}
+		}
+
+		if (!found_setter && v.setter != StringName()) {
+			_set_error("Setter function is not defined.", v.line);
+			return;
+		}
+
+		if (!found_getter && v.getter != StringName()) {
+			_set_error("Getter function is not defined.", v.line);
+			return;
+		}
 	}
 
 	// Inner classes
@@ -4677,16 +4752,6 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 				OperatorNode *op = static_cast<OperatorNode *>(statement);
 
 				switch (op->op) {
-					case OperatorNode::OP_ASSIGN_ADD:
-					case OperatorNode::OP_ASSIGN_SUB:
-					case OperatorNode::OP_ASSIGN_MUL:
-					case OperatorNode::OP_ASSIGN_DIV:
-					case OperatorNode::OP_ASSIGN_MOD:
-					case OperatorNode::OP_ASSIGN_SHIFT_LEFT:
-					case OperatorNode::OP_ASSIGN_SHIFT_RIGHT:
-					case OperatorNode::OP_ASSIGN_BIT_AND:
-					case OperatorNode::OP_ASSIGN_BIT_OR:
-					case OperatorNode::OP_ASSIGN_BIT_XOR:
 					case OperatorNode::OP_ASSIGN: {
 						if (op->arguments.size() < 2) {
 							_set_error("Parser bug: operation without enough arguments.", op->line, op->column);
@@ -4712,6 +4777,10 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 
 						if (error_set) return;
 					} break;
+					case OperatorNode::OP_CALL: {
+						_check_call_args_types(op);
+						if (error_set) return;
+					}
 				}
 			} break;
 			case GDScriptParser::Node::TYPE_CONTROL_FLOW: {
@@ -4774,6 +4843,176 @@ void GDScriptParser::_check_variable_assign_type(const ClassNode::Member &p_var,
 	}
 }
 
+void GDScriptParser::_check_call_args_types(OperatorNode *p_call) {
+
+	// Should never be called without at least one argument
+	switch (p_call->arguments[0]->type) {
+		case Node::TYPE_BUILT_IN_FUNCTION: {
+			BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(p_call->arguments[0]);
+			MethodInfo &mi = GDScriptFunctions::get_info(func->function);
+
+			// No checking for varargs (for now)
+			if (mi.flags & METHOD_FLAG_VARARG) break;
+
+			if (p_call->arguments.size() - 1 < mi.arguments.size() - mi.default_arguments.size()) {
+				_set_error("Too few arguments for " + mi.name + "() call. Expected at least " + itos(mi.arguments.size() - mi.default_arguments.size()) + ".", p_call->line);
+				return;
+			}
+			if (p_call->arguments.size() - 1 > mi.arguments.size()) {
+				_set_error("Too many arguments for " + mi.name + "() call. Expected at most " + itos(mi.arguments.size()) + ".", p_call->line);
+				return;
+			}
+
+			for (int i = 1; i < p_call->arguments.size(); i++) {
+				DataType arg_type;
+				arg_type.has_type = true;
+				arg_type.variant_type = mi.arguments[i - 1].type;
+				arg_type.class_name = mi.arguments[i - 1].class_name;
+
+				DataType par_type = _lookup_node_type(p_call->arguments[i], p_call->line);
+
+				if (!_is_type_compatible(arg_type, par_type)) {
+					_set_error("At " + mi.name + "() call, argument " + itos(i) + ". Assigned type (" +
+									   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
+							p_call->line);
+					return;
+				}
+			}
+		} break;
+		case Node::TYPE_TYPE: {
+			// Built-in constructor
+			TypeNode *tn = static_cast<TypeNode *>(p_call->arguments[0]);
+
+			Vector<DataType> par_types;
+			par_types.resize(p_call->arguments.size() - 1);
+			for (int i = 1; i < p_call->arguments.size(); i++) {
+				par_types[i - 1] = _lookup_node_type(p_call->arguments[i], p_call->line);
+			}
+
+			if (error_set) return;
+
+			bool match = false;
+			List<MethodInfo> constructors;
+			Variant::get_constructor_list(tn->vtype, &constructors);
+
+			for (List<MethodInfo>::Element *E = constructors.front(); E; E = E->next()) {
+				MethodInfo &mi = E->get();
+
+				if (p_call->arguments.size() - 1 < mi.arguments.size() - mi.default_arguments.size()) {
+					continue;
+				}
+				if (p_call->arguments.size() - 1 > mi.arguments.size()) {
+					continue;
+				}
+
+				bool types_match = true;
+				for (int i = 0; i < par_types.size(); i++) {
+					DataType arg_type;
+					arg_type.has_type = true;
+					arg_type.variant_type = mi.arguments[i].type;
+					arg_type.class_name = mi.arguments[i].class_name;
+
+					if (!_is_type_compatible(arg_type, par_types[i])) {
+						types_match = false;
+						break;
+					}
+				}
+
+				if (types_match) {
+					match = true;
+					break;
+				}
+			}
+
+			if (!match) {
+				String err = "No constructor of ";
+				err += Variant::get_type_name(tn->vtype);
+				err += " matches the signature ";
+				err += Variant::get_type_name(tn->vtype) + "(";
+				for (int i = 0; i < par_types.size(); i++) {
+					if (i > 0) err += ", ";
+					err += _get_type_string(par_types[i]);
+				}
+				err += ").";
+				_set_error(err, p_call->line, p_call->column);
+			}
+		} break;
+		case Node::TYPE_SELF: {
+			switch (p_call->arguments[1]->type) {
+				case Node::TYPE_IDENTIFIER: {
+					IdentifierNode *id = static_cast<IdentifierNode *>(p_call->arguments[1]);
+
+					bool found = false;
+
+					for (int i = 0; i < current_class->static_functions.size(); i++) {
+						FunctionNode *func = current_class->static_functions[i];
+						if (id->name == func->name) {
+							found = true;
+
+							if (p_call->arguments.size() - 2 < func->arguments.size() - func->default_values.size()) {
+								_set_error("Too few arguments for " + func->name + "() call. Expected at least " + itos(func->arguments.size() - func->default_values.size()) + ".", p_call->line);
+								return;
+							}
+							if (p_call->arguments.size() - 2 > func->arguments.size()) {
+								_set_error("Too many arguments for " + func->name + "() call. Expected at most " + itos(func->arguments.size()) + ".", p_call->line);
+								return;
+							}
+							for (int i = 2; i < p_call->arguments.size(); i++) {
+								DataType arg_type = func->argument_types[i - 2];
+								DataType par_type = _lookup_node_type(p_call->arguments[i], p_call->line);
+
+								if (!_is_type_compatible(arg_type, par_type)) {
+									_set_error("At " + func->name + "() call, argument " + itos(i - 1) + ". Assigned type (" +
+													   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
+											p_call->line);
+									return;
+								}
+							}
+							break;
+						}
+					}
+
+					if (found) break;
+
+					for (int i = 0; i < current_class->functions.size(); i++) {
+						FunctionNode *func = current_class->functions[i];
+						if (id->name == func->name) {
+							found = true;
+
+							if (current_function && current_function->_static) {
+								_set_error("Can't call non-static function " + func->name + " from the body of a static function", p_call->line, p_call->column);
+								return;
+							}
+
+							if (p_call->arguments.size() - 2 < func->arguments.size() - func->default_values.size()) {
+								_set_error("Too few arguments for " + func->name + "() call. Expected at least " + itos(func->arguments.size() - func->default_values.size()) + ".", p_call->line);
+								return;
+							}
+							if (p_call->arguments.size() - 2 > func->arguments.size()) {
+								_set_error("Too many arguments for " + func->name + "() call. Expected at most " + itos(func->arguments.size()) + ".", p_call->line);
+								return;
+							}
+							for (int i = 2; i < p_call->arguments.size(); i++) {
+								DataType arg_type = func->argument_types[i - 2];
+								DataType par_type = _lookup_node_type(p_call->arguments[i], p_call->line);
+
+								if (!_is_type_compatible(arg_type, par_type)) {
+									_set_error("At " + func->name + "() call, argument " + itos(i - 1) + ". Assigned type (" +
+													   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
+											p_call->line);
+									return;
+								}
+							}
+							break;
+						}
+					}
+
+				} break;
+			}
+		} break;
+	}
+}
+
 GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_line) {
 
 	switch (p_node->type) {
@@ -4792,9 +5031,16 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 			switch (op->op) {
 				case OperatorNode::OP_CALL: {
 					if (op->arguments.size() < 1) {
-						_set_error("Parser bug: self method call without enough arguments.", p_line);
+						_set_error("Parser bug: function call without enough arguments.", p_line);
 						ERR_FAIL_V(DataType());
 					}
+					// This is a "lookup" but this operation won't be tested again
+					// So it's the only place to check the call arguments
+					// It's also recursive, which can be good or bad
+					// TODO: Find a better time to check this
+					_check_call_args_types(op);
+					if (error_set) return DataType();
+
 					switch (op->arguments[0]->type) {
 						case GDScriptParser::Node::TYPE_BUILT_IN_FUNCTION: {
 							BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(op->arguments[0]);
@@ -4836,6 +5082,7 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 							}
 						} break;
 					}
+
 				} break;
 			}
 		} break;
@@ -4920,7 +5167,7 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_type_a, const DataTyp
 
 String GDScriptParser::_get_type_string(const DataType &p_type) const {
 	if (!p_type.has_type) {
-		return "No type";
+		return "Variant";
 	}
 	if (p_type.variant_type == Variant::OBJECT) {
 		return String(p_type.class_name);

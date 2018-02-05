@@ -572,6 +572,7 @@ private:
 	void _check_function_types(FunctionNode *p_function);
 	void _check_block_types(BlockNode *p_block);
 	void _check_variable_assign_type(const ClassNode::Member &p_var, Node *p_assign);
+	void _check_call_args_types(OperatorNode *p_call);
 	DataType _lookup_node_type(Node *p_node, int p_line);
 	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line) const;
 	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const;
