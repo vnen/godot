@@ -3316,16 +3316,14 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				tokenizer->advance();
 
+				DataType return_type;
+
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_FORWARD_ARROW) {
 					// Has type
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal()) {
+					if (!_parse_type(&return_type, true)) {
 						_set_error("Expected function return type.");
 						return;
 					}
-
-					tokenizer->advance();
 				}
 
 				BlockNode *block = alloc_node<BlockNode>();
@@ -3396,6 +3394,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				function->default_values = default_values;
 				function->_static = _static;
 				function->line = fnline;
+				function->return_type = return_type;
 
 				function->rpc_mode = rpc_mode;
 				rpc_mode = ScriptInstance::RPC_MODE_DISABLED;
@@ -4085,14 +4084,10 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
 					// Has type
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal()) {
+					if (!_parse_type(&(member.datatype))) {
 						_set_error("Expected type for class member.");
 						return;
 					}
-
-					tokenizer->advance();
 				}
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_OP_ASSIGN) {
@@ -4255,14 +4250,10 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
 					// Has type
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal()) {
+					if (!_parse_type(&(constant.datatype))) {
 						_set_error("Expected type for constant.");
 						return;
 					}
-
-					tokenizer->advance();
 				}
 
 				if (tokenizer->get_token() != GDScriptTokenizer::TK_OP_ASSIGN) {
@@ -4414,6 +4405,36 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 			} break;
 		}
 	}
+}
+
+bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
+
+	tokenizer->advance();
+
+	switch (tokenizer->get_token()) {
+		case GDScriptTokenizer::TK_IDENTIFIER: {
+			r_datatype->variant_type = Variant::OBJECT;
+			r_datatype->class_name = tokenizer->get_token_identifier();
+			if (r_datatype->class_name == "void") {
+				if (!p_can_be_void) {
+					return false;
+				} else {
+					r_datatype->variant_type = Variant::NIL;
+				}
+			}
+		} break;
+		case GDScriptTokenizer::TK_BUILT_IN_TYPE: {
+			r_datatype->variant_type = tokenizer->get_token_type();
+			r_datatype->class_name = StringName("Object");
+		} break;
+		default: {
+			return false;
+		} break;
+	}
+
+	r_datatype->has_type = true;
+	tokenizer->advance();
+	return true;
 }
 
 void GDScriptParser::_set_error(const String &p_error, int p_line, int p_column) {

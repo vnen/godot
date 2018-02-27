@@ -39,6 +39,17 @@
 
 class GDScriptParser {
 public:
+	struct DataType {
+		bool has_type;
+		Variant::Type variant_type;
+		StringName class_name;
+
+		DataType() {
+			has_type = false;
+			variant_type = Variant::NIL;
+		}
+	};
+
 	struct Node {
 
 		enum Type {
@@ -65,6 +76,8 @@ public:
 		int column;
 		Type type;
 
+		virtual DataType get_datatype() { return DataType(); }
+
 		virtual ~Node() {}
 	};
 
@@ -85,6 +98,7 @@ public:
 			Variant default_value;
 #endif
 			StringName identifier;
+			DataType datatype;
 			StringName setter;
 			StringName getter;
 			int line;
@@ -93,6 +107,7 @@ public:
 		};
 		struct Constant {
 			StringName identifier;
+			DataType datatype;
 			Node *expression;
 		};
 
@@ -130,6 +145,9 @@ public:
 		Vector<StringName> arguments;
 		Vector<Node *> default_values;
 		BlockNode *body;
+		DataType return_type;
+
+		virtual DataType get_datatype() { return return_type; }
 
 		FunctionNode() {
 			type = TYPE_FUNCTION;
@@ -362,76 +380,6 @@ public:
 		};
 	};
 
-	/*
-	struct OperatorNode : public Node {
-
-		DataType return_cache;
-		Operator op;
-		Vector<Node*> arguments;
-		virtual DataType get_datatype() const { return return_cache; }
-
-		OperatorNode() { type=TYPE_OPERATOR; return_cache=TYPE_VOID; }
-	};
-
-	struct VariableNode : public Node {
-
-		DataType datatype_cache;
-		StringName name;
-		virtual DataType get_datatype() const { return datatype_cache; }
-
-		VariableNode() { type=TYPE_VARIABLE; datatype_cache=TYPE_VOID; }
-	};
-
-	struct ConstantNode : public Node {
-
-		DataType datatype;
-		Variant value;
-		virtual DataType get_datatype() const { return datatype; }
-
-		ConstantNode() { type=TYPE_CONSTANT; }
-	};
-
-	struct BlockNode : public Node {
-
-		Map<StringName,DataType> variables;
-		List<Node*> statements;
-		BlockNode() { type=TYPE_BLOCK; }
-	};
-
-	struct ControlFlowNode : public Node {
-
-		FlowOperation flow_op;
-		Vector<Node*> statements;
-		ControlFlowNode() { type=TYPE_CONTROL_FLOW; flow_op=FLOW_OP_IF;}
-	};
-
-	struct MemberNode : public Node {
-
-		DataType datatype;
-		StringName name;
-		Node* owner;
-		virtual DataType get_datatype() const { return datatype; }
-		MemberNode() { type=TYPE_MEMBER; }
-	};
-
-
-	struct ProgramNode : public Node {
-
-		struct Function {
-			StringName name;
-			FunctionNode*function;
-		};
-
-		Map<StringName,DataType> builtin_variables;
-		Map<StringName,DataType> preexisting_variables;
-
-		Vector<Function> functions;
-		BlockNode *body;
-
-		ProgramNode() { type=TYPE_PROGRAM; }
-	};
-*/
-
 	enum CompletionType {
 		COMPLETION_NONE,
 		COMPLETION_BUILT_IN_TYPE_CONSTANT,
@@ -514,6 +462,8 @@ private:
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
 	bool _end_statement();
+
+	bool _parse_type(DataType *r_datatype, bool p_can_be_void = false);
 
 	Error _parse(const String &p_base_path);
 
