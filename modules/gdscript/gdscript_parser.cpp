@@ -4088,6 +4088,24 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 						_set_error("Expected type for class member.");
 						return;
 					}
+
+					// Use type hint to infer export
+					if (autoexport) {
+						autoexport = false;
+						if (member.datatype.variant_type == Variant::OBJECT) {
+							if (!ClassDB::class_exists(member.datatype.class_name) ||
+									!ClassDB::is_parent_class(member.datatype.class_name, "Resource")) {
+								_set_error("Can't export a non resource object type.");
+								return;
+							}
+							member._export.hint = PROPERTY_HINT_RESOURCE_TYPE;
+							member._export.hint_string = member.datatype.class_name;
+						}
+
+						member._export.class_name = member.datatype.class_name;
+						member._export.type = member.datatype.variant_type;
+						member._export.usage |= PROPERTY_USAGE_SCRIPT_VARIABLE;
+					}
 				}
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_OP_ASSIGN) {
