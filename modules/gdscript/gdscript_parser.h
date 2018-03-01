@@ -463,6 +463,7 @@ private:
 	void _parse_class(ClassNode *p_class);
 	bool _end_statement();
 
+	void _skip_block();
 	bool _parse_type(DataType *r_datatype, bool p_can_be_void = false);
 
 	Error _parse(const String &p_base_path);

@@ -3407,7 +3407,9 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				current_function = function;
 				function->body = block;
 				current_block = block;
-				_parse_block(block, _static);
+				//_parse_block(block, _static);
+				_skip_block();
+				if (error_set) return;
 				current_block = NULL;
 
 				//arguments
@@ -4423,6 +4425,56 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 			} break;
 		}
 	}
+}
+
+void GDScriptParser::_skip_block() {
+	int first_indent = tab_level.back()->get();
+	int current_indent = first_indent;
+
+	// Skip to next line
+	while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
+		if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
+			return;
+		}
+		tokenizer->advance();
+	}
+
+	if (tab_level.back()->prev() && tab_level.back()->prev()->get() == first_indent) {
+		// Same-line statement, just advance and go on, but fail if next line is indented
+		tab_level.pop_back();
+
+		while (tokenizer->get_token(1) == GDScriptTokenizer::TK_NEWLINE) {
+			tokenizer->advance();
+		}
+		if (tokenizer->get_token(1) == GDScriptTokenizer::TK_EOF) {
+			return;
+		}
+
+		if (tokenizer->get_token_line_indent() > first_indent) {
+			_set_error("Unexpected indent.");
+			return;
+		}
+		tokenizer->advance();
+		return;
+	}
+
+	current_indent = tokenizer->get_token_line_indent();
+
+	while (current_indent >= first_indent) {
+		while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
+			if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
+				return;
+			}
+			tokenizer->advance();
+		}
+		// Ignore empty lines
+		if (tokenizer->get_token(1) != GDScriptTokenizer::TK_NEWLINE || tokenizer->get_token(1) != GDScriptTokenizer::TK_EOF) {
+			current_indent = tokenizer->get_token_line_indent();
+		}
+		tokenizer->advance();
+	}
+
+	tab_level.pop_back();
 }
 
 bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
