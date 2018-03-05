@@ -143,6 +143,7 @@ public:
 		ScriptInstance::RPCMode rpc_mode;
 		StringName name;
 		Vector<StringName> arguments;
+		Vector<DataType> argument_types;
 		Vector<Node *> default_values;
 		BlockNode *body;
 		DataType return_type;
@@ -182,6 +183,8 @@ public:
 	struct TypeNode : public Node {
 
 		Variant::Type vtype;
+		DataType datatype;
+		virtual DataType get_datatype() { return datatype; }
 		TypeNode() { type = TYPE_TYPE; }
 	};
 	struct BuiltInFunctionNode : public Node {
@@ -198,7 +201,9 @@ public:
 	struct LocalVarNode : public Node {
 
 		StringName name;
+		DataType datatype;
 		Node *assign;
+		virtual DataType get_datatype() { return datatype; }
 		LocalVarNode() {
 			type = TYPE_LOCAL_VAR;
 			assign = NULL;
@@ -207,13 +212,21 @@ public:
 
 	struct ConstantNode : public Node {
 		Variant value;
+		DataType datatype;
+		virtual DataType get_datatype() { return datatype; }
 		ConstantNode() { type = TYPE_CONSTANT; }
 	};
 
 	struct ArrayNode : public Node {
 
 		Vector<Node *> elements;
-		ArrayNode() { type = TYPE_ARRAY; }
+		DataType datatype;
+		virtual DataType get_datatype() { return datatype; }
+		ArrayNode() {
+			type = TYPE_ARRAY;
+			datatype.has_type = true;
+			datatype.variant_type = Variant::ARRAY;
+		}
 	};
 
 	struct DictionaryNode : public Node {
@@ -225,7 +238,13 @@ public:
 		};
 
 		Vector<Pair> elements;
-		DictionaryNode() { type = TYPE_DICTIONARY; }
+		DataType datatype;
+		virtual DataType get_datatype() { return datatype; }
+		DictionaryNode() {
+			type = TYPE_DICTIONARY;
+			datatype.has_type = true;
+			datatype.variant_type = Variant::DICTIONARY;
+		}
 	};
 
 	struct SelfNode : public Node {
@@ -291,6 +310,8 @@ public:
 		Operator op;
 
 		Vector<Node *> arguments;
+		DataType datatype;
+		virtual DataType get_datatype() { return datatype; }
 		OperatorNode() { type = TYPE_OPERATOR; }
 	};
 

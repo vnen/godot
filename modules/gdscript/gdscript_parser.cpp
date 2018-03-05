@@ -353,6 +353,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = tokenizer->get_token_constant();
+			constant->datatype.has_type = true;
+			constant->datatype.variant_type = constant->value.get_type();
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_PI) {
@@ -360,6 +362,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_PI;
+			constant->datatype.has_type = true;
+			constant->datatype.variant_type = Variant::REAL;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_TAU) {
@@ -367,6 +371,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_TAU;
+			constant->datatype.has_type = true;
+			constant->datatype.variant_type = Variant::REAL;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_INF) {
@@ -374,6 +380,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_INF;
+			constant->datatype.has_type = true;
+			constant->datatype.variant_type = Variant::REAL;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_CONST_NAN) {
@@ -381,6 +389,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			//constant defined by tokenizer
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = Math_NAN;
+			constant->datatype.has_type = true;
+			constant->datatype.variant_type = Variant::REAL;
 			tokenizer->advance();
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PR_PRELOAD) {
@@ -596,6 +606,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 					OperatorNode *op = alloc_node<OperatorNode>();
 					op->op = OperatorNode::OP_CALL;
+					op->datatype.has_type = true;
+					op->datatype.variant_type = Variant::get_method_return_type(bi_type, identifier);
+					op->datatype.class_name = "Object";
 					op->arguments.push_back(construct);
 
 					IdentifierNode *id = alloc_node<IdentifierNode>();
@@ -615,6 +628,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 				ConstantNode *cn = alloc_node<ConstantNode>();
 				cn->value = Variant::get_numeric_constant_value(bi_type, identifier);
+				cn->datatype.has_type = true;
+				cn->datatype.variant_type = cn->value.get_type();
+				cn->datatype.class_name = "Object";
 				expr = cn;
 			}
 
@@ -653,6 +669,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 					TypeNode *tn = alloc_node<TypeNode>();
 					tn->vtype = tokenizer->get_token_type();
 					op->arguments.push_back(tn);
+					op->datatype.has_type = true;
+					op->datatype.variant_type = tn->vtype;
+					op->datatype.class_name = "Object";
 					tokenizer->advance(2);
 				}
 			} else if (tokenizer->get_token() == GDScriptTokenizer::TK_BUILT_IN_FUNC) {
@@ -660,6 +679,7 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				BuiltInFunctionNode *bn = alloc_node<BuiltInFunctionNode>();
 				bn->function = tokenizer->get_token_built_in_func();
 				op->arguments.push_back(bn);
+				// TODO: Get type from built-in function
 				tokenizer->advance(2);
 			} else {
 
@@ -673,6 +693,7 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				IdentifierNode *id = alloc_node<IdentifierNode>();
 				id->name = identifier;
 				op->arguments.push_back(id);
+				// TODO: Get type from self function
 				tokenizer->advance(1);
 			}
 
@@ -2470,21 +2491,19 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 
 				int var_line = tokenizer->get_token_line();
 
+				DataType var_type;
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
 					// Has type
-					tokenizer->advance();
-
-					if (!tokenizer->is_token_literal()) {
+					if (!_parse_type(&var_type)) {
 						_set_error("Expected type for local variable.");
 						return;
 					}
-
-					tokenizer->advance();
 				}
 
 				//must know when the local variable is declared
 				LocalVarNode *lv = alloc_node<LocalVarNode>();
 				lv->name = n;
+				lv->datatype = var_type;
 				p_block->statements.push_back(lv);
 
 				Node *assigned = NULL;
@@ -3129,7 +3148,6 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				//class inside class :D
 
 				StringName name;
-				StringName extends;
 
 				if (tokenizer->get_token(1) != GDScriptTokenizer::TK_IDENTIFIER) {
 
@@ -3223,6 +3241,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				tokenizer->advance();
 
 				Vector<StringName> arguments;
+				Vector<DataType> argument_types;
 				Vector<Node *> default_values;
 
 				int fnline = tokenizer->get_token_line();
@@ -3253,17 +3272,16 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 						tokenizer->advance();
 
+						DataType argtype;
 						if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
 							// Has type
-							tokenizer->advance();
-
-							if (!tokenizer->is_token_literal()) {
+							if (!_parse_type(&argtype)) {
 								_set_error("Expected type for function argument.");
 								return;
 							}
-
-							tokenizer->advance();
 						}
+
+						argument_types.push_back(argtype);
 
 						if (defaulting && tokenizer->get_token() != GDScriptTokenizer::TK_OP_ASSIGN) {
 
@@ -3391,6 +3409,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				FunctionNode *function = alloc_node<FunctionNode>();
 				function->name = name;
 				function->arguments = arguments;
+				function->argument_types = argument_types;
 				function->default_values = default_values;
 				function->_static = _static;
 				function->line = fnline;
@@ -4517,7 +4536,7 @@ void GDScriptParser::_skip_block() {
 
 	// Skip to end of the line
 	while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
-		if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
+		if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF || tokenizer->get_token() == GDScriptTokenizer::TK_ERROR) {
 			return;
 		}
 		tokenizer->advance();
@@ -4531,7 +4550,7 @@ void GDScriptParser::_skip_block() {
 		while (tokenizer->get_token(1) == GDScriptTokenizer::TK_NEWLINE) {
 			tokenizer->advance();
 		}
-		if (tokenizer->get_token(1) == GDScriptTokenizer::TK_EOF) {
+		if (tokenizer->get_token(1) == GDScriptTokenizer::TK_EOF || tokenizer->get_token() == GDScriptTokenizer::TK_ERROR) {
 			return;
 		}
 
@@ -4547,7 +4566,7 @@ void GDScriptParser::_skip_block() {
 
 	while (current_indent >= first_indent) {
 		while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
-			if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
+			if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF || tokenizer->get_token() == GDScriptTokenizer::TK_ERROR) {
 				return;
 			}
 			tokenizer->advance();
