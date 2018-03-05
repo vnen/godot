@@ -4427,11 +4427,95 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 	}
 }
 
+void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
+	int function_index = 0;
+	int static_function_index = 0;
+	int class_index = 0;
+
+	while (true) {
+		if (p_class->end_line == tokenizer->get_token_line()) {
+			tab_level.pop_back();
+			return; //go back a level
+		}
+
+		switch (tokenizer->get_token()) {
+			case GDScriptTokenizer::TK_EOF: {
+				return;
+			} break;
+
+			case GDScriptTokenizer::TK_PR_FUNCTION: {
+				bool _is_static = tokenizer->get_token(-1) == GDScriptTokenizer::TK_PR_STATIC;
+				pending_newline = -1;
+
+				int colons = 0;
+				while (true) {
+					if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
+						colons += 1;
+						if (tokenizer->get_token(-1) == GDScriptTokenizer::TK_PARENTHESIS_CLOSE || tokenizer->get_token(-2) == GDScriptTokenizer::TK_FORWARD_ARROW) {
+							break;
+						}
+					}
+					tokenizer->advance();
+				}
+
+				if (_is_static) {
+					if (static_function_index >= p_class->static_functions.size()) {
+						_set_error("Second pass: hitting static function block beyond defined functions." + itos(static_function_index));
+						ERR_FAIL();
+					}
+					current_function = p_class->static_functions[static_function_index++];
+				} else {
+					if (function_index >= p_class->functions.size()) {
+						_set_error("Second pass: hitting function block beyond defined functions." + itos(function_index));
+						ERR_FAIL();
+					}
+					current_function = p_class->functions[function_index++];
+				}
+
+				current_block = current_function->body;
+
+				if (!_enter_indent_block(current_block)) {
+					if (error_set) return;
+					_set_error("Parser bug: failed to enter function block in second pass.");
+					ERR_FAIL();
+				}
+
+				_parse_block(current_block, _is_static);
+				if (error_set) return;
+				current_block = NULL;
+				current_function = NULL;
+
+			} break;
+			case GDScriptTokenizer::TK_PR_CLASS: {
+				// Skip class name
+				tokenizer->advance(2);
+
+				if (tokenizer->get_token() == GDScriptTokenizer::TK_PR_EXTENDS) {
+					// Extends before colon, skip it too
+					tokenizer->advance(2);
+				}
+
+				if (!_enter_indent_block(current_block)) {
+					_set_error("Parser bug: failed to enter class block in second pass.");
+					return;
+				}
+
+				current_class = p_class->subclasses[class_index++];
+				_parse_class_contents(current_class);
+				current_class = NULL;
+
+			} break;
+		}
+
+		tokenizer->advance();
+	}
+}
+
 void GDScriptParser::_skip_block() {
 	int first_indent = tab_level.back()->get();
 	int current_indent = first_indent;
 
-	// Skip to next line
+	// Skip to end of the line
 	while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
 		if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
 			return;
@@ -4443,6 +4527,7 @@ void GDScriptParser::_skip_block() {
 		// Same-line statement, just advance and go on, but fail if next line is indented
 		tab_level.pop_back();
 
+		// Ignore empty lines
 		while (tokenizer->get_token(1) == GDScriptTokenizer::TK_NEWLINE) {
 			tokenizer->advance();
 		}
@@ -4555,6 +4640,21 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 
 		return ERR_PARSE_ERROR;
 	}
+
+	tokenizer->reset();
+
+	_parse_class_contents(main_class);
+
+	if (tokenizer->get_token() == GDScriptTokenizer::TK_ERROR) {
+		error_set = false;
+		_set_error("Parse Error: " + tokenizer->get_token_error());
+	}
+
+	if (error_set) {
+
+		return ERR_PARSE_ERROR;
+	}
+
 	return OK;
 }
 

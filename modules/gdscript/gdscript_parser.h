@@ -461,6 +461,7 @@ private:
 	void _parse_block(BlockNode *p_block, bool p_static);
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
+	void _parse_class_contents(ClassNode *p_class);
 	bool _end_statement();
 
 	void _skip_block();

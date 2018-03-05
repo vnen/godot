@@ -165,6 +165,7 @@ public:
 	virtual int get_token_line_indent(int p_offset = 0) const = 0;
 	virtual String get_token_error(int p_offset = 0) const = 0;
 	virtual void advance(int p_amount = 1) = 0;
+	virtual void reset() = 0;
 
 	virtual ~GDScriptTokenizer(){};
 };
@@ -226,6 +227,7 @@ public:
 	virtual const Variant &get_token_constant(int p_offset = 0) const;
 	virtual String get_token_error(int p_offset = 0) const;
 	virtual void advance(int p_amount = 1);
+	virtual void reset() { set_code(code); }
 };
 
 class GDScriptTokenizerBuffer : public GDScriptTokenizer {
@@ -259,6 +261,7 @@ public:
 	virtual const Variant &get_token_constant(int p_offset = 0) const;
 	virtual String get_token_error(int p_offset = 0) const;
 	virtual void advance(int p_amount = 1);
+	virtual void reset() { token = 0; }
 	GDScriptTokenizerBuffer();
 };
 
