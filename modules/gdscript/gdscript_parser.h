@@ -487,6 +487,7 @@ private:
 
 	void _skip_block();
 	bool _parse_type(DataType *r_datatype, bool p_can_be_void = false);
+	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) const;
 
 	Error _parse(const String &p_base_path);
 

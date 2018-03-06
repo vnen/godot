@@ -330,6 +330,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 			OperatorNode *op = alloc_node<OperatorNode>();
 			op->op = OperatorNode::OP_CALL;
+			op->datatype.has_type = true;
+			op->datatype.variant_type = Variant::OBJECT;
+			op->datatype.class_name = "Node";
 
 			op->arguments.push_back(alloc_node<SelfNode>());
 
@@ -2519,6 +2522,11 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 						return;
 					}
 
+					if (!_is_type_compatible(var_type, subexpr->get_datatype())) {
+						_set_error("Assigned value type does not match variable type.", var_line);
+						return;
+					}
+
 					lv->assign = subexpr;
 					assigned = subexpr;
 				} else {
@@ -4609,6 +4617,39 @@ bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 	r_datatype->has_type = true;
 	tokenizer->advance();
 	return true;
+}
+
+bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) const {
+
+	if (!p_container_type.has_type || !p_expression_type.has_type) {
+		// Non-typed stuff can't be checked, so they are assumed to be compatible
+		return true;
+	}
+
+	if (p_container_type.variant_type == Variant::OBJECT) {
+		if (p_expression_type.variant_type == Variant::NIL) {
+			// null can be set to an object container
+			return true;
+		}
+
+		if (p_expression_type.variant_type != Variant::OBJECT) {
+			return false;
+		}
+
+		if (p_container_type.class_name == p_expression_type.class_name) {
+			return true;
+		}
+
+		// Check ClassDB if both classes are there
+		if (ClassDB::class_exists(p_container_type.class_name) && ClassDB::class_exists(p_expression_type.class_name)) {
+			return ClassDB::is_parent_class(p_expression_type.class_name, p_container_type.class_name);
+		}
+
+		// TODO: Check script inheritance
+		return true;
+	}
+
+	return p_container_type.variant_type == p_expression_type.variant_type;
 }
 
 void GDScriptParser::_set_error(const String &p_error, int p_line, int p_column) {
