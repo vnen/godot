@@ -573,10 +573,11 @@ private:
 	void _check_block_types(BlockNode *p_block);
 	void _check_variable_assign_type(const ClassNode::Member &p_var, Node *p_assign);
 	void _check_call_args_types(OperatorNode *p_call);
+	void _check_func_node_args_types(OperatorNode *p_call, FunctionNode *p_func);
 	DataType _lookup_node_type(Node *p_node, int p_line);
 	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line) const;
 	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const;
-	bool _is_type_compatible(const DataType &p_type_a, const DataType &p_type_b);
+	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type);
 	String _get_type_string(const DataType &p_type) const;
 
 	Error _parse(const String &p_base_path);

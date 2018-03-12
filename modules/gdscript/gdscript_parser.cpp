@@ -4607,7 +4607,9 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 			export_type.class_name = v._export.class_name;
 
 			if (!_is_type_compatible(v.data_type, export_type)) {
-				_set_error("Export hint type does not match the variable type.", v.line);
+				_set_error("Export hint type (" + _get_type_string(export_type) +
+								   ") does not match the variable type (" + _get_type_string(v.data_type) + ").",
+						v.line);
 				return;
 			}
 		}
@@ -4645,6 +4647,7 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 					return;
 				}
 			}
+			if (found_getter && found_setter) break;
 		}
 
 		if ((found_getter || v.getter == StringName()) && (found_setter || v.setter == StringName())) continue;
@@ -4831,7 +4834,6 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 
 void GDScriptParser::_check_variable_assign_type(const ClassNode::Member &p_var, Node *p_assign) {
 	if (!p_assign) return;
-	bool in_function = !!current_function;
 
 	DataType &rh_type = _lookup_node_type(p_assign, p_var.line);
 
@@ -4935,6 +4937,7 @@ void GDScriptParser::_check_call_args_types(OperatorNode *p_call) {
 				}
 				err += ").";
 				_set_error(err, p_call->line, p_call->column);
+				return;
 			}
 		} break;
 		case Node::TYPE_SELF: {
@@ -4949,25 +4952,8 @@ void GDScriptParser::_check_call_args_types(OperatorNode *p_call) {
 						if (id->name == func->name) {
 							found = true;
 
-							if (p_call->arguments.size() - 2 < func->arguments.size() - func->default_values.size()) {
-								_set_error("Too few arguments for " + func->name + "() call. Expected at least " + itos(func->arguments.size() - func->default_values.size()) + ".", p_call->line);
-								return;
-							}
-							if (p_call->arguments.size() - 2 > func->arguments.size()) {
-								_set_error("Too many arguments for " + func->name + "() call. Expected at most " + itos(func->arguments.size()) + ".", p_call->line);
-								return;
-							}
-							for (int i = 2; i < p_call->arguments.size(); i++) {
-								DataType arg_type = func->argument_types[i - 2];
-								DataType par_type = _lookup_node_type(p_call->arguments[i], p_call->line);
-
-								if (!_is_type_compatible(arg_type, par_type)) {
-									_set_error("At " + func->name + "() call, argument " + itos(i - 1) + ". Assigned type (" +
-													   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
-											p_call->line);
-									return;
-								}
-							}
+							this->_check_func_node_args_types(p_call, func);
+							if (error_set) return;
 							break;
 						}
 					}
@@ -4984,25 +4970,9 @@ void GDScriptParser::_check_call_args_types(OperatorNode *p_call) {
 								return;
 							}
 
-							if (p_call->arguments.size() - 2 < func->arguments.size() - func->default_values.size()) {
-								_set_error("Too few arguments for " + func->name + "() call. Expected at least " + itos(func->arguments.size() - func->default_values.size()) + ".", p_call->line);
-								return;
-							}
-							if (p_call->arguments.size() - 2 > func->arguments.size()) {
-								_set_error("Too many arguments for " + func->name + "() call. Expected at most " + itos(func->arguments.size()) + ".", p_call->line);
-								return;
-							}
-							for (int i = 2; i < p_call->arguments.size(); i++) {
-								DataType arg_type = func->argument_types[i - 2];
-								DataType par_type = _lookup_node_type(p_call->arguments[i], p_call->line);
+							this->_check_func_node_args_types(p_call, func);
+							if (error_set) return;
 
-								if (!_is_type_compatible(arg_type, par_type)) {
-									_set_error("At " + func->name + "() call, argument " + itos(i - 1) + ". Assigned type (" +
-													   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
-											p_call->line);
-									return;
-								}
-							}
 							break;
 						}
 					}
@@ -5010,6 +4980,28 @@ void GDScriptParser::_check_call_args_types(OperatorNode *p_call) {
 				} break;
 			}
 		} break;
+	}
+}
+
+void GDScriptParser::_check_func_node_args_types(OperatorNode *p_call, FunctionNode *p_func) {
+	if (p_call->arguments.size() - 2 < p_func->arguments.size() - p_func->default_values.size()) {
+		_set_error("Too few arguments for " + p_func->name + "() call. Expected at least " + itos(p_func->arguments.size() - p_func->default_values.size()) + ".", p_call->line);
+		return;
+	}
+	if (p_call->arguments.size() - 2 > p_func->arguments.size()) {
+		_set_error("Too many arguments for " + p_func->name + "() call. Expected at most " + itos(p_func->arguments.size()) + ".", p_call->line);
+		return;
+	}
+	for (int i = 2; i < p_call->arguments.size(); i++) {
+		DataType arg_type = p_func->argument_types[i - 2];
+		DataType par_type = _lookup_node_type(p_call->arguments[i], p_call->line);
+
+		if (!_is_type_compatible(arg_type, par_type)) {
+			_set_error("At " + p_func->name + "() call, argument \"" + String(p_func->arguments[i - 2]) + "\". Assigned type (" +
+							   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
+					p_call->line);
+			return;
+		}
 	}
 }
 
@@ -5034,7 +5026,7 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 						_set_error("Parser bug: function call without enough arguments.", p_line);
 						ERR_FAIL_V(DataType());
 					}
-					// This is a "lookup" but this operation won't be tested again
+					// While this is a "lookup" but this operation won't be tested again
 					// So it's the only place to check the call arguments
 					// It's also recursive, which can be good or bad
 					// TODO: Find a better time to check this
@@ -5115,6 +5107,7 @@ GDScriptParser::DataType GDScriptParser::_lookup_identifier_type(const StringNam
 			for (int i = 0; i < bln->variables.size(); i++) {
 				if (bln->variable_lines[i] > p_line) {
 					// Ignore local variable defined after the assignment
+					// TODO: Check if the name is defined at all, otherwise error out(?)
 					break;
 				}
 				if (p_identifier == bln->variables[i]) {
@@ -5145,19 +5138,19 @@ GDScriptParser::DataType GDScriptParser::_lookup_identifier_type(const StringNam
 	return DataType();
 }
 
-bool GDScriptParser::_is_type_compatible(const DataType &p_type_a, const DataType &p_type_b) {
+bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) {
 	// Defaults to true since if the check isn't possible should be
 	// assumed to be until it fails
 	bool is_compatible = true;
 
-	if (!p_type_a.has_type || !p_type_b.has_type) {
+	if (!p_container_type.has_type || !p_expression_type.has_type) {
 		// Datatypes aren't detected by the parser
 		return is_compatible;
 	}
 
-	is_compatible = p_type_a.variant_type == p_type_b.variant_type;
+	is_compatible = p_container_type.variant_type == p_expression_type.variant_type;
 
-	if (p_type_a.variant_type == Variant::OBJECT && p_type_b.variant_type == Variant::NIL) {
+	if (p_container_type.variant_type == Variant::OBJECT && p_expression_type.variant_type == Variant::NIL) {
 		// Object variable can have Nil, but not the other way around
 		is_compatible = true;
 	}
