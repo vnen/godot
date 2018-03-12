@@ -2523,7 +2523,9 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 					}
 
 					if (!_is_type_compatible(var_type, subexpr->get_datatype())) {
-						_set_error("Assigned value type does not match variable type.", var_line);
+						_set_error("Assigned value type (" + subexpr->get_datatype().to_string() +
+										   ") does not match local variable type (" + var_type.to_string() + ").",
+								var_line);
 						return;
 					}
 

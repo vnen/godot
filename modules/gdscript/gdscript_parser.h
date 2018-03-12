@@ -44,6 +44,13 @@ public:
 		Variant::Type variant_type;
 		StringName class_name;
 
+		String to_string() const {
+			if (variant_type == Variant::OBJECT) {
+				return String(class_name);
+			}
+			return Variant::get_type_name(variant_type);
+		}
+
 		DataType() {
 			has_type = false;
 			variant_type = Variant::NIL;
