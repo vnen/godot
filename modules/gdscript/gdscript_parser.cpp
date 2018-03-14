@@ -500,8 +500,22 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			ConstantNode *constant = alloc_node<ConstantNode>();
 			constant->value = res;
 			constant->constant_type.has_type = true;
-			constant->constant_type.variant_type = Variant::OBJECT;
-			constant->constant_type.class_name = res->get_class_name();
+			if (res.is_null()) {
+				// No resource loaded, no way to infer the type
+				constant->constant_type.variant_type = Variant::NIL;
+			} else {
+				constant->constant_type.variant_type = Variant::OBJECT;
+				if (res->get_class_name() == "GDScript") {
+					// If it's a GDScript, use the path as class name
+					constant->constant_type.class_name = path;
+				} else if (!res->get_script().is_null()) {
+					// If the resource contains a script, use that path instead
+					constant->constant_type.class_name = res->get_script()->get_path();
+				} else {
+					// Otherwise use the resource base type
+					constant->constant_type.class_name = res->get_class_name();
+				}
+			}
 
 			expr = constant;
 		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PR_YIELD) {
