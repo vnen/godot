@@ -510,7 +510,8 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 					constant->constant_type.class_name = path;
 				} else if (!res->get_script().is_null()) {
 					// If the resource contains a script, use that path instead
-					constant->constant_type.class_name = res->get_script()->get_path();
+					Ref<Script> script = res->get_script();
+					constant->constant_type.class_name = script->get_path();
 				} else {
 					// Otherwise use the resource base type
 					constant->constant_type.class_name = res->get_class_name();
@@ -1364,7 +1365,7 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				expression[i].is_op = false;
 				expression[i].node = op;
 				// The type of this node is the same as its argument
-				DataType &arg_type = expression[i + 1].node->get_datatype();
+				DataType arg_type = expression[i + 1].node->get_datatype();
 				if (arg_type.has_type) {
 					op->return_type = arg_type;
 				}
@@ -1552,7 +1553,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 					all_constants = false;
 					last_not_constant = i;
 				}
-				DataType &datatype = op->arguments[i]->get_datatype();
+				DataType datatype = op->arguments[i]->get_datatype();
 				if (!datatype.has_type) {
 					all_have_type = false;
 				}
@@ -1599,7 +1600,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 					} else {
 						GDScriptFunctions::Function func = static_cast<BuiltInFunctionNode *>(op->arguments[0])->function;
 						GDScriptFunctions::call(func, vptr, ptrs.size(), v, ce);
-						MethodInfo &info = GDScriptFunctions::get_info(func);
+						MethodInfo info = GDScriptFunctions::get_info(func);
 						data_type.has_type = true;
 						data_type.variant_type = info.return_val.type;
 						data_type.class_name = info.return_val.class_name;
@@ -1651,7 +1652,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 				} else if (op->arguments[0]->type == Node::TYPE_BUILT_IN_FUNCTION) {
 					// Can't reduce but can get the return type and validate arguments
 					GDScriptFunctions::Function func = static_cast<BuiltInFunctionNode *>(op->arguments[0])->function;
-					MethodInfo &info = GDScriptFunctions::get_info(func);
+					MethodInfo info = GDScriptFunctions::get_info(func);
 
 					if (false && (info.flags & METHOD_FLAG_VARARG) == 0) {
 						// Only check for arguments if not var arg
@@ -4552,8 +4553,8 @@ bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 	r_datatype->has_type = true;
 
 	switch (tokenizer->get_token()) {
-	// No string typing for now
-	// Would be same logic as `extends` but doesn't look good
+		// No string typing for now
+		// Would be same logic as `extends` but doesn't look good
 #if 0
 		case GDScriptTokenizer::TK_CONSTANT: {
 			Variant constant = tokenizer->get_token_constant();
@@ -4805,7 +4806,7 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 
 				switch (cf->cf_type) {
 					case ControlFlowNode::CF_RETURN: {
-						DataType &function_type = current_function->get_datatype();
+						DataType function_type = current_function->get_datatype();
 
 						if (!function_type.has_type) break;
 
@@ -4822,7 +4823,7 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 								return;
 							}
 
-							DataType &ret_type = _lookup_node_type(cf->arguments[0], cf->line);
+							DataType ret_type = _lookup_node_type(cf->arguments[0], cf->line);
 							if (!_is_type_compatible(function_type, ret_type)) {
 								_set_error("Returned value type (" + _get_type_string(ret_type) + ") doesn't match the function return type (" +
 												   _get_type_string(function_type) + ").",
@@ -4849,7 +4850,7 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 void GDScriptParser::_check_variable_assign_type(const ClassNode::Member &p_var, Node *p_assign) {
 	if (!p_assign) return;
 
-	DataType &rh_type = _lookup_node_type(p_assign, p_var.line);
+	DataType rh_type = _lookup_node_type(p_assign, p_var.line);
 
 	if (!_is_type_compatible(p_var.data_type, rh_type)) {
 		_set_error("Assigned expression type (" + _get_type_string(rh_type) + ") doesn't match variable's type (" +
@@ -4865,7 +4866,7 @@ void GDScriptParser::_check_call_args_types(OperatorNode *p_call) {
 	switch (p_call->arguments[0]->type) {
 		case Node::TYPE_BUILT_IN_FUNCTION: {
 			BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(p_call->arguments[0]);
-			MethodInfo &mi = GDScriptFunctions::get_info(func->function);
+			MethodInfo mi = GDScriptFunctions::get_info(func->function);
 
 			// No checking for varargs (for now)
 			if (mi.flags & METHOD_FLAG_VARARG) break;
@@ -5021,6 +5022,11 @@ void GDScriptParser::_check_func_node_args_types(OperatorNode *p_call, FunctionN
 
 GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_line) {
 
+	// Early out if type is already defined
+	if (p_node->get_datatype().has_type) {
+		return p_node->get_datatype();
+	}
+
 	switch (p_node->type) {
 		case GDScriptParser::Node::TYPE_CONSTANT:
 		case GDScriptParser::Node::TYPE_ARRAY:
@@ -5050,7 +5056,7 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 					switch (op->arguments[0]->type) {
 						case GDScriptParser::Node::TYPE_BUILT_IN_FUNCTION: {
 							BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(op->arguments[0]);
-							MethodInfo &mi = GDScriptFunctions::get_info(func->function);
+							MethodInfo mi = GDScriptFunctions::get_info(func->function);
 
 							DataType func_type;
 							func_type.has_type = true;
@@ -5166,7 +5172,15 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const
 
 	if (p_container_type.variant_type == Variant::OBJECT && p_expression_type.variant_type == Variant::NIL) {
 		// Object variable can have Nil, but not the other way around
-		is_compatible = true;
+		return true;
+	}
+
+	if (is_compatible && p_container_type.variant_type == Variant::OBJECT) {
+		// Check ClassDB for compatibility
+		if (ClassDB::class_exists(p_container_type.class_name) && ClassDB::class_exists(p_expression_type.class_name)) {
+			is_compatible = ClassDB::is_parent_class(p_expression_type.class_name, p_container_type.class_name);
+		}
+		// TODO: Check types from scripts
 	}
 
 	return is_compatible;
