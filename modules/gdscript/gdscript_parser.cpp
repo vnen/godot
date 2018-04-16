@@ -1364,11 +1364,6 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				op->line = op_line; //line might have been changed from a \n
 				expression[i].is_op = false;
 				expression[i].node = op;
-				// The type of this node is the same as its argument
-				DataType arg_type = expression[i + 1].node->get_datatype();
-				if (arg_type.has_type) {
-					op->return_type = arg_type;
-				}
 				expression.remove(i + 1);
 			}
 
@@ -5046,7 +5041,7 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 						_set_error("Parser bug: function call without enough arguments.", p_line);
 						ERR_FAIL_V(DataType());
 					}
-					// While this is a "lookup" but this operation won't be tested again
+					// While this is a "lookup", this operation won't be tested again
 					// So it's the only place to check the call arguments
 					// It's also recursive, which can be good or bad
 					// TODO: Find a better time to check this
@@ -5094,6 +5089,81 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 							}
 						} break;
 					}
+
+				} break;
+				// Unary operators
+				case OperatorNode::OP_NEG:
+				case OperatorNode::OP_POS:
+				case OperatorNode::OP_NOT:
+				case OperatorNode::OP_BIT_INVERT: {
+
+					DataType argument_type = _lookup_node_type(op->arguments[0], p_line);
+					if (!argument_type.has_type) {
+						break;
+					}
+
+					Variant::Operator var_op = _get_variant_operation(op->op);
+					bool valid = false;
+					Variant::Type ret_type = _get_operation_type(var_op, argument_type.variant_type, argument_type.variant_type, valid);
+
+					if (!valid) {
+						_set_error("Invalid operand type ('" + _get_type_string(argument_type) +
+										   "') to operator '" + Variant::get_operator_name(var_op) + "'.",
+								op->line, op->column);
+						return DataType();
+					}
+
+					DataType return_type;
+					return_type.has_type = true;
+					return_type.variant_type = ret_type;
+
+					return return_type;
+
+				} break;
+				// Binary operators
+				case OperatorNode::OP_IN:
+				case OperatorNode::OP_EQUAL:
+				case OperatorNode::OP_NOT_EQUAL:
+				case OperatorNode::OP_LESS:
+				case OperatorNode::OP_LESS_EQUAL:
+				case OperatorNode::OP_GREATER:
+				case OperatorNode::OP_GREATER_EQUAL:
+				case OperatorNode::OP_AND:
+				case OperatorNode::OP_OR:
+				case OperatorNode::OP_ADD:
+				case OperatorNode::OP_SUB:
+				case OperatorNode::OP_MUL:
+				case OperatorNode::OP_DIV:
+				case OperatorNode::OP_MOD:
+				case OperatorNode::OP_SHIFT_LEFT:
+				case OperatorNode::OP_SHIFT_RIGHT:
+				case OperatorNode::OP_BIT_AND:
+				case OperatorNode::OP_BIT_OR:
+				case OperatorNode::OP_BIT_XOR: {
+
+					DataType argument_a_type = _lookup_node_type(op->arguments[0], p_line);
+					DataType argument_b_type = _lookup_node_type(op->arguments[1], p_line);
+					if (!argument_a_type.has_type || !argument_b_type.has_type) {
+						break;
+					}
+
+					Variant::Operator var_op = _get_variant_operation(op->op);
+					bool valid = false;
+					Variant::Type ret_type = _get_operation_type(var_op, argument_a_type.variant_type, argument_b_type.variant_type, valid);
+
+					if (!valid) {
+						_set_error("Invalid operand types ('" + _get_type_string(argument_a_type) + "' and '" +
+										   _get_type_string(argument_b_type) + "') to operator '" + Variant::get_operator_name(var_op) +
+										   "'.",
+								op->line, op->column);
+						return DataType();
+					}
+
+					DataType return_type;
+					return_type.has_type = true;
+					return_type.variant_type = ret_type;
+
+					return return_type;
 
 				} break;
 			}
@@ -5194,6 +5264,100 @@ String GDScriptParser::_get_type_string(const DataType &p_type) const {
 		return String(p_type.class_name);
 	}
 	return Variant::get_type_name(p_type.variant_type);
+}
+
+Variant::Type GDScriptParser::_get_operation_type(const Variant::Operator p_op, const Variant::Type p_a, const Variant::Type p_b, bool &r_valid) {
+	Variant::CallError err;
+	Variant a = Variant::construct(p_a, NULL, 0, err);
+	if (err.error != Variant::CallError::CALL_OK) {
+		r_valid = false;
+		return Variant::NIL;
+	}
+	Variant b = Variant::construct(p_b, NULL, 0, err);
+	if (err.error != Variant::CallError::CALL_OK) {
+		r_valid = false;
+		return Variant::NIL;
+	}
+
+	Variant ret;
+	Variant::evaluate(p_op, a, b, ret, r_valid);
+
+	if (r_valid) {
+		return ret.get_type();
+	} else {
+		return Variant::NIL;
+	}
+}
+
+Variant::Operator GDScriptParser::_get_variant_operation(const OperatorNode::Operator &p_op) {
+	switch (p_op) {
+		case OperatorNode::OP_NEG: {
+			return Variant::OP_NEGATE;
+		} break;
+		case OperatorNode::OP_POS: {
+			return Variant::OP_POSITIVE;
+		} break;
+		case OperatorNode::OP_NOT: {
+			return Variant::OP_NOT;
+		} break;
+		case OperatorNode::OP_BIT_INVERT: {
+			return Variant::OP_BIT_NEGATE;
+		} break;
+		case OperatorNode::OP_IN: {
+			return Variant::OP_IN;
+		} break;
+		case OperatorNode::OP_EQUAL: {
+			return Variant::OP_EQUAL;
+		} break;
+		case OperatorNode::OP_NOT_EQUAL: {
+			return Variant::OP_NOT_EQUAL;
+		} break;
+		case OperatorNode::OP_LESS: {
+			return Variant::OP_LESS;
+		} break;
+		case OperatorNode::OP_LESS_EQUAL: {
+			return Variant::OP_LESS_EQUAL;
+		} break;
+		case OperatorNode::OP_GREATER: {
+			return Variant::OP_GREATER;
+		} break;
+		case OperatorNode::OP_GREATER_EQUAL: {
+			return Variant::OP_GREATER_EQUAL;
+		} break;
+		case OperatorNode::OP_AND: {
+			return Variant::OP_AND;
+		} break;
+		case OperatorNode::OP_OR: {
+			return Variant::OP_OR;
+		} break;
+		case OperatorNode::OP_ADD: {
+			return Variant::OP_ADD;
+		} break;
+		case OperatorNode::OP_SUB: {
+			return Variant::OP_SUBTRACT;
+		} break;
+		case OperatorNode::OP_MUL: {
+			return Variant::OP_MULTIPLY;
+		} break;
+		case OperatorNode::OP_DIV: {
+			return Variant::OP_DIVIDE;
+		} break;
+		case OperatorNode::OP_MOD: {
+			return Variant::OP_MODULE;
+		} break;
+		case OperatorNode::OP_BIT_AND: {
+			return Variant::OP_BIT_AND;
+		} break;
+		case OperatorNode::OP_BIT_OR: {
+			return Variant::OP_BIT_OR;
+		} break;
+		case OperatorNode::OP_BIT_XOR: {
+			return Variant::OP_BIT_XOR;
+		} break;
+		default: {
+			return Variant::OP_MAX;
+		} break;
+	}
 }
 
 void GDScriptParser::_set_error(const String &p_error, int p_line, int p_column) {

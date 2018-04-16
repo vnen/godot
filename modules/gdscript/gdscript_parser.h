@@ -579,6 +579,8 @@ private:
 	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const;
 	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type);
 	String _get_type_string(const DataType &p_type) const;
+	static Variant::Type _get_operation_type(const Variant::Operator p_op, const Variant::Type p_a, const Variant::Type p_b, bool &r_valid);
+	static Variant::Operator _get_variant_operation(const OperatorNode::Operator &p_op);
 
 	Error _parse(const String &p_base_path);
 
