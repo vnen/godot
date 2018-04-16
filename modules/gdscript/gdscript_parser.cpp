@@ -755,7 +755,7 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 					constant->constant_type.has_type = true;
 					constant->constant_type.variant_type = constant->value.get_type();
 					if (constant->value.get_type() == Variant::OBJECT) {
-						constant->constant_type.class_name = ((Object *)constant->value)->get_class_name();
+						constant->constant_type.class_name = constant->value.operator Object *()->get_class_name();
 					}
 					expr = constant;
 					bfn = true;
@@ -1734,7 +1734,7 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 					cn->constant_type.has_type = true;
 					cn->constant_type.variant_type = v.get_type();
 					if (v.get_type() == Variant::OBJECT) {
-						cn->constant_type.class_name = ((Object *)v)->get_class_name();
+						cn->constant_type.class_name = v.operator Object *()->get_class_name();
 					}
 					return cn;
 				}
@@ -4765,7 +4765,17 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 				OperatorNode *op = static_cast<OperatorNode *>(statement);
 
 				switch (op->op) {
-					case OperatorNode::OP_ASSIGN: {
+					case OperatorNode::OP_ASSIGN:
+					case OperatorNode::OP_ASSIGN_ADD:
+					case OperatorNode::OP_ASSIGN_SUB:
+					case OperatorNode::OP_ASSIGN_MUL:
+					case OperatorNode::OP_ASSIGN_DIV:
+					case OperatorNode::OP_ASSIGN_MOD:
+					case OperatorNode::OP_ASSIGN_SHIFT_LEFT:
+					case OperatorNode::OP_ASSIGN_SHIFT_RIGHT:
+					case OperatorNode::OP_ASSIGN_BIT_AND:
+					case OperatorNode::OP_ASSIGN_BIT_OR:
+					case OperatorNode::OP_ASSIGN_BIT_XOR: {
 						if (op->arguments.size() < 2) {
 							_set_error("Parser bug: operation without enough arguments.", op->line, op->column);
 							return;
@@ -4781,14 +4791,45 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 							return;
 						}
 
-						ClassNode::Member fake_member;
-						fake_member.data_type = id_type;
-						fake_member.identifier = id->name;
-						fake_member.line = id->line;
+						if (op->op != OperatorNode::OP_ASSIGN) {
+							// Check if operation is valid
+							DataType argument_type = _lookup_node_type(op->arguments[1], op->line);
+							if (!argument_type.has_type) {
+								return;
+							}
+							Variant::Operator var_op = _get_variant_operation(op->op);
+							bool valid = false;
+							Variant::Type ret_type = _get_operation_type(var_op, id_type.variant_type, argument_type.variant_type, valid);
 
-						_check_variable_assign_type(fake_member, op->arguments[1]);
+							if (!valid) {
+								_set_error("Invalid operand types ('" + _get_type_string(id_type) + "' and '" +
+												   _get_type_string(argument_type) + "') to assignment operator '" + Variant::get_operator_name(var_op) +
+												   "'.",
+										op->line, op->column);
+								return;
+							}
+
+							DataType exp_type;
+							exp_type.has_type = true;
+							exp_type.variant_type = ret_type;
+
+							if (!_is_type_compatible(id_type, exp_type)) {
+								_set_error("Assigned expression type (" + _get_type_string(exp_type) + ") doesn't match variable's type (" +
+												   _get_type_string(id_type) + ").",
+										op->line);
+								return;
+							}
+
+						} else {
+							ClassNode::Member fake_member;
+							fake_member.data_type = id_type;
+							fake_member.identifier = id->name;
+							fake_member.line = id->line;
+							_check_variable_assign_type(fake_member, op->arguments[1]);
+						}
 
 						if (error_set) return;
+
 					} break;
 					case OperatorNode::OP_CALL: {
 						_check_call_args_types(op);
@@ -5036,6 +5077,9 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 			OperatorNode *op = static_cast<OperatorNode *>(p_node);
 
 			switch (op->op) {
+			}
+
+			switch (op->op) {
 				case OperatorNode::OP_CALL: {
 					if (op->arguments.size() < 1) {
 						_set_error("Parser bug: function call without enough arguments.", p_line);
@@ -5164,6 +5208,23 @@ GDScriptParser::DataType GDScriptParser::_lookup_node_type(Node *p_node, int p_l
 					return_type.variant_type = ret_type;
 
 					return return_type;
+
+				} break;
+				// Assignment should never happen within an expression
+				case OperatorNode::OP_ASSIGN:
+				case OperatorNode::OP_ASSIGN_ADD:
+				case OperatorNode::OP_ASSIGN_SUB:
+				case OperatorNode::OP_ASSIGN_MUL:
+				case OperatorNode::OP_ASSIGN_DIV:
+				case OperatorNode::OP_ASSIGN_MOD:
+				case OperatorNode::OP_ASSIGN_SHIFT_LEFT:
+				case OperatorNode::OP_ASSIGN_SHIFT_RIGHT:
+				case OperatorNode::OP_ASSIGN_BIT_AND:
+				case OperatorNode::OP_ASSIGN_BIT_OR:
+				case OperatorNode::OP_ASSIGN_BIT_XOR: {
+
+					_set_error("Assignment inside expression is not allowed.", op->line);
+					return DataType();
 
 				} break;
 			}
@@ -5330,30 +5391,46 @@ Variant::Operator GDScriptParser::_get_variant_operation(const OperatorNode::Ope
 		case OperatorNode::OP_OR: {
 			return Variant::OP_OR;
 		} break;
+		case OperatorNode::OP_ASSIGN_ADD:
 		case OperatorNode::OP_ADD: {
 			return Variant::OP_ADD;
 		} break;
+		case OperatorNode::OP_ASSIGN_SUB:
 		case OperatorNode::OP_SUB: {
 			return Variant::OP_SUBTRACT;
 		} break;
+		case OperatorNode::OP_ASSIGN_MUL:
 		case OperatorNode::OP_MUL: {
 			return Variant::OP_MULTIPLY;
 		} break;
+		case OperatorNode::OP_ASSIGN_DIV:
 		case OperatorNode::OP_DIV: {
 			return Variant::OP_DIVIDE;
 		} break;
+		case OperatorNode::OP_ASSIGN_MOD:
 		case OperatorNode::OP_MOD: {
 			return Variant::OP_MODULE;
 		} break;
+		case OperatorNode::OP_ASSIGN_BIT_AND:
 		case OperatorNode::OP_BIT_AND: {
 			return Variant::OP_BIT_AND;
 		} break;
+		case OperatorNode::OP_ASSIGN_BIT_OR:
 		case OperatorNode::OP_BIT_OR: {
 			return Variant::OP_BIT_OR;
 		} break;
+		case OperatorNode::OP_ASSIGN_BIT_XOR:
 		case OperatorNode::OP_BIT_XOR: {
 			return Variant::OP_BIT_XOR;
 		} break;
+		case OperatorNode::OP_ASSIGN_SHIFT_LEFT:
+		case OperatorNode::OP_SHIFT_LEFT: {
+			return Variant::OP_SHIFT_LEFT;
+		}
+		case OperatorNode::OP_ASSIGN_SHIFT_RIGHT:
+		case OperatorNode::OP_SHIFT_RIGHT: {
+			return Variant::OP_SHIFT_RIGHT;
+		}
 		default: {
 			return Variant::OP_MAX;
 		} break;
