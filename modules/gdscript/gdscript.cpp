@@ -277,17 +277,7 @@ MethodInfo GDScript::get_method_info(const StringName &p_method) const {
 	if (!E)
 		return MethodInfo();
 
-	MethodInfo mi;
-	mi.name = E->key();
-	for (int i = 0; i < E->get()->get_argument_count(); i++) {
-		PropertyInfo arg;
-		arg.type = Variant::NIL; //variant
-		arg.name = E->get()->get_argument_name(i);
-		mi.arguments.push_back(arg);
-	}
-
-	mi.return_val.name = "Variant";
-	return mi;
+	return E->get()->get_info();
 }
 
 bool GDScript::get_property_default_value(const StringName &p_property, Variant &r_value) const {

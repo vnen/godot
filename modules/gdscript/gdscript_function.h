@@ -143,6 +143,7 @@ private:
 #ifdef TOOLS_ENABLED
 	Vector<StringName> arg_names;
 #endif
+	MethodInfo info;
 
 	List<StackDebug> stack_debug;
 
@@ -201,6 +202,7 @@ public:
 	int get_default_argument_addr(int p_idx) const;
 	GDScript *get_script() const { return _script; }
 	StringName get_source() const { return source; }
+	MethodInfo get_info() const { return info; }
 
 	void debug_get_stack_member_state(int p_line, List<Pair<StringName, int> > *r_stackvars) const;
 

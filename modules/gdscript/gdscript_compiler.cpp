@@ -813,7 +813,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 
 					if (on->arguments[0]->type == GDScriptParser::Node::TYPE_OPERATOR && (static_cast<GDScriptParser::OperatorNode *>(on->arguments[0])->op == GDScriptParser::OperatorNode::OP_INDEX || static_cast<GDScriptParser::OperatorNode *>(on->arguments[0])->op == GDScriptParser::OperatorNode::OP_INDEX_NAMED)) {
 
-					// SET (chained) MODE!
+						// SET (chained) MODE!
 #ifdef DEBUG_ENABLED
 						if (static_cast<GDScriptParser::OperatorNode *>(on->arguments[0])->op == GDScriptParser::OperatorNode::OP_INDEX_NAMED) {
 							const GDScriptParser::OperatorNode *inon = static_cast<GDScriptParser::OperatorNode *>(on->arguments[0]);
@@ -1378,6 +1378,7 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 	codegen.call_max = 0;
 	codegen.debug_stack = ScriptDebugger::get_singleton() != NULL;
 	Vector<StringName> argnames;
+	List<PropertyInfo> argtypes;
 
 	int stack_level = 0;
 
@@ -1394,6 +1395,13 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 #ifdef TOOLS_ENABLED
 			argnames.push_back(p_func->arguments[i]);
 #endif
+			if (p_func->argument_types[i].has_type) {
+				PropertyInfo arginfo(p_func->argument_types[i].variant_type, p_func->arguments[i]);
+				arginfo.class_name = p_func->argument_types[i].class_name;
+				argtypes.push_back(arginfo);
+			} else {
+				argtypes.push_back(PropertyInfo(Variant::NIL, p_func->arguments[i]));
+			}
 		}
 		stack_level = p_func->arguments.size();
 	}
@@ -1472,14 +1480,23 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 	GDScriptFunction *gdfunc = p_script->member_functions[func_name];
 	//}
 
+	PropertyInfo return_val = PropertyInfo(Variant::NIL, "Variant");
+
 	if (p_func) {
 		gdfunc->_static = p_func->_static;
 		gdfunc->rpc_mode = p_func->rpc_mode;
+		if (p_func->return_type.has_type) {
+			return_val.type = p_func->return_type.variant_type;
+			return_val.class_name = p_func->return_type.class_name;
+		}
 	}
+
+	gdfunc->info.return_val = return_val;
 
 #ifdef TOOLS_ENABLED
 	gdfunc->arg_names = argnames;
 #endif
+	gdfunc->info.arguments = argtypes;
 	//constants
 	if (codegen.constant_map.size()) {
 		gdfunc->_constant_count = codegen.constant_map.size();
