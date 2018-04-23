@@ -574,9 +574,12 @@ private:
 	void _check_variable_assign_type(const ClassNode::Member &p_var, Node *p_assign);
 	void _check_call_args_types(OperatorNode *p_call);
 	void _check_func_node_args_types(OperatorNode *p_call, FunctionNode *p_func);
-	DataType _lookup_node_type(Node *p_node, int p_line);
-	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line) const;
-	DataType _lookup_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const;
+	DataType _reduce_node_type(Node *p_node, int p_line);
+	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line) const;
+	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const;
+	MethodInfo _get_method_info_from_type(const DataType &p_data_type, const StringName &p_method, bool &p_valid) const;
+	PropertyInfo _get_member_info_from_type(const DataType &p_data_type, const StringName &p_member, bool &p_valid) const;
+	DataType _type_from_property(const PropertyInfo &p_property) const;
 	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type);
 	String _get_type_string(const DataType &p_type) const;
 	static Variant::Type _get_operation_type(const Variant::Operator p_op, const Variant::Type p_a, const Variant::Type p_b, bool &r_valid);
