@@ -1723,6 +1723,7 @@ void GDScriptLanguage::get_reserved_words(List<String> *p_words) const {
 		"class",
 		"extends",
 		"is",
+		"as",
 		"func",
 		"preload",
 		"setget",

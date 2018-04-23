@@ -98,6 +98,7 @@ public:
 		TK_PR_CLASS,
 		TK_PR_EXTENDS,
 		TK_PR_IS,
+		TK_PR_AS,
 		TK_PR_ONREADY,
 		TK_PR_TOOL,
 		TK_PR_STATIC,

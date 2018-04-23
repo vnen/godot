@@ -1124,6 +1124,20 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				break;
 		}
 
+		bool has_casting = expr->cast_type.has_type;
+		if (tokenizer->get_token() == GDScriptTokenizer::TK_PR_AS) {
+			// Casting
+			if (has_casting) {
+				_set_error("Unexpected 'as'.");
+				return NULL;
+			}
+			if (!_parse_type(&expr->cast_type)) {
+				_set_error("Expected type after 'as'.");
+				return NULL;
+			}
+			has_casting = true;
+		}
+
 		/******************/
 		/* Parse Operator */
 		/******************/
@@ -1146,8 +1160,9 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 		bool valid = true;
 
 //assign, if allowed is only allowed on the first operator
+//also forbidden if there's a casting
 #define _VALIDATE_ASSIGN                  \
-	if (!p_allow_assign) {                \
+	if (!p_allow_assign || has_casting) { \
 		_set_error("Unexpected assign."); \
 		return NULL;                      \
 	}                                     \
@@ -5080,394 +5095,413 @@ void GDScriptParser::_check_func_node_args_types(OperatorNode *p_call, FunctionN
 
 GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_line) {
 
+	DataType node_type;
+
 	// Early out if type is already defined
 	if (p_node->get_datatype().has_type) {
-		return p_node->get_datatype();
-	}
+		node_type = p_node->get_datatype();
+	} else {
+		switch (p_node->type) {
+			case GDScriptParser::Node::TYPE_CONSTANT:
+			case GDScriptParser::Node::TYPE_ARRAY:
+			case GDScriptParser::Node::TYPE_DICTIONARY: {
+				node_type = p_node->get_datatype();
+			} break;
+			case GDScriptParser::Node::TYPE_IDENTIFIER: {
+				IdentifierNode *id = static_cast<IdentifierNode *>(p_node);
+				node_type = _reduce_identifier_type(id->name, p_line);
+			} break;
+			case GDScriptParser::Node::TYPE_OPERATOR: {
+				OperatorNode *op = static_cast<OperatorNode *>(p_node);
 
-	switch (p_node->type) {
-		case GDScriptParser::Node::TYPE_CONSTANT:
-		case GDScriptParser::Node::TYPE_ARRAY:
-		case GDScriptParser::Node::TYPE_DICTIONARY: {
-			return p_node->get_datatype();
-		} break;
-		case GDScriptParser::Node::TYPE_IDENTIFIER: {
-			IdentifierNode *id = static_cast<IdentifierNode *>(p_node);
-			return _reduce_identifier_type(id->name, p_line);
-		} break;
-		case GDScriptParser::Node::TYPE_OPERATOR: {
-			OperatorNode *op = static_cast<OperatorNode *>(p_node);
-
-			switch (op->op) {
-				case OperatorNode::OP_CALL: {
-					if (op->arguments.size() < 1) {
-						_set_error("Parser bug: function call without enough arguments.", p_line);
-						ERR_FAIL_V(DataType());
-					}
-					_check_call_args_types(op);
-					if (error_set) return DataType();
-
-					switch (op->arguments[0]->type) {
-						case GDScriptParser::Node::TYPE_BUILT_IN_FUNCTION: {
-							BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(op->arguments[0]);
-							MethodInfo mi = GDScriptFunctions::get_info(func->function);
-
-							DataType func_type;
-							func_type.has_type = true;
-							func_type.variant_type = mi.return_val.type;
-							func_type.class_name = mi.return_val.name;
-
-							return func_type;
-						} break;
-						case GDScriptParser::Node::TYPE_TYPE: {
-							// Built-in constructor
-							return op->arguments[0]->get_datatype();
-						} break;
-						case GDScriptParser::Node::TYPE_SELF: {
-							// Look at current class functions
-							// TODO: Look at inherited functions
-
-							if (op->arguments.size() < 2) {
-								_set_error("Parser bug: self method call without enough arguments.", op->line);
-								ERR_FAIL_V(DataType());
-							}
-
-							IdentifierNode *func_id = static_cast<IdentifierNode *>(op->arguments[1]);
-
-							for (int i = 0; i < current_class->static_functions.size(); i++) {
-								FunctionNode *func = current_class->static_functions[i];
-								if (func_id->name == func->name) {
-									return func->get_datatype();
-								}
-							}
-							for (int i = 0; i < current_class->functions.size(); i++) {
-								FunctionNode *func = current_class->functions[i];
-								if (func_id->name == func->name) {
-									return func->get_datatype();
-								}
-							}
-						} break;
-						default: {
-							if (op->arguments.size() < 2) {
-								_set_error("Parser bug: self method call without enough arguments.", op->line);
-								ERR_FAIL_V(DataType());
-							}
-
-							DataType base_type = _reduce_node_type(op->arguments[0], p_line);
-
-							if (!base_type.has_type) {
-								// Can't find type
-								return DataType();
-							}
-
-							IdentifierNode *func_id = static_cast<IdentifierNode *>(op->arguments[1]);
-
-							bool valid = false;
-							MethodInfo mi = _get_method_info_from_type(base_type, func_id->name, valid);
-
-							if (!valid) {
-								_set_error("Method '" + func_id->name + "' does not exist for base '" +
-												   _get_type_string(base_type) + "'.",
-										op->line);
-								return DataType();
-							}
-
-							return _type_from_property(mi.return_val);
+				switch (op->op) {
+					case OperatorNode::OP_CALL: {
+						if (op->arguments.size() < 1) {
+							_set_error("Parser bug: function call without enough arguments.", p_line);
+							ERR_FAIL_V(DataType());
 						}
-					}
+						_check_call_args_types(op);
+						if (error_set) return DataType();
 
-				} break;
-				// Unary operators
-				case OperatorNode::OP_NEG:
-				case OperatorNode::OP_POS:
-				case OperatorNode::OP_NOT:
-				case OperatorNode::OP_BIT_INVERT: {
+						switch (op->arguments[0]->type) {
+							case GDScriptParser::Node::TYPE_BUILT_IN_FUNCTION: {
+								BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(op->arguments[0]);
+								MethodInfo mi = GDScriptFunctions::get_info(func->function);
 
-					DataType argument_type = _reduce_node_type(op->arguments[0], p_line);
-					if (!argument_type.has_type) {
-						break;
-					}
+								DataType func_type;
+								func_type.has_type = true;
+								func_type.variant_type = mi.return_val.type;
+								func_type.class_name = mi.return_val.name;
 
-					Variant::Operator var_op = _get_variant_operation(op->op);
-					bool valid = false;
-					Variant::Type ret_type = _get_operation_type(var_op, argument_type.variant_type, argument_type.variant_type, valid);
-
-					if (!valid) {
-						_set_error("Invalid operand type ('" + _get_type_string(argument_type) +
-										   "') to operator '" + Variant::get_operator_name(var_op) + "'.",
-								op->line, op->column);
-						return DataType();
-					}
-
-					DataType return_type;
-					return_type.has_type = true;
-					return_type.variant_type = ret_type;
-
-					return return_type;
-
-				} break;
-				// Binary operators
-				case OperatorNode::OP_IN:
-				case OperatorNode::OP_EQUAL:
-				case OperatorNode::OP_NOT_EQUAL:
-				case OperatorNode::OP_LESS:
-				case OperatorNode::OP_LESS_EQUAL:
-				case OperatorNode::OP_GREATER:
-				case OperatorNode::OP_GREATER_EQUAL:
-				case OperatorNode::OP_AND:
-				case OperatorNode::OP_OR:
-				case OperatorNode::OP_ADD:
-				case OperatorNode::OP_SUB:
-				case OperatorNode::OP_MUL:
-				case OperatorNode::OP_DIV:
-				case OperatorNode::OP_MOD:
-				case OperatorNode::OP_SHIFT_LEFT:
-				case OperatorNode::OP_SHIFT_RIGHT:
-				case OperatorNode::OP_BIT_AND:
-				case OperatorNode::OP_BIT_OR:
-				case OperatorNode::OP_BIT_XOR: {
-
-					DataType argument_a_type = _reduce_node_type(op->arguments[0], p_line);
-					DataType argument_b_type = _reduce_node_type(op->arguments[1], p_line);
-					if (!argument_a_type.has_type || !argument_b_type.has_type) {
-						break;
-					}
-
-					Variant::Operator var_op = _get_variant_operation(op->op);
-					bool valid = false;
-					Variant::Type ret_type = _get_operation_type(var_op, argument_a_type.variant_type, argument_b_type.variant_type, valid);
-
-					if (!valid) {
-						_set_error("Invalid operand types ('" + _get_type_string(argument_a_type) + "' and '" +
-										   _get_type_string(argument_b_type) + "') to operator '" + Variant::get_operator_name(var_op) +
-										   "'.",
-								op->line, op->column);
-						return DataType();
-					}
-
-					DataType return_type;
-					return_type.has_type = true;
-					return_type.variant_type = ret_type;
-
-					return return_type;
-
-				} break;
-				// Assignment should never happen within an expression
-				case OperatorNode::OP_ASSIGN:
-				case OperatorNode::OP_ASSIGN_ADD:
-				case OperatorNode::OP_ASSIGN_SUB:
-				case OperatorNode::OP_ASSIGN_MUL:
-				case OperatorNode::OP_ASSIGN_DIV:
-				case OperatorNode::OP_ASSIGN_MOD:
-				case OperatorNode::OP_ASSIGN_SHIFT_LEFT:
-				case OperatorNode::OP_ASSIGN_SHIFT_RIGHT:
-				case OperatorNode::OP_ASSIGN_BIT_AND:
-				case OperatorNode::OP_ASSIGN_BIT_OR:
-				case OperatorNode::OP_ASSIGN_BIT_XOR: {
-
-					_set_error("Assignment inside expression is not allowed.", op->line);
-					return DataType();
-
-				} break;
-				case OperatorNode::OP_INDEX_NAMED: {
-					DataType base_type = _reduce_node_type(op->arguments[0], p_line);
-
-					if (!base_type.has_type) {
-						// Can't find type
-						return DataType();
-					}
-
-					if (base_type.variant_type == Variant::NIL) {
-						_set_error("Can't index on a null value.", op->line);
-						return DataType();
-					}
-
-					IdentifierNode *member_id = static_cast<IdentifierNode *>(op->arguments[1]);
-
-					bool valid = false;
-					PropertyInfo pi = _get_member_info_from_type(base_type, member_id->name, valid);
-
-					if (!valid) {
-						_set_error("Member '" + member_id->name + "' does not exist for base '" +
-										   _get_type_string(base_type) + "'.",
-								op->line);
-						return DataType();
-					}
-
-					return _type_from_property(pi);
-				} break;
-				case OperatorNode::OP_INDEX: {
-					DataType base_type = _reduce_node_type(op->arguments[0], p_line);
-					DataType index_type = _reduce_node_type(op->arguments[1], p_line);
-
-					if (!base_type.has_type) {
-						return DataType();
-					}
-
-					if (index_type.has_type) {
-						// Check if indexing is valid
-						// TODO: Check if a constant index is valid as well
-						bool error = false;
-						switch (base_type.variant_type) {
-							// Expect int or real as index
-							case Variant::POOL_BYTE_ARRAY:
-							case Variant::POOL_COLOR_ARRAY:
-							case Variant::POOL_INT_ARRAY:
-							case Variant::POOL_REAL_ARRAY:
-							case Variant::POOL_STRING_ARRAY:
-							case Variant::POOL_VECTOR2_ARRAY:
-							case Variant::POOL_VECTOR3_ARRAY:
-							case Variant::ARRAY:
-							case Variant::STRING: {
-								error = index_type.variant_type != Variant::INT && index_type.variant_type != Variant::REAL;
+								node_type = func_type;
 							} break;
-							// Expect String only
-							case Variant::RECT2:
-							case Variant::PLANE:
-							case Variant::QUAT:
-							case Variant::AABB:
-							case Variant::OBJECT: {
-								error = index_type.variant_type != Variant::STRING;
+							case GDScriptParser::Node::TYPE_TYPE: {
+								// Built-in constructor
+								node_type = op->arguments[0]->get_datatype();
 							} break;
-							// Expect String or number
-							case Variant::VECTOR2:
-							case Variant::VECTOR3:
-							case Variant::TRANSFORM2D:
-							case Variant::BASIS:
-							case Variant::TRANSFORM: {
-								error = index_type.variant_type != Variant::INT && index_type.variant_type != Variant::REAL &&
-										index_type.variant_type != Variant::STRING;
+							case GDScriptParser::Node::TYPE_SELF: {
+								// Look at current class functions
+								// TODO: Look at inherited functions
+
+								if (op->arguments.size() < 2) {
+									_set_error("Parser bug: self method call without enough arguments.", op->line);
+									ERR_FAIL_V(DataType());
+								}
+
+								IdentifierNode *func_id = static_cast<IdentifierNode *>(op->arguments[1]);
+
+								bool found = false;
+								for (int i = 0; i < current_class->static_functions.size(); i++) {
+									FunctionNode *func = current_class->static_functions[i];
+									if (func_id->name == func->name) {
+										node_type = func->get_datatype();
+										found = true;
+										break;
+									}
+								}
+								if (!found) {
+									for (int i = 0; i < current_class->functions.size(); i++) {
+										FunctionNode *func = current_class->functions[i];
+										if (func_id->name == func->name) {
+											node_type = func->get_datatype();
+											break;
+										}
+									}
+								}
 							} break;
-							// Expect String or int
-							case Variant::COLOR: {
-								error = index_type.variant_type != Variant::INT && index_type.variant_type != Variant::STRING;
-							} break;
+							default: {
+								if (op->arguments.size() < 2) {
+									_set_error("Parser bug: self method call without enough arguments.", op->line);
+									ERR_FAIL_V(DataType());
+								}
+
+								DataType base_type = _reduce_node_type(op->arguments[0], p_line);
+
+								if (!base_type.has_type) {
+									// Can't find type
+									node_type = DataType();
+									break;
+								}
+
+								IdentifierNode *func_id = static_cast<IdentifierNode *>(op->arguments[1]);
+
+								bool valid = false;
+								MethodInfo mi = _get_method_info_from_type(base_type, func_id->name, valid);
+
+								if (!valid) {
+									_set_error("Method '" + func_id->name + "' does not exist for base '" +
+													   _get_type_string(base_type) + "'.",
+											op->line);
+									return DataType();
+								}
+
+								node_type = _type_from_property(mi.return_val);
+							}
 						}
-						if (error) {
-							_set_error("Invalid index type (" + _get_type_string(index_type) + ") for base '" +
+
+					} break;
+					// Unary operators
+					case OperatorNode::OP_NEG:
+					case OperatorNode::OP_POS:
+					case OperatorNode::OP_NOT:
+					case OperatorNode::OP_BIT_INVERT: {
+
+						DataType argument_type = _reduce_node_type(op->arguments[0], p_line);
+						if (!argument_type.has_type) {
+							break;
+						}
+
+						Variant::Operator var_op = _get_variant_operation(op->op);
+						bool valid = false;
+						Variant::Type ret_type = _get_operation_type(var_op, argument_type.variant_type, argument_type.variant_type, valid);
+
+						if (!valid) {
+							_set_error("Invalid operand type ('" + _get_type_string(argument_type) +
+											   "') to operator '" + Variant::get_operator_name(var_op) + "'.",
+									op->line, op->column);
+							return DataType();
+						}
+
+						DataType return_type;
+						return_type.has_type = true;
+						return_type.variant_type = ret_type;
+
+						node_type = return_type;
+
+					} break;
+					// Binary operators
+					case OperatorNode::OP_IN:
+					case OperatorNode::OP_EQUAL:
+					case OperatorNode::OP_NOT_EQUAL:
+					case OperatorNode::OP_LESS:
+					case OperatorNode::OP_LESS_EQUAL:
+					case OperatorNode::OP_GREATER:
+					case OperatorNode::OP_GREATER_EQUAL:
+					case OperatorNode::OP_AND:
+					case OperatorNode::OP_OR:
+					case OperatorNode::OP_ADD:
+					case OperatorNode::OP_SUB:
+					case OperatorNode::OP_MUL:
+					case OperatorNode::OP_DIV:
+					case OperatorNode::OP_MOD:
+					case OperatorNode::OP_SHIFT_LEFT:
+					case OperatorNode::OP_SHIFT_RIGHT:
+					case OperatorNode::OP_BIT_AND:
+					case OperatorNode::OP_BIT_OR:
+					case OperatorNode::OP_BIT_XOR: {
+
+						DataType argument_a_type = _reduce_node_type(op->arguments[0], p_line);
+						DataType argument_b_type = _reduce_node_type(op->arguments[1], p_line);
+						if (!argument_a_type.has_type || !argument_b_type.has_type) {
+							break;
+						}
+
+						Variant::Operator var_op = _get_variant_operation(op->op);
+						bool valid = false;
+						Variant::Type ret_type = _get_operation_type(var_op, argument_a_type.variant_type, argument_b_type.variant_type, valid);
+
+						if (!valid) {
+							_set_error("Invalid operand types ('" + _get_type_string(argument_a_type) + "' and '" +
+											   _get_type_string(argument_b_type) + "') to operator '" + Variant::get_operator_name(var_op) +
+											   "'.",
+									op->line, op->column);
+							return DataType();
+						}
+
+						DataType return_type;
+						return_type.has_type = true;
+						return_type.variant_type = ret_type;
+
+						node_type = return_type;
+
+					} break;
+					// Assignment should never happen within an expression
+					case OperatorNode::OP_ASSIGN:
+					case OperatorNode::OP_ASSIGN_ADD:
+					case OperatorNode::OP_ASSIGN_SUB:
+					case OperatorNode::OP_ASSIGN_MUL:
+					case OperatorNode::OP_ASSIGN_DIV:
+					case OperatorNode::OP_ASSIGN_MOD:
+					case OperatorNode::OP_ASSIGN_SHIFT_LEFT:
+					case OperatorNode::OP_ASSIGN_SHIFT_RIGHT:
+					case OperatorNode::OP_ASSIGN_BIT_AND:
+					case OperatorNode::OP_ASSIGN_BIT_OR:
+					case OperatorNode::OP_ASSIGN_BIT_XOR: {
+
+						_set_error("Assignment inside expression is not allowed.", op->line);
+						return DataType();
+
+					} break;
+					case OperatorNode::OP_INDEX_NAMED: {
+						DataType base_type = _reduce_node_type(op->arguments[0], p_line);
+
+						if (!base_type.has_type) {
+							// Can't find type
+							break;
+						}
+
+						if (base_type.variant_type == Variant::NIL) {
+							_set_error("Can't index on a null value.", op->line);
+							return DataType();
+						}
+
+						IdentifierNode *member_id = static_cast<IdentifierNode *>(op->arguments[1]);
+
+						bool valid = false;
+						PropertyInfo pi = _get_member_info_from_type(base_type, member_id->name, valid);
+
+						if (!valid) {
+							_set_error("Member '" + member_id->name + "' does not exist for base '" +
 											   _get_type_string(base_type) + "'.",
 									op->line);
 							return DataType();
 						}
-					}
 
-					if (op->arguments[1]->type == GDScriptParser::Node::TYPE_CONSTANT) {
-						ConstantNode *cn = static_cast<ConstantNode *>(op->arguments[1]);
-						// Index is a constant, just try it if possible
-						switch (base_type.variant_type) {
-							// Arrays/string have variable indexing, can't test directly
-							case Variant::STRING:
-							case Variant::ARRAY:
-							case Variant::DICTIONARY:
-							case Variant::POOL_BYTE_ARRAY:
-							case Variant::POOL_COLOR_ARRAY:
-							case Variant::POOL_INT_ARRAY:
-							case Variant::POOL_REAL_ARRAY:
-							case Variant::POOL_STRING_ARRAY:
-							case Variant::POOL_VECTOR2_ARRAY:
-							case Variant::POOL_VECTOR3_ARRAY: {
-								break;
+						node_type = _type_from_property(pi);
+					} break;
+					case OperatorNode::OP_INDEX: {
+						DataType base_type = _reduce_node_type(op->arguments[0], p_line);
+						DataType index_type = _reduce_node_type(op->arguments[1], p_line);
+
+						if (!base_type.has_type) {
+							break;
+						}
+
+						if (index_type.has_type) {
+							// Check if indexing is valid
+							// TODO: Check if a constant index is valid as well
+							bool error = false;
+							switch (base_type.variant_type) {
+								// Expect int or real as index
+								case Variant::POOL_BYTE_ARRAY:
+								case Variant::POOL_COLOR_ARRAY:
+								case Variant::POOL_INT_ARRAY:
+								case Variant::POOL_REAL_ARRAY:
+								case Variant::POOL_STRING_ARRAY:
+								case Variant::POOL_VECTOR2_ARRAY:
+								case Variant::POOL_VECTOR3_ARRAY:
+								case Variant::ARRAY:
+								case Variant::STRING: {
+									error = index_type.variant_type != Variant::INT && index_type.variant_type != Variant::REAL;
+								} break;
+								// Expect String only
+								case Variant::RECT2:
+								case Variant::PLANE:
+								case Variant::QUAT:
+								case Variant::AABB:
+								case Variant::OBJECT: {
+									error = index_type.variant_type != Variant::STRING;
+								} break;
+								// Expect String or number
+								case Variant::VECTOR2:
+								case Variant::VECTOR3:
+								case Variant::TRANSFORM2D:
+								case Variant::BASIS:
+								case Variant::TRANSFORM: {
+									error = index_type.variant_type != Variant::INT && index_type.variant_type != Variant::REAL &&
+											index_type.variant_type != Variant::STRING;
+								} break;
+								// Expect String or int
+								case Variant::COLOR: {
+									error = index_type.variant_type != Variant::INT && index_type.variant_type != Variant::STRING;
+								} break;
 							}
+							if (error) {
+								_set_error("Invalid index type (" + _get_type_string(index_type) + ") for base '" +
+												   _get_type_string(base_type) + "'.",
+										op->line);
+								return DataType();
+							}
+						}
 
-							case Variant::OBJECT: {
-								// Objects can only index with strings, it was checked earlier
-								String index = cn->value;
-								bool valid = false;
-								PropertyInfo pi = _get_member_info_from_type(base_type, index, valid);
-
-								if (!valid) {
-									_set_error("Member '" + index + "' does not exist for base '" +
-													   _get_type_string(base_type) + "'.",
-											op->line);
-									return DataType();
+						if (op->arguments[1]->type == GDScriptParser::Node::TYPE_CONSTANT) {
+							ConstantNode *cn = static_cast<ConstantNode *>(op->arguments[1]);
+							// Index is a constant, just try it if possible
+							switch (base_type.variant_type) {
+								// Arrays/string have variable indexing, can't test directly
+								case Variant::STRING:
+								case Variant::ARRAY:
+								case Variant::DICTIONARY:
+								case Variant::POOL_BYTE_ARRAY:
+								case Variant::POOL_COLOR_ARRAY:
+								case Variant::POOL_INT_ARRAY:
+								case Variant::POOL_REAL_ARRAY:
+								case Variant::POOL_STRING_ARRAY:
+								case Variant::POOL_VECTOR2_ARRAY:
+								case Variant::POOL_VECTOR3_ARRAY: {
+									break;
 								}
 
-								return _type_from_property(pi);
+								case Variant::OBJECT: {
+									// Objects can only index with strings, it was checked earlier
+									String index = cn->value;
+									bool valid = false;
+									PropertyInfo pi = _get_member_info_from_type(base_type, index, valid);
+
+									if (!valid) {
+										_set_error("Member '" + index + "' does not exist for base '" +
+														   _get_type_string(base_type) + "'.",
+												op->line);
+										return DataType();
+									}
+
+									node_type = _type_from_property(pi);
+								} break;
+								default: {
+									Variant::CallError err;
+									Variant temp = Variant::construct(base_type.variant_type, NULL, 0, err);
+
+									bool valid = false;
+									Variant res = temp.get(cn->value, &valid);
+
+									if (!valid) {
+										_set_error("Can't get index '" + String(cn->value) + "' on base '" +
+														   _get_type_string(base_type) + "'.",
+												op->line);
+										return DataType();
+									}
+
+									DataType result;
+									result.has_type = true;
+									result.variant_type = res.get_type();
+									node_type = result;
+								} break;
+							}
+						}
+						// Can infer indexing type for some variant types
+						DataType result;
+						result.has_type = true;
+						switch (base_type.variant_type) {
+							// Can't index at all
+							case Variant::NIL:
+							case Variant::BOOL:
+							case Variant::INT:
+							case Variant::REAL:
+							case Variant::NODE_PATH:
+							case Variant::_RID: {
+
+								_set_error("Can't index on a value of type '" + _get_type_string(base_type) + "'.", op->line);
+								return DataType();
 							} break;
+								// Return int
+							case Variant::POOL_BYTE_ARRAY:
+							case Variant::POOL_INT_ARRAY: {
+								result.variant_type = Variant::INT;
+							} break;
+								// Return real
+							case Variant::POOL_REAL_ARRAY:
+							case Variant::VECTOR2:
+							case Variant::VECTOR3:
+							case Variant::QUAT: {
+								result.variant_type = Variant::REAL;
+							} break;
+								// Return color
+							case Variant::POOL_COLOR_ARRAY: {
+								result.variant_type = Variant::COLOR;
+							} break;
+								// Return string
+							case Variant::POOL_STRING_ARRAY:
+							case Variant::STRING: {
+								result.variant_type = Variant::STRING;
+							} break;
+								// Return Vector2
+							case Variant::POOL_VECTOR2_ARRAY:
+							case Variant::TRANSFORM2D:
+							case Variant::RECT2: {
+								result.variant_type = Variant::VECTOR2;
+							}
+								// Return Vector3
+							case Variant::POOL_VECTOR3_ARRAY:
+							case Variant::AABB:
+							case Variant::BASIS: {
+								result.variant_type = Variant::VECTOR3;
+							} break;
+								// Depends on the index
+							case Variant::TRANSFORM:
+							case Variant::PLANE:
+							case Variant::COLOR:
 							default: {
-								Variant::CallError err;
-								Variant temp = Variant::construct(base_type.variant_type, NULL, 0, err);
-
-								bool valid = false;
-								Variant res = temp.get(cn->value, &valid);
-
-								if (!valid) {
-									_set_error("Can't get index '" + String(cn->value) + "' on base '" +
-													   _get_type_string(base_type) + "'.",
-											op->line);
-									return DataType();
-								}
-
-								DataType result;
-								result.has_type = true;
-								result.variant_type = res.get_type();
-								return result;
+								result.has_type = false;
 							} break;
 						}
-					}
-					// Can infer indexing type for some variant types
-					DataType result;
-					result.has_type = true;
-					switch (base_type.variant_type) {
-						// Can't index at all
-						case Variant::NIL:
-						case Variant::BOOL:
-						case Variant::INT:
-						case Variant::REAL:
-						case Variant::NODE_PATH:
-						case Variant::_RID: {
+						node_type = result;
 
-							_set_error("Can't index on a value of type '" + _get_type_string(base_type) + "'.", op->line);
-							return DataType();
-						} break;
-							// Return int
-						case Variant::POOL_BYTE_ARRAY:
-						case Variant::POOL_INT_ARRAY: {
-							result.variant_type = Variant::INT;
-						} break;
-							// Return real
-						case Variant::POOL_REAL_ARRAY:
-						case Variant::VECTOR2:
-						case Variant::VECTOR3:
-						case Variant::QUAT: {
-							result.variant_type = Variant::REAL;
-						} break;
-							// Return color
-						case Variant::POOL_COLOR_ARRAY: {
-							result.variant_type = Variant::COLOR;
-						} break;
-							// Return string
-						case Variant::POOL_STRING_ARRAY:
-						case Variant::STRING: {
-							result.variant_type = Variant::STRING;
-						} break;
-							// Return Vector2
-						case Variant::POOL_VECTOR2_ARRAY:
-						case Variant::TRANSFORM2D:
-						case Variant::RECT2: {
-							result.variant_type = Variant::VECTOR2;
-						}
-							// Return Vector3
-						case Variant::POOL_VECTOR3_ARRAY:
-						case Variant::AABB:
-						case Variant::BASIS: {
-							result.variant_type = Variant::VECTOR3;
-						} break;
-							// Depends on the index
-						case Variant::TRANSFORM:
-						case Variant::PLANE:
-						case Variant::COLOR:
-						default: {
-							result.has_type = false;
-						} break;
-					}
-					return result;
-
-				} break;
-			}
-		} break;
+					} break;
+				}
+			} break;
+		}
 	}
-	return DataType();
+
+	bool valid_cast = false;
+	DataType final_type = _validate_casting(node_type, p_node->cast_type, valid_cast);
+
+	if (!valid_cast) {
+		_set_error("Invalid cast. Cannot convert from '" + _get_type_string(node_type) +
+						   "' to '" + _get_type_string(p_node->cast_type) + "'.",
+				p_node->line);
+	}
+
+	return final_type;
 }
 
 GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const StringName &p_identifier, int p_line) const {
@@ -5677,6 +5711,36 @@ GDScriptParser::DataType GDScriptParser::_type_from_property(const PropertyInfo 
 	ret.variant_type = p_property.type;
 	ret.class_name = p_property.class_name;
 	return ret;
+}
+
+GDScriptParser::DataType GDScriptParser::_validate_casting(const DataType &p_base_type, const DataType &p_cast_type, bool &p_valid) const {
+
+	p_valid = false;
+
+	if (!p_cast_type.has_type) {
+		// No casting
+		p_valid = true;
+		return p_base_type;
+	}
+
+	if (!p_base_type.has_type) {
+		// No type to check
+		p_valid = true;
+		return p_cast_type;
+	}
+
+	p_valid = Variant::can_convert(p_base_type.variant_type, p_cast_type.variant_type);
+
+	if (p_valid && p_base_type.variant_type == Variant::OBJECT && p_cast_type.variant_type == Variant::OBJECT) {
+		// Check class db
+		if (ClassDB::class_exists(p_base_type.class_name) && ClassDB::class_exists(p_cast_type.class_name)) {
+			// Both directions are valid for casting
+			p_valid = ClassDB::is_parent_class(p_base_type.class_name, p_cast_type.class_name) ||
+					  ClassDB::is_parent_class(p_cast_type.class_name, p_base_type.class_name);
+		}
+	}
+
+	return p_cast_type;
 }
 
 bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) {

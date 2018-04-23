@@ -75,6 +75,7 @@ public:
 		int line;
 		int column;
 		Type type;
+		DataType cast_type;
 
 		virtual DataType get_datatype() { return DataType(); }
 
@@ -580,6 +581,7 @@ private:
 	MethodInfo _get_method_info_from_type(const DataType &p_data_type, const StringName &p_method, bool &p_valid) const;
 	PropertyInfo _get_member_info_from_type(const DataType &p_data_type, const StringName &p_member, bool &p_valid) const;
 	DataType _type_from_property(const PropertyInfo &p_property) const;
+	DataType _validate_casting(const DataType &p_base_type, const DataType &p_cast_type, bool &p_valid) const;
 	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type);
 	String _get_type_string(const DataType &p_type) const;
 	static Variant::Type _get_operation_type(const Variant::Operator p_op, const Variant::Type p_a, const Variant::Type p_b, bool &r_valid);

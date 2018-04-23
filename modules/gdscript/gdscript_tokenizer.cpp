@@ -93,6 +93,7 @@ const char *GDScriptTokenizer::token_names[TK_MAX] = {
 	"class",
 	"extends",
 	"is",
+	"as",
 	"onready",
 	"tool",
 	"static",
@@ -187,6 +188,7 @@ static const _kws _keyword_list[] = {
 	{ GDScriptTokenizer::TK_PR_CLASS, "class" },
 	{ GDScriptTokenizer::TK_PR_EXTENDS, "extends" },
 	{ GDScriptTokenizer::TK_PR_IS, "is" },
+	{ GDScriptTokenizer::TK_PR_AS, "as" },
 	{ GDScriptTokenizer::TK_PR_ONREADY, "onready" },
 	{ GDScriptTokenizer::TK_PR_TOOL, "tool" },
 	{ GDScriptTokenizer::TK_PR_STATIC, "static" },
@@ -1130,7 +1132,7 @@ void GDScriptTokenizerText::advance(int p_amount) {
 		_advance();
 }
 
-	//////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define BYTECODE_VERSION 12
 
