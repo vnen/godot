@@ -1134,7 +1134,7 @@ void GDScriptTokenizerText::advance(int p_amount) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define BYTECODE_VERSION 12
+#define BYTECODE_VERSION 13
 
 Error GDScriptTokenizerBuffer::set_code_buffer(const Vector<uint8_t> &p_buffer) {
 
