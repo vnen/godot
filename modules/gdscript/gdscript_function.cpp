@@ -185,6 +185,8 @@ static String _get_var_type(const Variant *p_type) {
 		&&OPCODE_ASSIGN,                      \
 		&&OPCODE_ASSIGN_TRUE,                 \
 		&&OPCODE_ASSIGN_FALSE,                \
+		&&OPCODE_ASSIGN_TYPED_BUILTIN,        \
+		&&OPCODE_ASSIGN_TYPED_NATIVE_CLASS,   \
 		&&OPCODE_CONSTRUCT,                   \
 		&&OPCODE_CONSTRUCT_ARRAY,             \
 		&&OPCODE_CONSTRUCT_DICTIONARY,        \
@@ -691,6 +693,47 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				*dst = false;
 
 				ip += 2;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_ASSIGN_TYPED_BUILTIN) {
+
+				CHECK_SPACE(4);
+				Variant::Type var_type = (Variant::Type)_code_ptr[ip + 1];
+				GET_VARIANT_PTR(dst, 2);
+				GET_VARIANT_PTR(src, 3);
+
+				if (src->get_type() != var_type) {
+					err_text = "Trying to assign value of type '" + Variant::get_type_name(src->get_type()) +
+							   "' to a variable of type '" + Variant::get_type_name(var_type) + "'.";
+					OPCODE_BREAK;
+				}
+
+				*dst = *src;
+
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_ASSIGN_TYPED_NATIVE_CLASS) {
+
+				CHECK_SPACE(4);
+				GET_VARIANT_PTR(type, 1);
+				GET_VARIANT_PTR(dst, 2);
+				GET_VARIANT_PTR(src, 3);
+
+				GDScriptNativeClass *nc = Object::cast_to<GDScriptNativeClass>((Object *)(*type));
+				Object *obj_src = *src;
+
+				if (!ClassDB::is_parent_class(obj_src->get_class_name(), nc->get_name())) {
+					err_text = "Trying to assign value of type '" + obj_src->get_class_name() +
+							   "' to a variable of type '" + nc->get_name() + "'.";
+					OPCODE_BREAK;
+				}
+
+				*dst = *src;
+
+				ip += 4;
 			}
 			DISPATCH_OPCODE;
 

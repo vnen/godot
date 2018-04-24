@@ -1014,9 +1014,39 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 						if (src_address_b < 0)
 							return -1;
 
-						codegen.opcodes.push_back(GDScriptFunction::OPCODE_ASSIGN); // perform operator
-						codegen.opcodes.push_back(dst_address_a); // argument 1
-						codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
+						GDScriptParser::DataType assign_type = on->arguments[0]->get_datatype();
+
+						if (assign_type.has_type && !on->arguments[1]->get_datatype().has_type) {
+							// Typed assignment
+							if (assign_type.variant_type != Variant::OBJECT) {
+								// Builtin type
+								codegen.opcodes.push_back(GDScriptFunction::OPCODE_ASSIGN_TYPED_BUILTIN); // perform operator
+								codegen.opcodes.push_back(assign_type.variant_type); // variable type
+								codegen.opcodes.push_back(dst_address_a); // argument 1
+								codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
+							} else {
+								// Native class
+								int class_idx;
+								if (GDScriptLanguage::get_singleton()->get_global_map().has(assign_type.class_name)) {
+
+									class_idx = GDScriptLanguage::get_singleton()->get_global_map()[assign_type.class_name];
+									class_idx |= (GDScriptFunction::ADDR_TYPE_GLOBAL << GDScriptFunction::ADDR_BITS); //argument (stack root)
+								} else {
+									_set_error("Invalid native class type '" + String(assign_type.class_name) + "'.", on->arguments[0]);
+									return -1;
+								}
+
+								codegen.opcodes.push_back(GDScriptFunction::OPCODE_ASSIGN_TYPED_NATIVE_CLASS); // perform operator
+								codegen.opcodes.push_back(class_idx); // variable class
+								codegen.opcodes.push_back(dst_address_a); // argument 1
+								codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
+							}
+						} else {
+							// Non-typed assign
+							codegen.opcodes.push_back(GDScriptFunction::OPCODE_ASSIGN); // perform operator
+							codegen.opcodes.push_back(dst_address_a); // argument 1
+							codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
+						}
 						return dst_address_a; //if anything, returns wathever was assigned or correct stack position
 					}
 

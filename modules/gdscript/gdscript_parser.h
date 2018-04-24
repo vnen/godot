@@ -78,6 +78,7 @@ public:
 		DataType cast_type;
 
 		virtual DataType get_datatype() { return DataType(); }
+		virtual void set_datatype(DataType p_data_type) {}
 
 		virtual ~Node() {}
 	};
@@ -150,6 +151,7 @@ public:
 		BlockNode *body;
 		DataType return_type;
 		virtual DataType get_datatype() { return return_type; }
+		virtual void set_datatype(DataType p_data_type) { return_type = p_data_type; }
 
 		FunctionNode() {
 			type = TYPE_FUNCTION;
@@ -207,6 +209,7 @@ public:
 		StringName name;
 		DataType data_type;
 		virtual DataType get_datatype() { return data_type; }
+		virtual void set_datatype(DataType p_data_type) { data_type = p_data_type; }
 		IdentifierNode() { type = TYPE_IDENTIFIER; }
 	};
 
@@ -219,13 +222,15 @@ public:
 			assign = NULL;
 		}
 		DataType data_type;
-		virtual DataType get_datatype() { return data_type; };
+		virtual DataType get_datatype() { return data_type; }
+		virtual void set_datatype(DataType p_data_type) { data_type = p_data_type; }
 	};
 
 	struct ConstantNode : public Node {
 		Variant value;
 		DataType constant_type;
 		virtual DataType get_datatype() { return constant_type; }
+		virtual void set_datatype(DataType p_data_type) { constant_type = p_data_type; }
 		ConstantNode() { type = TYPE_CONSTANT; }
 	};
 
@@ -234,6 +239,7 @@ public:
 		Vector<Node *> elements;
 		DataType array_type;
 		virtual DataType get_datatype() { return array_type; }
+		virtual void set_datatype(DataType p_data_type) { array_type = p_data_type; }
 		ArrayNode() {
 			type = TYPE_ARRAY;
 			array_type.has_type = true;
@@ -252,6 +258,7 @@ public:
 		Vector<Pair> elements;
 		DataType dict_type;
 		virtual DataType get_datatype() { return dict_type; }
+		virtual void set_datatype(DataType p_data_type) { dict_type = p_data_type; }
 		DictionaryNode() {
 			type = TYPE_DICTIONARY;
 			dict_type.has_type = true;

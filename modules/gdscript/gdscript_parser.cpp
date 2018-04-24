@@ -4811,6 +4811,8 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 							return;
 						}
 
+						id->set_datatype(id_type);
+
 						if (op->op != OperatorNode::OP_ASSIGN) {
 							// Check if operation is valid
 							DataType argument_type = _reduce_node_type(op->arguments[1], op->line);
@@ -5501,6 +5503,7 @@ GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_l
 				p_node->line);
 	}
 
+	p_node->set_datatype(final_type);
 	return final_type;
 }
 
