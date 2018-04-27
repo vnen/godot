@@ -66,6 +66,7 @@ public:
 			TYPE_OPERATOR,
 			TYPE_CONTROL_FLOW,
 			TYPE_LOCAL_VAR,
+			TYPE_CAST,
 			TYPE_ASSERT,
 			TYPE_BREAKPOINT,
 			TYPE_NEWLINE,
@@ -75,7 +76,6 @@ public:
 		int line;
 		int column;
 		Type type;
-		DataType cast_type;
 
 		virtual DataType get_datatype() { return DataType(); }
 		virtual void set_datatype(DataType p_data_type) {}
@@ -277,6 +277,7 @@ public:
 			OP_PARENT_CALL,
 			OP_YIELD,
 			OP_IS,
+			OP_AS,
 			//indexing operator
 			OP_INDEX,
 			OP_INDEX_NAMED,
@@ -331,6 +332,7 @@ public:
 		Vector<Node *> arguments;
 		DataType return_type;
 		virtual DataType get_datatype() { return return_type; }
+		virtual void set_datatype(DataType p_data_type) { return_type = p_data_type; }
 		OperatorNode() { type = TYPE_OPERATOR; }
 	};
 
@@ -396,6 +398,15 @@ public:
 			body = NULL;
 			body_else = NULL;
 		}
+	};
+
+	struct CastNode : public Node {
+		Node *base_node;
+		DataType cast_type;
+		DataType return_type;
+		virtual DataType get_datatype() { return return_type; }
+		virtual void set_datatype(DataType p_data_type) { return_type = p_data_type; }
+		CastNode() { type = TYPE_CAST; }
 	};
 
 	struct AssertNode : public Node {

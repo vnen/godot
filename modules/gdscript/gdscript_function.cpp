@@ -187,6 +187,7 @@ static String _get_var_type(const Variant *p_type) {
 		&&OPCODE_ASSIGN_FALSE,                \
 		&&OPCODE_ASSIGN_TYPED_BUILTIN,        \
 		&&OPCODE_ASSIGN_TYPED_NATIVE_CLASS,   \
+		&&OPCODE_CAST_BUILTIN,                \
 		&&OPCODE_CONSTRUCT,                   \
 		&&OPCODE_CONSTRUCT_ARRAY,             \
 		&&OPCODE_CONSTRUCT_DICTIONARY,        \
@@ -732,6 +733,28 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				}
 
 				*dst = *src;
+
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_CAST_BUILTIN) {
+
+				CHECK_SPACE(4);
+				Variant::Type cast_type = (Variant::Type)_code_ptr[ip + 1];
+				GET_VARIANT_PTR(src, 2);
+				GET_VARIANT_PTR(dst, 3);
+
+				Variant::CallError err;
+				*dst = Variant::construct(cast_type, (const Variant **)&src, 1, err);
+
+#ifdef DEBUG_ENABLED
+				if (err.error != Variant::CallError::CALL_OK) {
+					err_text = "Invalid cast: Cannot convert '" + Variant::get_type_name(src->get_type()) +
+							   "' to '" + Variant::get_type_name(cast_type) + "'.";
+					OPCODE_BREAK;
+				}
+#endif
 
 				ip += 4;
 			}

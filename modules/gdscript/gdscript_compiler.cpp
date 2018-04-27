@@ -383,6 +383,39 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 			return dst_addr;
 
 		} break;
+		case GDScriptParser::Node::TYPE_CAST: {
+			// Casting
+			const GDScriptParser::CastNode *cn = static_cast<const GDScriptParser::CastNode *>(p_expression);
+
+			int slevel = p_stack_level;
+
+			if (cn->cast_type.variant_type != Variant::OBJECT) {
+				// Built-in type conversion
+				int src_address = _parse_expression(codegen, cn->base_node, slevel);
+				if (src_address < 0) {
+					return src_address;
+				}
+				if (src_address & GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS) {
+					slevel++;
+					codegen.alloc_stack(slevel);
+				}
+
+				codegen.opcodes.push_back(GDScriptFunction::OPCODE_CAST_BUILTIN);
+				codegen.opcodes.push_back(cn->cast_type.variant_type); // target type
+				codegen.opcodes.push_back(src_address); // original value
+
+				int dst_addr = (p_stack_level) | (GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS);
+				codegen.opcodes.push_back(dst_addr); // append the stack level as destination address of the opcode
+				codegen.alloc_stack(p_stack_level);
+				return dst_addr;
+
+			} else {
+
+				// Ignore for now
+				return _parse_expression(codegen, cn->base_node, slevel);
+			}
+
+		} break;
 		case GDScriptParser::Node::TYPE_OPERATOR: {
 			//hell breaks loose
 
