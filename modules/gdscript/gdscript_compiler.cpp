@@ -1057,7 +1057,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 								codegen.opcodes.push_back(assign_type.variant_type); // variable type
 								codegen.opcodes.push_back(dst_address_a); // argument 1
 								codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
-							} else {
+							} else if (!assign_type.is_script) {
 								// Native class
 								int class_idx;
 								if (GDScriptLanguage::get_singleton()->get_global_map().has(assign_type.class_name)) {
@@ -1071,6 +1071,12 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 
 								codegen.opcodes.push_back(GDScriptFunction::OPCODE_ASSIGN_TYPED_NATIVE_CLASS); // perform operator
 								codegen.opcodes.push_back(class_idx); // variable class
+								codegen.opcodes.push_back(dst_address_a); // argument 1
+								codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
+							} else {
+								// Non-typed assign
+								// TODO: test for script types
+								codegen.opcodes.push_back(GDScriptFunction::OPCODE_ASSIGN); // perform operator
 								codegen.opcodes.push_back(dst_address_a); // argument 1
 								codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
 							}

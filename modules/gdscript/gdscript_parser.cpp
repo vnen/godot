@@ -4593,6 +4593,11 @@ bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 				}
 			} else {
 				r_datatype->variant_type = Variant::OBJECT;
+				if (!ClassDB::class_exists(r_datatype->class_name)) {
+					// Must be script, will be resolved later
+					r_datatype->is_script = true;
+					current_class->custom_types.insert(r_datatype->class_name, ClassNode::CustomType(tokenizer->get_token_line()));
+				}
 			}
 		} break;
 		case GDScriptTokenizer::TK_BUILT_IN_TYPE: {
@@ -4609,6 +4614,14 @@ bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 
 void GDScriptParser::_check_class_types(ClassNode *p_class) {
 
+	// Inner classes
+	for (int i = 0; i < p_class->subclasses.size(); i++) {
+		current_class = p_class->subclasses[i];
+		_check_class_types(current_class);
+		if (error_set) return;
+		current_class = p_class;
+	}
+
 	// Constants
 	for (int i = 0; i < p_class->constant_expressions.size(); i++) {
 		ClassNode::Constant &c = p_class->constant_expressions[i];
@@ -4619,6 +4632,36 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 					c.line);
 			return;
 		}
+	}
+
+	// Used custom types
+	for (Map<StringName, ClassNode::CustomType>::Element *E = p_class->custom_types.front(); E; E = E->next()) {
+
+		ClassNode::CustomType &custom_type = E->value();
+
+		// TODO: Recurse this search to account indexing
+		// Look for key in constants
+		for (int i = 0; i < p_class->constant_expressions.size(); i++) {
+			ClassNode::Constant &c = p_class->constant_expressions[i];
+			if (c.identifier == E->key()) {
+				if (c.expression->type != Node::TYPE_CONSTANT) {
+					_set_error("Type hint must be a constant.", custom_type.line);
+					return;
+				}
+				ConstantNode *cn = static_cast<ConstantNode *>(c.expression);
+				if (cn->value.get_type() != Variant::OBJECT || ((Object *)cn->value)->get_class_name() != StringName("GDScript")) {
+					_set_error("Type hint must be a native type or a GDScript.", custom_type.line);
+					return;
+				}
+
+				Ref<GDScript> script = cn->value;
+				custom_type.base_script = script;
+
+				break;
+			}
+		}
+
+		// TODO: Look in inner classes
 	}
 
 	// Members
@@ -4705,14 +4748,6 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 			_set_error("Getter function is not defined.", v.line);
 			return;
 		}
-	}
-
-	// Inner classes
-	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		current_class = p_class->subclasses[i];
-		_check_class_types(current_class);
-		if (error_set) return;
-		current_class = p_class;
 	}
 
 	// Function blocks
@@ -5745,18 +5780,14 @@ GDScriptParser::DataType GDScriptParser::_validate_casting(const DataType &p_bas
 	p_valid = Variant::can_convert(p_base_type.variant_type, p_cast_type.variant_type);
 
 	if (p_valid && p_base_type.variant_type == Variant::OBJECT && p_cast_type.variant_type == Variant::OBJECT) {
-		// Check class db
-		if (ClassDB::class_exists(p_base_type.class_name) && ClassDB::class_exists(p_cast_type.class_name)) {
-			// Both directions are valid for casting
-			p_valid = ClassDB::is_parent_class(p_base_type.class_name, p_cast_type.class_name) ||
-					  ClassDB::is_parent_class(p_cast_type.class_name, p_base_type.class_name);
-		}
+		// Casting can go both ways
+		p_valid = _is_type_compatible(p_base_type, p_cast_type) || _is_type_compatible(p_cast_type, p_base_type);
 	}
 
 	return p_cast_type;
 }
 
-bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) {
+bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) const {
 	// Defaults to true since if the check isn't possible should be
 	// assumed to be until it fails
 	bool is_compatible = true;
@@ -5769,19 +5800,54 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const
 	is_compatible = p_container_type.variant_type == p_expression_type.variant_type;
 
 	if (p_container_type.variant_type == Variant::OBJECT && p_expression_type.variant_type == Variant::NIL) {
-		// Object variable can have Nil, but not the other way around
+		// Object variable can have Nil
 		return true;
 	}
 
 	if (is_compatible && p_container_type.variant_type == Variant::OBJECT) {
 		// Check ClassDB for compatibility
-		if (ClassDB::class_exists(p_container_type.class_name) && ClassDB::class_exists(p_expression_type.class_name)) {
-			is_compatible = ClassDB::is_parent_class(p_expression_type.class_name, p_container_type.class_name);
+		bool cont_in_db = ClassDB::class_exists(p_container_type.class_name);
+		bool expr_in_db = ClassDB::class_exists(p_expression_type.class_name);
+
+		if (cont_in_db && expr_in_db) {
+			// Both are native types
+			return ClassDB::is_parent_class(p_expression_type.class_name, p_container_type.class_name);
 		}
-		// TODO: Check types from scripts
+
+		if (!cont_in_db && expr_in_db) {
+			// No way the container can be a supertype in this situation
+			return false;
+		}
+
+		if (cont_in_db && !expr_in_db) {
+			Ref<GDScript> expr = current_class->custom_types[p_expression_type.class_name].base_script;
+			return ClassDB::is_parent_class(expr->get_instance_base_type(), p_container_type.class_name);
+		}
+
+		// Both are scripts
+		Ref<GDScript> cont = current_class->custom_types[p_container_type.class_name].base_script;
+		Ref<GDScript> expr = current_class->custom_types[p_expression_type.class_name].base_script;
+		while (expr.is_valid()) {
+			if (cont == expr) {
+				return true;
+			}
+			expr = expr->get_base();
+		}
+		return false;
 	}
 
 	return is_compatible;
+}
+
+bool GDScriptParser::_resolve_data_type_script(GDScriptParser::DataType &p_data_type) const {
+
+	if (!p_data_type.has_type || p_data_type.variant_type != Variant::OBJECT) {
+		// Nothing to do
+		return true;
+	}
+
+	if (ClassDB::class_exists(p_data_type.class_name)) {
+	}
 }
 
 String GDScriptParser::_get_type_string(const DataType &p_type) const {

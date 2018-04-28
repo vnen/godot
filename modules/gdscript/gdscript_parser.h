@@ -37,16 +37,20 @@
 #include "object.h"
 #include "script_language.h"
 
+class GDScript;
+
 class GDScriptParser {
 public:
 	struct DataType {
-		StringName class_name;
-		Variant::Type variant_type;
 		bool has_type; // No type defined/a true variant
+		Variant::Type variant_type;
+		StringName class_name;
+		bool is_script;
 
 		DataType() {
 			has_type = false;
 			variant_type = Variant::NIL;
+			is_script = false;
 		}
 	};
 
@@ -118,6 +122,15 @@ public:
 			StringName name;
 			Vector<StringName> arguments;
 		};
+
+		struct CustomType {
+			Ref<GDScript> base_script;
+			int line;
+			CustomType(int p_line = 0) :
+					line(p_line) {}
+		};
+
+		Map<StringName, CustomType> custom_types;
 
 		Vector<ClassNode *> subclasses;
 		Vector<Member> variables;
@@ -600,7 +613,8 @@ private:
 	PropertyInfo _get_member_info_from_type(const DataType &p_data_type, const StringName &p_member, bool &p_valid) const;
 	DataType _type_from_property(const PropertyInfo &p_property) const;
 	DataType _validate_casting(const DataType &p_base_type, const DataType &p_cast_type, bool &p_valid) const;
-	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type);
+	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) const;
+	bool _resolve_data_type_script(DataType &p_data_type) const;
 	String _get_type_string(const DataType &p_type) const;
 	static Variant::Type _get_operation_type(const Variant::Operator p_op, const Variant::Type p_a, const Variant::Type p_b, bool &r_valid);
 	static Variant::Operator _get_variant_operation(const OperatorNode::Operator &p_op);
