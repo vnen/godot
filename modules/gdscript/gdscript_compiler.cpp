@@ -1057,7 +1057,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 								codegen.opcodes.push_back(assign_type.variant_type); // variable type
 								codegen.opcodes.push_back(dst_address_a); // argument 1
 								codegen.opcodes.push_back(src_address_b); // argument 2 (unary only takes one parameter)
-							} else if (!assign_type.is_script) {
+							} else if (!assign_type.is_custom) {
 								// Native class
 								int class_idx;
 								if (GDScriptLanguage::get_singleton()->get_global_map().has(assign_type.class_name)) {
@@ -1875,7 +1875,53 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 		p_script->native = native;
 	}
 
+	//parse sub-classes
+
+	for (int i = 0; i < p_class->subclasses.size(); i++) {
+		StringName name = p_class->subclasses[i]->name;
+
+		Ref<GDScript> subclass;
+
+		if (old_subclasses.has(name)) {
+			subclass = old_subclasses[name];
+		} else {
+			subclass.instance();
+		}
+
+		Error err = _parse_class(subclass.ptr(), p_script, p_class->subclasses[i], p_keep_state);
+		if (err)
+			return err;
+
+#ifdef TOOLS_ENABLED
+
+		p_script->member_lines[name] = p_class->subclasses[i]->line;
+#endif
+
+		p_script->constants.insert(name, subclass); //once parsed, goes to the list of constants
+		p_script->subclasses.insert(name, subclass);
+	}
+
 	//print_line("Script: "+p_script->get_path()+" indices: "+itos(p_script->member_indices.size()));
+
+	for (int i = 0; i < p_class->constant_expressions.size(); i++) {
+
+		StringName name = p_class->constant_expressions[i].identifier;
+		ERR_CONTINUE(p_class->constant_expressions[i].expression->type != GDScriptParser::Node::TYPE_CONSTANT);
+
+		if (_is_class_member_property(p_script, name)) {
+			_set_error("Member '" + name + "' already exists as a class property.", p_class);
+			return ERR_ALREADY_EXISTS;
+		}
+
+		GDScriptParser::ConstantNode *constant = static_cast<GDScriptParser::ConstantNode *>(p_class->constant_expressions[i].expression);
+
+		p_script->constants.insert(name, constant->value);
+//p_script->constants[constant->value].make_const();
+#ifdef TOOLS_ENABLED
+
+		p_script->member_lines[name] = p_class->constant_expressions[i].expression->line;
+#endif
+	}
 
 	for (int i = 0; i < p_class->variables.size(); i++) {
 
@@ -1909,6 +1955,28 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 		minfo.setter = p_class->variables[i].setter;
 		minfo.getter = p_class->variables[i].getter;
 		minfo.rpc_mode = p_class->variables[i].rpc_mode;
+		if (p_class->variables[i].data_type.has_type) {
+			GDScriptParser::DataType type = p_class->variables[i].data_type;
+
+			minfo.data_type.has_type = true;
+			minfo.data_type.variant_type = type.variant_type;
+			minfo.data_type.class_name = type.class_name;
+			minfo.data_type.is_script = type.is_custom;
+
+			// Ignore for now
+#if 0
+			if (type.is_custom) {
+
+				GDScriptParser::CustomType ct = p_class->custom_types[type.class_name];
+				if (ct.is_inner_class) {
+					minfo.data_type.base_script = p_script->subclasses[ct.base_class->name];
+				} else {
+					minfo.data_type.base_script = ct.base_script;
+				}
+				minfo.data_type.class_name = "GDScript";
+			}
+#endif
+		}
 
 		p_script->member_indices[name] = minfo;
 		p_script->members.insert(name);
@@ -1916,26 +1984,6 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 #ifdef TOOLS_ENABLED
 
 		p_script->member_lines[name] = p_class->variables[i].line;
-#endif
-	}
-
-	for (int i = 0; i < p_class->constant_expressions.size(); i++) {
-
-		StringName name = p_class->constant_expressions[i].identifier;
-		ERR_CONTINUE(p_class->constant_expressions[i].expression->type != GDScriptParser::Node::TYPE_CONSTANT);
-
-		if (_is_class_member_property(p_script, name)) {
-			_set_error("Member '" + name + "' already exists as a class property.", p_class);
-			return ERR_ALREADY_EXISTS;
-		}
-
-		GDScriptParser::ConstantNode *constant = static_cast<GDScriptParser::ConstantNode *>(p_class->constant_expressions[i].expression);
-
-		p_script->constants.insert(name, constant->value);
-//p_script->constants[constant->value].make_const();
-#ifdef TOOLS_ENABLED
-
-		p_script->member_lines[name] = p_class->constant_expressions[i].expression->line;
 #endif
 	}
 
@@ -1967,31 +2015,6 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 		}
 
 		p_script->_signals[name] = p_class->_signals[i].arguments;
-	}
-	//parse sub-classes
-
-	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		StringName name = p_class->subclasses[i]->name;
-
-		Ref<GDScript> subclass;
-
-		if (old_subclasses.has(name)) {
-			subclass = old_subclasses[name];
-		} else {
-			subclass.instance();
-		}
-
-		Error err = _parse_class(subclass.ptr(), p_script, p_class->subclasses[i], p_keep_state);
-		if (err)
-			return err;
-
-#ifdef TOOLS_ENABLED
-
-		p_script->member_lines[name] = p_class->subclasses[i]->line;
-#endif
-
-		p_script->constants.insert(name, subclass); //once parsed, goes to the list of constants
-		p_script->subclasses.insert(name, subclass);
 	}
 
 	//parse methods

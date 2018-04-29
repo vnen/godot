@@ -4595,8 +4595,10 @@ bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 				r_datatype->variant_type = Variant::OBJECT;
 				if (!ClassDB::class_exists(r_datatype->class_name)) {
 					// Must be script, will be resolved later
-					r_datatype->is_script = true;
-					current_class->custom_types.insert(r_datatype->class_name, ClassNode::CustomType(tokenizer->get_token_line()));
+					String base = String(current_class->name) + ".";
+					r_datatype->is_custom = true;
+					r_datatype->class_name = base + r_datatype->class_name;
+					custom_types.insert(r_datatype->class_name, CustomType(current_class, tokenizer->get_token_line()));
 				}
 			}
 		} break;
@@ -4612,15 +4614,195 @@ bool GDScriptParser::_parse_type(DataType *r_datatype, bool p_can_be_void) {
 	return true;
 }
 
-void GDScriptParser::_check_class_types(ClassNode *p_class) {
+void GDScriptParser::_determine_inheritance(ClassNode *p_class) {
 
-	// Inner classes
-	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		current_class = p_class->subclasses[i];
-		_check_class_types(current_class);
-		if (error_set) return;
-		current_class = p_class;
+	if (p_class->extends_used) {
+		//do inheritance
+		String path = p_class->extends_file;
+
+		Ref<GDScript> script;
+		ClassNode *super_class = NULL;
+		StringName native;
+
+		if (path != "") {
+			//path (and optionally subclasses)
+
+			if (path.is_rel_path()) {
+
+				String base = base_path;
+
+				if (base == "" || base.is_rel_path()) {
+					_set_error("Could not resolve relative path for parent class: " + path, p_class->line);
+					return;
+				}
+				path = base.get_base_dir().plus_file(path).simplify_path();
+			}
+
+			script = ResourceLoader::load(path);
+			if (script.is_null()) {
+				_set_error("Could not load base class: " + path, p_class->line);
+				return;
+			}
+			if (!script->valid) {
+
+				_set_error("Script not fully loaded (cyclic preload?): " + path, p_class->line);
+				return;
+			}
+
+			if (p_class->extends_class.size()) {
+
+				for (int i = 0; i < p_class->extends_class.size(); i++) {
+
+					String sub = p_class->extends_class[i];
+					if (script->subclasses.has(sub)) {
+
+						Ref<Script> subclass = script->subclasses[sub]; //avoid reference from disappearing
+						script = subclass;
+						native = subclass->get_instance_base_type();
+					} else {
+
+						_set_error("Could not find subclass: " + sub, p_class->line);
+						return;
+					}
+				}
+			}
+
+			p_class->inheritance_type = ClassNode::CLASS_INHERIT_SCRIPT;
+
+		} else {
+
+			ERR_FAIL_COND(p_class->extends_class.size() == 0);
+			//look around for the subclasses
+
+			String base = p_class->extends_class[0];
+			ClassNode *base_class = NULL;
+			Ref<GDScript> base_script;
+			ClassNode *p = p_class->owner;
+
+			while (p) {
+
+				for (int i = 0; i < p->subclasses.size(); i++) {
+					ClassNode *cur = p->subclasses[i];
+					if (cur->name == base) {
+						base_class = cur;
+						p_class->inheritance_type = ClassNode::CLASS_INHERIT_SUBCLASS;
+						break;
+					}
+				}
+
+				if (base_class) {
+					break;
+				}
+
+				bool found = false;
+
+				// Look at parent's contants
+				for (int i = 0; i < p->constant_expressions.size(); i++) {
+					if (p->constant_expressions[i].identifier != base) {
+						continue;
+					}
+					found = true;
+					ERR_BREAK(p->constant_expressions[i].expression->type != Node::TYPE_CONSTANT);
+
+					ConstantNode *cn = static_cast<ConstantNode *>(p->constant_expressions[i].expression);
+					base_script = cn->value;
+
+					if (base_script.is_null()) {
+						_set_error("Constant is not a class: " + base, p_class->line);
+						return;
+					}
+				}
+
+				if (found) {
+					break;
+				}
+
+				p = p->owner;
+			}
+
+			if (base_script.is_valid()) {
+
+				String ident = base;
+
+				for (int i = 1; i < p_class->extends_class.size(); i++) {
+
+					String subclass = p_class->extends_class[i];
+
+					ident += ("." + subclass);
+
+					if (base_script->subclasses.has(subclass)) {
+
+						base_script = base_script->subclasses[subclass];
+					} else if (base_script->constants.has(subclass)) {
+
+						Ref<GDScript> new_base_class = base_script->constants[subclass];
+						if (new_base_class.is_null()) {
+							_set_error("Constant is not a class: " + ident, p_class->line);
+							return;
+						}
+						base_script = new_base_class;
+					} else {
+
+						_set_error("Could not find subclass: " + ident, p_class->line);
+						return;
+					}
+				}
+
+				script = base_script;
+				native = base_script->get_instance_base_type();
+				p_class->inheritance_type = ClassNode::CLASS_INHERIT_SCRIPT;
+
+			} else if (base_class) {
+
+				p_class->inheritance_type = ClassNode::CLASS_INHERIT_SUBCLASS;
+				super_class = base_class;
+				script = base_class->base_script;
+				native = base_class->native_class;
+
+			} else {
+
+				// Native class
+				if (p_class->extends_class.size() > 1) {
+
+					_set_error("Invalid inheritance (unknown class+subclasses)", p_class->line);
+					return;
+				}
+
+				if (!ClassDB::class_exists(p_class->extends_class[0])) {
+					_set_error("Unknown class: '" + base + "'", p_class->line);
+					return;
+				}
+
+				native = p_class->extends_class[0];
+				p_class->inheritance_type = ClassNode::CLASS_INHERIT_NATIVE;
+			}
+		}
+
+		if (native == StringName() && script.is_null() && !super_class) {
+			_set_error("Could not determine inheritance", p_class->line);
+			return;
+		}
+
+		p_class->native_class = native;
+		p_class->base_script = script;
+		p_class->base_class = super_class;
+
+	} else {
+		// without extends, implicitly extend Reference
+		p_class->inheritance_type = ClassNode::CLASS_INHERIT_NATIVE;
+		p_class->native_class = "Reference";
 	}
+
+	// Recurse into subclasses
+	for (int i = 0; i < p_class->subclasses.size(); i++) {
+		_determine_inheritance(p_class->subclasses[i]);
+		if (error_set) {
+			return;
+		}
+	}
+}
+
+void GDScriptParser::_check_class_types(ClassNode *p_class) {
 
 	// Constants
 	for (int i = 0; i < p_class->constant_expressions.size(); i++) {
@@ -4634,16 +4816,31 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 		}
 	}
 
-	// Used custom types
-	for (Map<StringName, ClassNode::CustomType>::Element *E = p_class->custom_types.front(); E; E = E->next()) {
+	// Inner classes
+	for (int i = 0; i < p_class->subclasses.size(); i++) {
+		current_class = p_class->subclasses[i];
+		_check_class_types(current_class);
+		if (error_set) return;
+		current_class = p_class;
+	}
 
-		ClassNode::CustomType &custom_type = E->value();
+	// Used custom types
+	for (Map<String, CustomType>::Element *E = custom_types.front(); E; E = E->next()) {
+
+		CustomType &custom_type = E->value();
+		String type_name = E->key();
+		if (type_name.begins_with(String(p_class->name) + ".")) {
+			type_name = type_name.right((String(p_class->name) + ".").length());
+		} else {
+			continue;
+		}
 
 		// TODO: Recurse this search to account indexing
 		// Look for key in constants
+		bool found = false;
 		for (int i = 0; i < p_class->constant_expressions.size(); i++) {
 			ClassNode::Constant &c = p_class->constant_expressions[i];
-			if (c.identifier == E->key()) {
+			if (c.identifier == type_name) {
 				if (c.expression->type != Node::TYPE_CONSTANT) {
 					_set_error("Type hint must be a constant.", custom_type.line);
 					return;
@@ -4655,13 +4852,32 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 				}
 
 				Ref<GDScript> script = cn->value;
-				custom_type.base_script = script;
+				custom_type.script_type = script;
+				custom_type.is_inner_class = false;
 
+				found = true;
 				break;
 			}
 		}
 
-		// TODO: Look in inner classes
+		if (!found) {
+			// Look in inner classes
+			for (int i = 0; i < p_class->subclasses.size(); i++) {
+				ClassNode *sc = p_class->subclasses[i];
+				if (sc->name == type_name) {
+					custom_type.is_inner_class = true;
+					custom_type.class_type = sc;
+					custom_type.script_type = sc->base_script;
+					found = true;
+					break;
+				}
+			}
+		}
+
+		if (!found) {
+			_set_error("Could not determine type '" + String(type_name) + "'.", custom_type.line);
+			return;
+		}
 	}
 
 	// Members
@@ -5805,34 +6021,82 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const
 	}
 
 	if (is_compatible && p_container_type.variant_type == Variant::OBJECT) {
-		// Check ClassDB for compatibility
-		bool cont_in_db = ClassDB::class_exists(p_container_type.class_name);
-		bool expr_in_db = ClassDB::class_exists(p_expression_type.class_name);
-
-		if (cont_in_db && expr_in_db) {
-			// Both are native types
-			return ClassDB::is_parent_class(p_expression_type.class_name, p_container_type.class_name);
+		// Since all classes are compatible with themselves, avoid further checking
+		if (p_container_type.class_name == p_expression_type.class_name) {
+			return true;
 		}
 
-		if (!cont_in_db && expr_in_db) {
-			// No way the container can be a supertype in this situation
+		ClassNode::InheritanceType expr_inheritance;
+
+		StringName expr_native;
+		Ref<GDScript> expr_script;
+		ClassNode *expr_class = NULL;
+
+		if (p_expression_type.is_custom) {
+			if (!custom_types.has(p_expression_type.class_name)) {
+				ERR_EXPLAIN("Parser bug: type not defined: " + String(p_expression_type.class_name));
+				ERR_FAIL_V(false);
+			}
+			CustomType ct = custom_types[p_expression_type.class_name];
+			if (ct.is_inner_class) {
+				expr_class = ct.class_type;
+				expr_script = expr_class->base_script;
+				expr_native = expr_class->native_class;
+				expr_inheritance = ClassNode::CLASS_INHERIT_SUBCLASS;
+			} else {
+				expr_script = ct.script_type;
+				expr_native = expr_script->get_instance_base_type();
+				expr_inheritance = ClassNode::CLASS_INHERIT_SCRIPT;
+			}
+		} else {
+			expr_native = p_expression_type.class_name;
+			expr_inheritance = ClassNode::CLASS_INHERIT_NATIVE;
+		}
+
+		if (!p_container_type.is_custom) {
+			return ClassDB::is_parent_class(expr_native, p_container_type.class_name);
+		}
+
+		if (expr_inheritance == ClassNode::CLASS_INHERIT_NATIVE) {
+			// Native will never be a subtype of custom
 			return false;
 		}
 
-		if (cont_in_db && !expr_in_db) {
-			Ref<GDScript> expr = current_class->custom_types[p_expression_type.class_name].base_script;
-			return ClassDB::is_parent_class(expr->get_instance_base_type(), p_container_type.class_name);
+		if (!custom_types.has(p_container_type.class_name)) {
+			ERR_EXPLAIN("Parser bug: type not defined: " + String(p_expression_type.class_name));
+			ERR_FAIL_V(false);
+		}
+		CustomType ct = custom_types[p_container_type.class_name];
+
+		if (ct.is_inner_class) {
+			if (expr_inheritance == ClassNode::CLASS_INHERIT_SCRIPT) {
+				// External script cannot be a subtype of an inner class
+				// (well, at least not without a cyclic reference)
+				return false;
+			}
+			while (expr_class) {
+				if (expr_class == ct.class_type) {
+					return true;
+				}
+				expr_class = expr_class->base_class;
+			}
+			return false;
 		}
 
-		// Both are scripts
-		Ref<GDScript> cont = current_class->custom_types[p_container_type.class_name].base_script;
-		Ref<GDScript> expr = current_class->custom_types[p_expression_type.class_name].base_script;
-		while (expr.is_valid()) {
-			if (cont == expr) {
+		Ref<GDScript> cont_script;
+		if (ct.is_inner_class) {
+			cont_script = ct.class_type->base_script;
+		} else {
+			cont_script = ct.script_type;
+		}
+
+		while (expr_script.is_valid()) {
+			if (cont_script == expr_script) {
 				return true;
 			}
-			expr = expr->get_base();
+			expr_script = expr_script->base;
 		}
+
 		return false;
 	}
 
@@ -5855,7 +6119,12 @@ String GDScriptParser::_get_type_string(const DataType &p_type) const {
 		return "Variant";
 	}
 	if (p_type.variant_type == Variant::OBJECT) {
-		return String(p_type.class_name);
+		if (p_type.is_custom) {
+			String name = p_type.class_name;
+			return name.right(name.find(".") + 1);
+		} else {
+			return String(p_type.class_name);
+		}
 	}
 	return Variant::get_type_name(p_type.variant_type);
 }
@@ -6015,7 +6284,12 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 	}
 
 	if (error_set) {
+		return ERR_PARSE_ERROR;
+	}
 
+	_determine_inheritance(main_class);
+
+	if (error_set) {
 		return ERR_PARSE_ERROR;
 	}
 
@@ -6027,7 +6301,6 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 	}
 
 	if (error_set) {
-
 		return ERR_PARSE_ERROR;
 	}
 

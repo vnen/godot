@@ -41,6 +41,7 @@
 
 class GDScriptInstance;
 class GDScript;
+struct GDScriptDataType;
 
 class GDScriptFunction {
 public:
@@ -137,6 +138,9 @@ private:
 
 	GDScript *_script;
 
+	Vector<GDScriptDataType> argument_types;
+	GDScriptDataType *return_type;
+
 	StringName name;
 	Vector<Variant> constants;
 	Vector<StringName> global_names;
@@ -224,6 +228,9 @@ public:
 		ERR_FAIL_INDEX_V(p_idx, default_arguments.size(), Variant());
 		return default_arguments[p_idx];
 	}
+
+	GDScriptDataType get_return_type() const;
+	GDScriptDataType get_argument_type(int p_idx) const;
 
 	Variant call(GDScriptInstance *p_instance, const Variant **p_args, int p_argcount, Variant::CallError &r_err, CallState *p_state = NULL);
 

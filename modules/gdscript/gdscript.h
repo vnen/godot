@@ -36,6 +36,21 @@
 #include "io/resource_saver.h"
 #include "script_language.h"
 
+class GDScript;
+
+struct GDScriptDataType {
+	bool has_type;
+	bool is_script;
+	Variant::Type variant_type;
+	StringName class_name;
+	Ref<GDScript> base_script;
+
+	GDScriptDataType() :
+			has_type(false),
+			is_script(false) {}
+	~GDScriptDataType() {}
+};
+
 class GDScriptNativeClass : public Reference {
 
 	GDCLASS(GDScriptNativeClass, Reference);
@@ -64,10 +79,12 @@ class GDScript : public Script {
 		StringName setter;
 		StringName getter;
 		ScriptInstance::RPCMode rpc_mode;
+		GDScriptDataType data_type;
 	};
 
 	friend class GDScriptInstance;
 	friend class GDScriptFunction;
+	friend class GDScriptParser;
 	friend class GDScriptCompiler;
 	friend class GDScriptFunctions;
 	friend class GDScriptLanguage;
@@ -147,6 +164,9 @@ public:
 	const Set<StringName> &get_members() const { return members; }
 	const Map<StringName, GDScriptFunction *> &get_member_functions() const { return member_functions; }
 	const Ref<GDScriptNativeClass> &get_native() const { return native; }
+
+	const GDScriptDataType get_member_type(const StringName &p_member) const { return GDScriptDataType(); } // TODO
+	const GDScriptDataType get_constant_type(const StringName &p_constant) const { return GDScriptDataType(); } // TODO
 
 	virtual bool has_script_signal(const StringName &p_signal) const;
 	virtual void get_script_signal_list(List<MethodInfo> *r_signals) const;

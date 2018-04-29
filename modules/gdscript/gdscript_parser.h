@@ -41,16 +41,18 @@ class GDScript;
 
 class GDScriptParser {
 public:
+	struct ClassNode;
+
 	struct DataType {
 		bool has_type; // No type defined/a true variant
 		Variant::Type variant_type;
 		StringName class_name;
-		bool is_script;
+		bool is_custom;
 
 		DataType() {
 			has_type = false;
 			variant_type = Variant::NIL;
-			is_script = false;
+			is_custom = false;
 		}
 	};
 
@@ -92,11 +94,20 @@ public:
 
 	struct ClassNode : public Node {
 
+		enum InheritanceType {
+			CLASS_INHERIT_NATIVE,
+			CLASS_INHERIT_SCRIPT,
+			CLASS_INHERIT_SUBCLASS
+		} inheritance_type;
+
 		bool tool;
 		StringName name;
 		bool extends_used;
 		StringName extends_file;
 		Vector<StringName> extends_class;
+		Ref<GDScript> base_script;
+		StringName native_class;
+		ClassNode *base_class;
 
 		struct Member {
 			PropertyInfo _export;
@@ -122,15 +133,6 @@ public:
 			StringName name;
 			Vector<StringName> arguments;
 		};
-
-		struct CustomType {
-			Ref<GDScript> base_script;
-			int line;
-			CustomType(int p_line = 0) :
-					line(p_line) {}
-		};
-
-		Map<StringName, CustomType> custom_types;
 
 		Vector<ClassNode *> subclasses;
 		Vector<Member> variables;
@@ -579,6 +581,20 @@ private:
 
 	bool type_check;
 
+	struct CustomType {
+		ClassNode *base; // Where the type is referenced
+		Ref<GDScript> script_type;
+		ClassNode *class_type; // For inner classes
+		bool is_inner_class;
+		int line;
+		CustomType(ClassNode *p_base = NULL, int p_line = 0) :
+				base(p_base),
+				line(p_line),
+				is_inner_class(false) {}
+	};
+
+	Map<String, CustomType> custom_types;
+
 	void _set_error(const String &p_error, int p_line = -1, int p_column = -1);
 	bool _recover_from_completion();
 
@@ -600,6 +616,7 @@ private:
 	bool _parse_type(DataType *r_datatype, bool p_can_be_void = false);
 	bool _end_statement();
 
+	void _determine_inheritance(ClassNode *p_class);
 	void _check_class_types(ClassNode *p_class);
 	void _check_function_types(FunctionNode *p_function);
 	void _check_block_types(BlockNode *p_block);

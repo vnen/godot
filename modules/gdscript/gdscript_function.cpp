@@ -1501,6 +1501,15 @@ void GDScriptFunction::debug_get_stack_member_state(int p_line, List<Pair<String
 	}
 }
 
+GDScriptDataType GDScriptFunction::get_return_type() const {
+	return *return_type;
+}
+
+GDScriptDataType GDScriptFunction::get_argument_type(int p_idx) const {
+	ERR_FAIL_INDEX_V(p_idx, argument_types.size(), GDScriptDataType());
+	return argument_types[p_idx];
+}
+
 GDScriptFunction::GDScriptFunction() :
 		function_list(this) {
 
@@ -1508,6 +1517,7 @@ GDScriptFunction::GDScriptFunction() :
 	_call_size = 0;
 	rpc_mode = ScriptInstance::RPC_MODE_DISABLED;
 	name = "<anonymous>";
+	return_type = NULL;
 #ifdef DEBUG_ENABLED
 	_func_cname = NULL;
 
@@ -1534,6 +1544,9 @@ GDScriptFunction::GDScriptFunction() :
 }
 
 GDScriptFunction::~GDScriptFunction() {
+	if (return_type) {
+		memdelete(return_type);
+	}
 #ifdef DEBUG_ENABLED
 	if (GDScriptLanguage::get_singleton()->lock) {
 		GDScriptLanguage::get_singleton()->lock->lock();
