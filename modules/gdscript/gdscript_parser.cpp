@@ -34,6 +34,7 @@
 #include "io/resource_loader.h"
 #include "os/file_access.h"
 #include "print_string.h"
+#include "scene/main/node.h"
 #include "script_language.h"
 
 template <class T>
@@ -4893,6 +4894,9 @@ void GDScriptParser::_check_class_types(ClassNode *p_class) {
 			DataType export_type;
 			export_type.has_type = true;
 			export_type.variant_type = v._export.type;
+			if (v._export.class_name == StringName()) {
+				v._export.class_name = v.data_type.class_name;
+			}
 			export_type.class_name = v._export.class_name;
 
 			if (!_is_type_compatible(v.data_type, export_type)) {
@@ -5062,6 +5066,10 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 						bool is_constant = false;
 						DataType id_type = _reduce_identifier_type(id->name, op->line, is_constant);
 
+						if (error_set) {
+							return;
+						}
+
 						if (is_constant) {
 							_set_error("Cannot assign value to constant.", op->line, op->column);
 							return;
@@ -5110,7 +5118,7 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 
 					} break;
 					case OperatorNode::OP_CALL: {
-						_check_call_args_types(op);
+						_reduce_function_call_type(op);
 						if (error_set) return;
 					} break;
 					default: {
@@ -5143,6 +5151,9 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 							}
 
 							DataType ret_type = _reduce_node_type(cf->arguments[0], cf->line);
+							if (error_set) {
+								return;
+							}
 							if (!_is_type_compatible(function_type, ret_type)) {
 								_set_error("Returned value type (" + _get_type_string(ret_type) + ") doesn't match the function return type (" +
 												   _get_type_string(function_type) + ").",
@@ -5191,166 +5202,6 @@ void GDScriptParser::_check_variable_assign_type(const ClassNode::Member &p_var,
 	}
 }
 
-void GDScriptParser::_check_call_args_types(OperatorNode *p_call) {
-
-	// Should never be called without at least one argument
-	switch (p_call->arguments[0]->type) {
-		case Node::TYPE_BUILT_IN_FUNCTION: {
-			BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(p_call->arguments[0]);
-			MethodInfo mi = GDScriptFunctions::get_info(func->function);
-
-			// No checking for varargs (for now)
-			if (mi.flags & METHOD_FLAG_VARARG) break;
-
-			if (p_call->arguments.size() - 1 < mi.arguments.size() - mi.default_arguments.size()) {
-				_set_error("Too few arguments for " + mi.name + "() call. Expected at least " + itos(mi.arguments.size() - mi.default_arguments.size()) + ".", p_call->line);
-				return;
-			}
-			if (p_call->arguments.size() - 1 > mi.arguments.size()) {
-				_set_error("Too many arguments for " + mi.name + "() call. Expected at most " + itos(mi.arguments.size()) + ".", p_call->line);
-				return;
-			}
-
-			for (int i = 1; i < p_call->arguments.size(); i++) {
-				DataType arg_type;
-				arg_type.has_type = true;
-				arg_type.variant_type = mi.arguments[i - 1].type;
-				arg_type.class_name = mi.arguments[i - 1].class_name;
-
-				DataType par_type = _reduce_node_type(p_call->arguments[i], p_call->line);
-
-				if (!_is_type_compatible(arg_type, par_type)) {
-					_set_error("At " + mi.name + "() call, argument " + itos(i) + ". Assigned type (" +
-									   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
-							p_call->line);
-					return;
-				}
-			}
-		} break;
-		case Node::TYPE_TYPE: {
-			// Built-in constructor
-			TypeNode *tn = static_cast<TypeNode *>(p_call->arguments[0]);
-
-			Vector<DataType> par_types;
-			par_types.resize(p_call->arguments.size() - 1);
-			for (int i = 1; i < p_call->arguments.size(); i++) {
-				par_types[i - 1] = _reduce_node_type(p_call->arguments[i], p_call->line);
-			}
-
-			if (error_set) return;
-
-			bool match = false;
-			List<MethodInfo> constructors;
-			Variant::get_constructor_list(tn->vtype, &constructors);
-
-			for (List<MethodInfo>::Element *E = constructors.front(); E; E = E->next()) {
-				MethodInfo &mi = E->get();
-
-				if (p_call->arguments.size() - 1 < mi.arguments.size() - mi.default_arguments.size()) {
-					continue;
-				}
-				if (p_call->arguments.size() - 1 > mi.arguments.size()) {
-					continue;
-				}
-
-				bool types_match = true;
-				for (int i = 0; i < par_types.size(); i++) {
-					DataType arg_type;
-					arg_type.has_type = true;
-					arg_type.variant_type = mi.arguments[i].type;
-					arg_type.class_name = mi.arguments[i].class_name;
-
-					if (!_is_type_compatible(arg_type, par_types[i])) {
-						types_match = false;
-						break;
-					}
-				}
-
-				if (types_match) {
-					match = true;
-					break;
-				}
-			}
-
-			if (!match) {
-				String err = "No constructor of ";
-				err += Variant::get_type_name(tn->vtype);
-				err += " matches the signature ";
-				err += Variant::get_type_name(tn->vtype) + "(";
-				for (int i = 0; i < par_types.size(); i++) {
-					if (i > 0) err += ", ";
-					err += _get_type_string(par_types[i]);
-				}
-				err += ").";
-				_set_error(err, p_call->line, p_call->column);
-				return;
-			}
-		} break;
-		case Node::TYPE_SELF: {
-			switch (p_call->arguments[1]->type) {
-				case Node::TYPE_IDENTIFIER: {
-					IdentifierNode *id = static_cast<IdentifierNode *>(p_call->arguments[1]);
-
-					bool found = false;
-
-					for (int i = 0; i < current_class->static_functions.size(); i++) {
-						FunctionNode *func = current_class->static_functions[i];
-						if (id->name == func->name) {
-							found = true;
-
-							this->_check_func_node_args_types(p_call, func);
-							if (error_set) return;
-							break;
-						}
-					}
-
-					if (found) break;
-
-					for (int i = 0; i < current_class->functions.size(); i++) {
-						FunctionNode *func = current_class->functions[i];
-						if (id->name == func->name) {
-							found = true;
-
-							if (current_function && current_function->_static) {
-								_set_error("Can't call non-static function " + func->name + " from the body of a static function", p_call->line, p_call->column);
-								return;
-							}
-
-							this->_check_func_node_args_types(p_call, func);
-							if (error_set) return;
-
-							break;
-						}
-					}
-
-				} break;
-			}
-		} break;
-	}
-}
-
-void GDScriptParser::_check_func_node_args_types(OperatorNode *p_call, FunctionNode *p_func) {
-	if (p_call->arguments.size() - 2 < p_func->arguments.size() - p_func->default_values.size()) {
-		_set_error("Too few arguments for " + p_func->name + "() call. Expected at least " + itos(p_func->arguments.size() - p_func->default_values.size()) + ".", p_call->line);
-		return;
-	}
-	if (p_call->arguments.size() - 2 > p_func->arguments.size()) {
-		_set_error("Too many arguments for " + p_func->name + "() call. Expected at most " + itos(p_func->arguments.size()) + ".", p_call->line);
-		return;
-	}
-	for (int i = 2; i < p_call->arguments.size(); i++) {
-		DataType arg_type = p_func->argument_types[i - 2];
-		DataType par_type = _reduce_node_type(p_call->arguments[i], p_call->line);
-
-		if (!_is_type_compatible(arg_type, par_type)) {
-			_set_error("At " + p_func->name + "() call, argument \"" + String(p_func->arguments[i - 2]) + "\". Assigned type (" +
-							   _get_type_string(par_type) + ") doesn't match the function argument's type (" + _get_type_string(arg_type) + ").",
-					p_call->line);
-			return;
-		}
-	}
-}
-
 GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_line) {
 
 	// Early out if type is already defined
@@ -5368,6 +5219,9 @@ GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_l
 		case GDScriptParser::Node::TYPE_IDENTIFIER: {
 			IdentifierNode *id = static_cast<IdentifierNode *>(p_node);
 			node_type = _reduce_identifier_type(id->name, p_line);
+			if (error_set) {
+				return DataType();
+			}
 		} break;
 		case GDScriptParser::Node::TYPE_CAST: {
 			CastNode *cn = static_cast<CastNode *>(p_node);
@@ -5389,89 +5243,7 @@ GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_l
 
 			switch (op->op) {
 				case OperatorNode::OP_CALL: {
-					if (op->arguments.size() < 1) {
-						_set_error("Parser bug: function call without enough arguments.", p_line);
-						ERR_FAIL_V(DataType());
-					}
-					_check_call_args_types(op);
-					if (error_set) return DataType();
-
-					switch (op->arguments[0]->type) {
-						case GDScriptParser::Node::TYPE_BUILT_IN_FUNCTION: {
-							BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(op->arguments[0]);
-							MethodInfo mi = GDScriptFunctions::get_info(func->function);
-
-							DataType func_type;
-							func_type.has_type = true;
-							func_type.variant_type = mi.return_val.type;
-							func_type.class_name = mi.return_val.name;
-
-							node_type = func_type;
-						} break;
-						case GDScriptParser::Node::TYPE_TYPE: {
-							// Built-in constructor
-							node_type = op->arguments[0]->get_datatype();
-						} break;
-						case GDScriptParser::Node::TYPE_SELF: {
-							// Look at current class functions
-							// TODO: Look at inherited functions
-
-							if (op->arguments.size() < 2) {
-								_set_error("Parser bug: self method call without enough arguments.", op->line);
-								ERR_FAIL_V(DataType());
-							}
-
-							IdentifierNode *func_id = static_cast<IdentifierNode *>(op->arguments[1]);
-
-							bool found = false;
-							for (int i = 0; i < current_class->static_functions.size(); i++) {
-								FunctionNode *func = current_class->static_functions[i];
-								if (func_id->name == func->name) {
-									node_type = func->get_datatype();
-									found = true;
-									break;
-								}
-							}
-							if (!found) {
-								for (int i = 0; i < current_class->functions.size(); i++) {
-									FunctionNode *func = current_class->functions[i];
-									if (func_id->name == func->name) {
-										node_type = func->get_datatype();
-										break;
-									}
-								}
-							}
-						} break;
-						default: {
-							if (op->arguments.size() < 2) {
-								_set_error("Parser bug: self method call without enough arguments.", op->line);
-								ERR_FAIL_V(DataType());
-							}
-
-							DataType base_type = _reduce_node_type(op->arguments[0], p_line);
-
-							if (!base_type.has_type) {
-								// Can't find type
-								node_type = DataType();
-								break;
-							}
-
-							IdentifierNode *func_id = static_cast<IdentifierNode *>(op->arguments[1]);
-
-							bool valid = false;
-							MethodInfo mi = _get_method_info_from_type(base_type, func_id->name, valid);
-
-							if (!valid) {
-								_set_error("Method '" + func_id->name + "' does not exist for base '" +
-												   _get_type_string(base_type) + "'.",
-										op->line);
-								return DataType();
-							}
-
-							node_type = _type_from_property(mi.return_val);
-						}
-					}
-
+					node_type = _reduce_function_call_type(op);
 				} break;
 				// Unary operators
 				case OperatorNode::OP_NEG:
@@ -5768,12 +5540,12 @@ GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_l
 	return node_type;
 }
 
-GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const StringName &p_identifier, int p_line) const {
+GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const StringName &p_identifier, int p_line) {
 	bool tmp;
 	return _reduce_identifier_type(p_identifier, p_line, tmp);
 }
 
-GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const {
+GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) {
 	bool in_function = !!current_function;
 
 	r_is_constant = false;
@@ -5821,83 +5593,366 @@ GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const StringNam
 		}
 	}
 
+	// Check for global constants
+	if (GDScriptLanguage::get_singleton()->get_global_map().has(p_identifier)) {
+		int idx = GDScriptLanguage::get_singleton()->get_global_map()[p_identifier];
+		Variant c = GDScriptLanguage::get_singleton()->get_global_array()[idx];
+
+		DataType result;
+		result.has_type = true;
+		result.variant_type = c.get_type();
+		if (result.variant_type == Variant::OBJECT) {
+			Object *obj = c;
+			result.class_name = obj->get_class_name();
+			print_line("OBJECT CLASS NAME IS: " + String(result.class_name));
+			result.script_type = obj->get_script();
+		}
+		return result;
+	}
+
+	// Check for singletons
+	if (GDScriptLanguage::get_singleton()->get_named_globals_map().has(p_identifier)) {
+		Variant c = GDScriptLanguage::get_singleton()->get_named_globals_map()[p_identifier];
+
+		DataType result;
+		result.has_type = true;
+		result.variant_type = c.get_type();
+		if (result.variant_type == Variant::OBJECT) {
+			::Node *n = Object::cast_to< ::Node>(c);
+			if (!n) {
+				_set_error("Engine bug: invalid autoload singleton: " + String(p_identifier), p_line);
+				ERR_FAIL_V(DataType());
+			}
+			result.class_name = n->get_class_name();
+			result.script_type = n->get_script();
+		}
+		return result;
+	}
+
+	// Meta types
+	// Check for inner classes
+	for (int i = 0; i < current_class->subclasses.size(); i++) {
+		ClassNode *sc = current_class->subclasses[i];
+		if (sc->name == p_identifier) {
+			DataType result;
+			result.has_type = true;
+			result.variant_type = Variant::OBJECT;
+			result.class_name = String(current_class->name) + "." + p_identifier;
+			result.is_meta_type = true;
+			result.is_custom = true;
+			if (!custom_types.has(result.class_name)) {
+				CustomType ct;
+				ct.line = p_line;
+				ct.is_inner_class = true;
+				ct.class_type = sc;
+				ct.base = current_class;
+				custom_types.insert(result.class_name, ct);
+			}
+			return result;
+		}
+	}
+	// Check class db
+	if (ClassDB::class_exists(p_identifier)) {
+		DataType result;
+		result.has_type = true;
+		result.variant_type = Variant::OBJECT;
+		result.class_name = p_identifier;
+		result.is_meta_type = true;
+	}
+
+	_set_error("Identifier '" + String(p_identifier) + "' not found.", p_line);
 	return DataType();
 }
 
-MethodInfo GDScriptParser::_get_method_info_from_type(const DataType &p_data_type, const StringName &p_method, bool &p_valid) const {
-	p_valid = false;
-
-	if (!p_data_type.has_type) {
-		// Can't check if type isn't defined
-		p_valid = true;
-		return MethodInfo();
+GDScriptParser::DataType GDScriptParser::_reduce_function_call_type(const OperatorNode *p_call) {
+	if (p_call->arguments.size() < 1) {
+		_set_error("Parser bug: function call without enough arguments.", p_call->line);
+		ERR_FAIL_V(DataType());
 	}
 
-	if (p_data_type.variant_type == Variant::NIL) {
-		// NULL has no method
-		return MethodInfo();
+	DataType return_type;
+	List<DataType> arg_types;
+	int default_args_count = 0;
+	int arg_count = p_call->arguments.size();
+	String callee_name;
+
+	switch (p_call->arguments[0]->type) {
+		case GDScriptParser::Node::TYPE_TYPE: {
+			// Built-in constructor, special case
+			TypeNode *tn = static_cast<TypeNode *>(p_call->arguments[0]);
+
+			Vector<DataType> par_types;
+			par_types.resize(p_call->arguments.size() - 1);
+			for (int i = 1; i < p_call->arguments.size(); i++) {
+				par_types[i - 1] = _reduce_node_type(p_call->arguments[i], p_call->line);
+			}
+
+			if (error_set) return DataType();
+
+			bool match = false;
+			List<MethodInfo> constructors;
+			Variant::get_constructor_list(tn->vtype, &constructors);
+
+			for (List<MethodInfo>::Element *E = constructors.front(); E; E = E->next()) {
+				MethodInfo &mi = E->get();
+
+				if (p_call->arguments.size() - 1 < mi.arguments.size() - mi.default_arguments.size()) {
+					continue;
+				}
+				if (p_call->arguments.size() - 1 > mi.arguments.size()) {
+					continue;
+				}
+
+				bool types_match = true;
+				for (int i = 0; i < par_types.size(); i++) {
+					DataType arg_type;
+					arg_type.has_type = true;
+					arg_type.variant_type = mi.arguments[i].type;
+					arg_type.class_name = mi.arguments[i].class_name;
+
+					if (!_is_type_compatible(arg_type, par_types[i])) {
+						types_match = false;
+						break;
+					}
+				}
+
+				if (types_match) {
+					match = true;
+					break;
+				}
+			}
+
+			if (!match) {
+				String err = "No constructor of ";
+				err += Variant::get_type_name(tn->vtype);
+				err += " matches the signature ";
+				err += Variant::get_type_name(tn->vtype) + "(";
+				for (int i = 0; i < par_types.size(); i++) {
+					if (i > 0) err += ", ";
+					err += _get_type_string(par_types[i]);
+				}
+				err += ").";
+				_set_error(err, p_call->line, p_call->column);
+				return DataType();
+			}
+
+			return p_call->arguments[0]->get_datatype();
+		} break;
+		case GDScriptParser::Node::TYPE_BUILT_IN_FUNCTION: {
+			BuiltInFunctionNode *func = static_cast<BuiltInFunctionNode *>(p_call->arguments[0]);
+			MethodInfo mi = GDScriptFunctions::get_info(func->function);
+
+			return_type = _type_from_property(mi.return_val);
+
+			// Check arguments
+
+			if (mi.flags & METHOD_FLAG_VARARG) return return_type; // Varargs can't really be checked
+
+			default_args_count = mi.default_arguments.size();
+			callee_name = mi.name;
+			arg_count -= 1;
+
+			// Check each argument type
+			for (int i = 1; i < mi.arguments.size(); i++) {
+				arg_types.push_back(_type_from_property(mi.arguments[i]));
+			}
+		} break;
+		default: {
+			if (p_call->arguments.size() < 2) {
+				_set_error("Parser bug: self method call without enough arguments.", p_call->line);
+				ERR_FAIL_V(DataType());
+			}
+
+			if (p_call->arguments[1]->type != Node::TYPE_IDENTIFIER) {
+				_set_error("Parser bug: invalid function call argument.", p_call->line);
+				ERR_FAIL_V(DataType());
+			}
+
+			IdentifierNode *func_id = static_cast<IdentifierNode *>(p_call->arguments[1]);
+			callee_name = func_id->name;
+			arg_count -= 2;
+
+			DataType base_type;
+
+			// Look for functions in current context
+			FunctionNode *callee = NULL;
+			ClassNode *base = current_class;
+
+			if (p_call->arguments[0]->type != Node::TYPE_SELF) {
+				base_type = _reduce_node_type(p_call->arguments[0], p_call->line);
+				if (!base_type.has_type) {
+					// No type defined
+					return DataType();
+				}
+
+				if (base_type.variant_type != Variant::OBJECT) {
+					// It is a variant type, no need to look for inheritance
+					Variant::CallError err;
+					Variant tmp = Variant::construct(base_type.variant_type, NULL, 0, err);
+
+					if (!tmp.has_method(func_id->name)) {
+						_set_error("Method '" + func_id->name + "' does not exist for base '" +
+										   _get_type_string(base_type) + "'.",
+								p_call->line);
+						return DataType();
+					}
+
+					default_args_count = Variant::get_method_default_arguments(base_type.variant_type, func_id->name).size();
+					return_type.has_type = true;
+					return_type.variant_type = Variant::get_method_return_type(base_type.variant_type, func_id->name);
+
+					Vector<Variant::Type> ats = Variant::get_method_argument_types(base_type.variant_type, func_id->name);
+					for (int i = 0; i < ats.size(); i++) {
+						DataType at;
+						at.has_type = true;
+						at.variant_type = ats[i];
+						arg_types.push_back(at);
+					}
+
+					break;
+
+				} else {
+					base = NULL;
+					if (base_type.is_custom) {
+						if (!custom_types.has(base_type.class_name)) {
+							_set_error("Parser bug: invalid custom type.", p_call->line);
+							ERR_FAIL_V(DataType());
+						}
+						CustomType &ct = custom_types[base_type.class_name];
+						if (ct.is_inner_class) {
+							base = ct.class_type;
+						}
+					}
+				}
+			}
+
+			// Initializer
+			// TODO: Check if initializer is defined, and check arguments
+			if (func_id->name == "new" && base_type.is_meta_type) {
+				return base_type;
+			}
+
+			while (!callee && base) {
+				for (int i = 0; i < base->static_functions.size(); i++) {
+					FunctionNode *func = base->static_functions[i];
+					if (func_id->name == func->name) {
+						callee = func;
+						break;
+					}
+				}
+				if (!callee) {
+					for (int i = 0; i < base->functions.size(); i++) {
+						FunctionNode *func = base->functions[i];
+						if (func_id->name == func->name) {
+							if (current_function && current_function->_static) {
+								_set_error("Can't call non-static function from a static function.", p_call->line);
+								return DataType();
+							}
+							callee = func;
+							break;
+						}
+					}
+				}
+				if (base->inheritance_type == ClassNode::CLASS_INHERIT_SUBCLASS) {
+					base = base->base_class;
+				} else {
+					break;
+				}
+			}
+
+			if (callee) {
+				return_type = callee->get_datatype();
+				for (int i = 0; i < callee->argument_types.size(); i++) {
+					arg_types.push_back(callee->argument_types[i]);
+				}
+				default_args_count = callee->default_values.size();
+				break;
+			}
+
+			// Couldn't find in current file, check parent file
+			Ref<GDScript> base_script;
+			if (base) {
+				base_script = base->base_script;
+			} else if (base_type.is_custom) {
+				CustomType &ct = custom_types[base_type.class_name];
+				base_script = ct.script_type;
+			} else {
+				base_type.script_type;
+			}
+
+			if (base_script.is_valid()) {
+				Map<StringName, GDScriptFunction *> funcs = base_script->get_member_functions();
+
+				if (funcs.has(func_id->name)) {
+					GDScriptFunction *f = funcs[func_id->name];
+					default_args_count = f->get_default_argument_count();
+					return_type = _type_from_gdtype(f->get_return_type());
+					for (int i = 0; i < f->get_argument_count(); i++) {
+						arg_types.push_back(_type_from_gdtype(f->get_argument_type(i)));
+					}
+					break;
+				}
+			}
+
+			// Couldn't find in base script, look up native types
+			StringName native;
+			if (base) {
+				native = base->native_class;
+			} else if (base_type.is_custom) {
+				CustomType &ct = custom_types[base_type.class_name];
+				native = ct.script_type->get_instance_base_type();
+			} else {
+				native = base_type.class_name;
+			}
+
+			bool valid = false;
+
+			if (!ClassDB::class_exists(native)) {
+				_set_error("Could not find native type '" + String(native) + "'.", p_call->line);
+				return DataType();
+			}
+
+			MethodInfo mi;
+			MethodBind *method = ClassDB::get_method(native, func_id->name);
+			if (!method) {
+				_set_error("Method '" + func_id->name + "' does not exist for base '" +
+								   _get_type_string(base_type) + "'.",
+						p_call->line);
+				return DataType();
+			}
+
+			default_args_count = method->get_default_argument_count();
+			return_type = _type_from_property(method->get_return_info());
+
+			for (int i = 0; i < method->get_argument_count(); i++) {
+				arg_types.push_back(_type_from_property(method->get_argument_info(i)));
+			}
+		}
 	}
 
-	if (p_data_type.variant_type != Variant::OBJECT) {
-		// Built-in type
-		MethodInfo mi;
-		Variant::CallError err;
-		Variant temp = Variant::construct(p_data_type.variant_type, NULL, 0, err);
-
-		if (err.error != Variant::CallError::CALL_OK) {
-			return mi;
-		}
-		if (!temp.has_method(p_method)) {
-			return mi;
-		}
-
-		mi.name = p_method;
-		Vector<Variant::Type> arg_types = Variant::get_method_argument_types(p_data_type.variant_type, p_method);
-		Vector<StringName> arg_names = Variant::get_method_argument_names(p_data_type.variant_type, p_method);
-		bool has_return;
-		Variant::Type return_type = Variant::get_method_return_type(p_data_type.variant_type, p_method, &has_return);
-
-		for (int i = 0; i < arg_names.size(); i++) {
-			PropertyInfo arg_info;
-			arg_info.name = arg_names[i];
-			arg_info.type = arg_types[i];
-			arg_info.class_name = "Variant";
-			mi.arguments.push_back(arg_info);
-		}
-
-		mi.default_arguments = Variant::get_method_default_arguments(p_data_type.variant_type, p_method);
-
-		mi.return_val.type = return_type;
-		mi.return_val.class_name = p_data_type.class_name;
-		if (has_return) {
-			mi.return_val.usage |= PROPERTY_USAGE_NIL_IS_VARIANT;
-		}
-
-		p_valid = true;
-		return mi;
+	if (arg_count < arg_types.size() - default_args_count) {
+		_set_error("Too few arguments for " + callee_name + "() call. Expected at least " + itos(arg_types.size() - default_args_count) + ".", p_call->line);
+		return return_type;
+	}
+	if (arg_count > arg_types.size()) {
+		_set_error("Too many arguments for " + callee_name + "() call. Expected at most " + itos(arg_types.size()) + ".", p_call->line);
+		return return_type;
 	}
 
-	// Is object
-	if (ClassDB::class_exists(p_data_type.class_name)) {
-		MethodInfo mi;
-		MethodBind *method = ClassDB::get_method(p_data_type.class_name, p_method);
-		if (!method) {
-			return mi;
+	int arg_diff = p_call->arguments.size() - arg_count;
+	for (int i = arg_diff; i < p_call->arguments.size(); i++) {
+		DataType par_type = _reduce_node_type(p_call->arguments[i], p_call->line);
+
+		if (!_is_type_compatible(arg_types[i - arg_diff], par_type)) {
+			_set_error("At " + callee_name + "() call, argument " + itos(i - arg_diff + 1) + ". Assigned type (" +
+							   _get_type_string(par_type) + ") doesn't match the function argument's type (" +
+							   _get_type_string(arg_types[i - arg_diff]) + ").",
+					p_call->line);
+			return DataType();
 		}
-
-		mi.name = p_method;
-
-		for (int i = 0; i < method->get_argument_count(); i++) {
-			mi.arguments.push_back(method->get_argument_info(i));
-		}
-		mi.default_arguments = method->get_default_arguments();
-		mi.return_val = method->get_return_info();
-
-		p_valid = true;
-		return mi;
 	}
 
-	return MethodInfo();
+	return return_type;
 }
 
 PropertyInfo GDScriptParser::_get_member_info_from_type(const DataType &p_data_type, const StringName &p_member, bool &p_valid) const {
@@ -5977,6 +6032,14 @@ GDScriptParser::DataType GDScriptParser::_type_from_property(const PropertyInfo 
 	return ret;
 }
 
+GDScriptParser::DataType GDScriptParser::_type_from_gdtype(const GDScriptDataType &p_gdtype) const {
+	DataType result;
+	result.has_type = p_gdtype.has_type;
+	result.variant_type = p_gdtype.variant_type;
+	result.class_name = p_gdtype.class_name;
+	result.script_type = p_gdtype.base_script;
+}
+
 GDScriptParser::DataType GDScriptParser::_validate_casting(const DataType &p_base_type, const DataType &p_cast_type, bool &p_valid) const {
 
 	p_valid = false;
@@ -6026,6 +6089,12 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const
 			return true;
 		}
 
+		if (p_container_type.class_name == StringName()) {
+			// Class name is not defined, so it's a native object
+			// Thus all classes are compatible
+			return true;
+		}
+
 		ClassNode::InheritanceType expr_inheritance;
 
 		StringName expr_native;
@@ -6050,21 +6119,35 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const
 			}
 		} else {
 			expr_native = p_expression_type.class_name;
-			expr_inheritance = ClassNode::CLASS_INHERIT_NATIVE;
+			if (p_expression_type.script_type.is_valid()) {
+				expr_script = p_expression_type.script_type;
+				expr_inheritance = ClassNode::CLASS_INHERIT_SCRIPT;
+			} else {
+				expr_inheritance = ClassNode::CLASS_INHERIT_NATIVE;
+			}
 		}
 
-		if (!p_container_type.is_custom) {
+		if (!p_container_type.is_custom && p_container_type.script_type.is_null()) {
 			return ClassDB::is_parent_class(expr_native, p_container_type.class_name);
 		}
 
 		if (expr_inheritance == ClassNode::CLASS_INHERIT_NATIVE) {
-			// Native will never be a subtype of custom
+			if (p_container_type.script_type.is_valid()) {
+				return ClassDB::is_parent_class(expr_native, p_container_type.script_type->get_instance_base_type());
+			}
+			// Native will never be a subtype of script
 			return false;
 		}
 
-		if (!custom_types.has(p_container_type.class_name)) {
-			ERR_EXPLAIN("Parser bug: type not defined: " + String(p_expression_type.class_name));
-			ERR_FAIL_V(false);
+		Ref<GDScript> cont_script;
+
+		if (p_container_type.script_type.is_valid()) {
+			cont_script = p_container_type.script_type;
+		} else {
+			if (!custom_types.has(p_container_type.class_name)) {
+				ERR_EXPLAIN("Parser bug: type not defined: " + String(p_expression_type.class_name));
+				ERR_FAIL_V(false);
+			}
 		}
 		CustomType ct = custom_types[p_container_type.class_name];
 
@@ -6083,10 +6166,9 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_container_type, const
 			return false;
 		}
 
-		Ref<GDScript> cont_script;
 		if (ct.is_inner_class) {
 			cont_script = ct.class_type->base_script;
-		} else {
+		} else if (cont_script.is_null()) {
 			cont_script = ct.script_type;
 		}
 

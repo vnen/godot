@@ -1899,32 +1899,6 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 		p_script->native = native;
 	}
 
-	//parse sub-classes
-
-	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		StringName name = p_class->subclasses[i]->name;
-
-		Ref<GDScript> subclass;
-
-		if (old_subclasses.has(name)) {
-			subclass = old_subclasses[name];
-		} else {
-			subclass.instance();
-		}
-
-		Error err = _parse_class(subclass.ptr(), p_script, p_class->subclasses[i], p_keep_state);
-		if (err)
-			return err;
-
-#ifdef TOOLS_ENABLED
-
-		p_script->member_lines[name] = p_class->subclasses[i]->line;
-#endif
-
-		p_script->constants.insert(name, subclass); //once parsed, goes to the list of constants
-		p_script->subclasses.insert(name, subclass);
-	}
-
 	//print_line("Script: "+p_script->get_path()+" indices: "+itos(p_script->member_indices.size()));
 
 	for (int i = 0; i < p_class->constant_expressions.size(); i++) {
@@ -2118,6 +2092,32 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 				return ERR_PARSE_ERROR;
 			}
 		}
+	}
+
+	//parse sub-classes
+
+	for (int i = 0; i < p_class->subclasses.size(); i++) {
+		StringName name = p_class->subclasses[i]->name;
+
+		Ref<GDScript> subclass;
+
+		if (old_subclasses.has(name)) {
+			subclass = old_subclasses[name];
+		} else {
+			subclass.instance();
+		}
+
+		Error err = _parse_class(subclass.ptr(), p_script, p_class->subclasses[i], p_keep_state);
+		if (err)
+			return err;
+
+#ifdef TOOLS_ENABLED
+
+		p_script->member_lines[name] = p_class->subclasses[i]->line;
+#endif
+
+		p_script->constants.insert(name, subclass); //once parsed, goes to the list of constants
+		p_script->subclasses.insert(name, subclass);
 	}
 
 	//validate instances if keeping state

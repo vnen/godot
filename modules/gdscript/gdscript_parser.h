@@ -38,6 +38,7 @@
 #include "script_language.h"
 
 class GDScript;
+struct GDScriptDataType;
 
 class GDScriptParser {
 public:
@@ -48,11 +49,14 @@ public:
 		Variant::Type variant_type;
 		StringName class_name;
 		bool is_custom;
+		Ref<GDScript> script_type;
+		bool is_meta_type; // Used when the content itself is a type
 
 		DataType() {
 			has_type = false;
 			variant_type = Variant::NIL;
 			is_custom = false;
+			is_meta_type = false;
 		}
 	};
 
@@ -207,6 +211,7 @@ public:
 		DataType get_datatype() {
 			data_type.variant_type = vtype;
 			data_type.class_name = "Object";
+			data_type.is_meta_type = true;
 			return data_type;
 		}
 		TypeNode() {
@@ -446,76 +451,6 @@ public:
 		};
 	};
 
-	/*
-	struct OperatorNode : public Node {
-
-		DataType return_cache;
-		Operator op;
-		Vector<Node*> arguments;
-		virtual DataType get_datatype() const { return return_cache; }
-
-		OperatorNode() { type=TYPE_OPERATOR; return_cache=TYPE_VOID; }
-	};
-
-	struct VariableNode : public Node {
-
-		DataType datatype_cache;
-		StringName name;
-		virtual DataType get_datatype() const { return datatype_cache; }
-
-		VariableNode() { type=TYPE_VARIABLE; datatype_cache=TYPE_VOID; }
-	};
-
-	struct ConstantNode : public Node {
-
-		DataType datatype;
-		Variant value;
-		virtual DataType get_datatype() const { return datatype; }
-
-		ConstantNode() { type=TYPE_CONSTANT; }
-	};
-
-	struct BlockNode : public Node {
-
-		Map<StringName,DataType> variables;
-		List<Node*> statements;
-		BlockNode() { type=TYPE_BLOCK; }
-	};
-
-	struct ControlFlowNode : public Node {
-
-		FlowOperation flow_op;
-		Vector<Node*> statements;
-		ControlFlowNode() { type=TYPE_CONTROL_FLOW; flow_op=FLOW_OP_IF;}
-	};
-
-	struct MemberNode : public Node {
-
-		DataType datatype;
-		StringName name;
-		Node* owner;
-		virtual DataType get_datatype() const { return datatype; }
-		MemberNode() { type=TYPE_MEMBER; }
-	};
-
-
-	struct ProgramNode : public Node {
-
-		struct Function {
-			StringName name;
-			FunctionNode*function;
-		};
-
-		Map<StringName,DataType> builtin_variables;
-		Map<StringName,DataType> preexisting_variables;
-
-		Vector<Function> functions;
-		BlockNode *body;
-
-		ProgramNode() { type=TYPE_PROGRAM; }
-	};
-*/
-
 	enum CompletionType {
 		COMPLETION_NONE,
 		COMPLETION_BUILT_IN_TYPE_CONSTANT,
@@ -621,14 +556,13 @@ private:
 	void _check_function_types(FunctionNode *p_function);
 	void _check_block_types(BlockNode *p_block);
 	void _check_variable_assign_type(const ClassNode::Member &p_var, Node *p_assign);
-	void _check_call_args_types(OperatorNode *p_call);
-	void _check_func_node_args_types(OperatorNode *p_call, FunctionNode *p_func);
 	DataType _reduce_node_type(Node *p_node, int p_line);
-	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line) const;
-	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant) const;
-	MethodInfo _get_method_info_from_type(const DataType &p_data_type, const StringName &p_method, bool &p_valid) const;
+	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line);
+	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant);
+	DataType _reduce_function_call_type(const OperatorNode *p_call);
 	PropertyInfo _get_member_info_from_type(const DataType &p_data_type, const StringName &p_member, bool &p_valid) const;
 	DataType _type_from_property(const PropertyInfo &p_property) const;
+	DataType _type_from_gdtype(const GDScriptDataType &p_gdtype) const;
 	DataType _validate_casting(const DataType &p_base_type, const DataType &p_cast_type, bool &p_valid) const;
 	bool _is_type_compatible(const DataType &p_container_type, const DataType &p_expression_type) const;
 	bool _resolve_data_type_script(DataType &p_data_type) const;
