@@ -97,6 +97,7 @@ class GDScript : public Script {
 
 	Set<StringName> members; //members are just indices to the instanced script.
 	Map<StringName, Variant> constants;
+	Map<StringName, GDScriptDataType> constant_types;
 	Map<StringName, GDScriptFunction *> member_functions;
 	Map<StringName, MemberInfo> member_indices; //members are just indices to the instanced script.
 	Map<StringName, Ref<GDScript> > subclasses;
@@ -165,8 +166,14 @@ public:
 	const Map<StringName, GDScriptFunction *> &get_member_functions() const { return member_functions; }
 	const Ref<GDScriptNativeClass> &get_native() const { return native; }
 
-	const GDScriptDataType get_member_type(const StringName &p_member) const { return GDScriptDataType(); } // TODO
-	const GDScriptDataType get_constant_type(const StringName &p_constant) const { return GDScriptDataType(); } // TODO
+	const GDScriptDataType get_member_type(const StringName &p_member) const {
+		ERR_FAIL_COND_V(!member_indices.has(p_member), GDScriptDataType());
+		return member_indices[p_member].data_type;
+	}
+	const GDScriptDataType get_constant_type(const StringName &p_constant) const {
+		ERR_FAIL_COND_V(!constant_types.has(p_constant), GDScriptDataType());
+		return constant_types[p_constant];
+	}
 
 	virtual bool has_script_signal(const StringName &p_signal) const;
 	virtual void get_script_signal_list(List<MethodInfo> *r_signals) const;

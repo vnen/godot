@@ -467,6 +467,20 @@ public:
 		COMPLETION_ASSIGN,
 	};
 
+	struct CustomType {
+		ClassNode *base; // Where the type is referenced
+		Ref<GDScript> script_type;
+		ClassNode *class_type; // For inner classes
+		bool is_inner_class;
+		int line;
+		CustomType(ClassNode *p_base = NULL, int p_line = 0) :
+				base(p_base),
+				line(p_line),
+				is_inner_class(false) {}
+	};
+
+	Map<String, CustomType> custom_types;
+
 private:
 	GDScriptTokenizer *tokenizer;
 
@@ -516,20 +530,6 @@ private:
 
 	bool type_check;
 
-	struct CustomType {
-		ClassNode *base; // Where the type is referenced
-		Ref<GDScript> script_type;
-		ClassNode *class_type; // For inner classes
-		bool is_inner_class;
-		int line;
-		CustomType(ClassNode *p_base = NULL, int p_line = 0) :
-				base(p_base),
-				line(p_line),
-				is_inner_class(false) {}
-	};
-
-	Map<String, CustomType> custom_types;
-
 	void _set_error(const String &p_error, int p_line = -1, int p_column = -1);
 	bool _recover_from_completion();
 
@@ -560,6 +560,7 @@ private:
 	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line);
 	DataType _reduce_identifier_type(const StringName &p_identifier, int p_line, bool &r_is_constant);
 	DataType _reduce_function_call_type(const OperatorNode *p_call);
+	DataType _reduce_member_type(const DataType *p_base_type, const StringName &p_identifier, int p_line, bool *r_is_constant = NULL);
 	PropertyInfo _get_member_info_from_type(const DataType &p_data_type, const StringName &p_member, bool &p_valid) const;
 	DataType _type_from_property(const PropertyInfo &p_property) const;
 	DataType _type_from_gdtype(const GDScriptDataType &p_gdtype) const;

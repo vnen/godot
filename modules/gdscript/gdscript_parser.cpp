@@ -5340,33 +5340,45 @@ GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_l
 				case OperatorNode::OP_INDEX_NAMED: {
 					DataType base_type = _reduce_node_type(op->arguments[0], p_line);
 
-					if (!base_type.has_type) {
-						// Can't find type
-						break;
+					if (op->arguments.size() != 2) {
+						_set_error("Parser bug: named index with invalid arguments.", op->line);
+						ERR_FAIL_V(DataType());
 					}
-
-					if (base_type.variant_type == Variant::NIL) {
-						_set_error("Can't index on a null value.", op->line);
-						return DataType();
+					if (op->arguments[1]->type != Node::TYPE_IDENTIFIER) {
+						_set_error("Parser bug: named index without identifier argument.", op->line);
+						ERR_FAIL_V(DataType());
 					}
 
 					IdentifierNode *member_id = static_cast<IdentifierNode *>(op->arguments[1]);
 
-					bool valid = false;
-					PropertyInfo pi = _get_member_info_from_type(base_type, member_id->name, valid);
-
-					if (!valid) {
-						_set_error("Member '" + member_id->name + "' does not exist for base '" +
-										   _get_type_string(base_type) + "'.",
-								op->line);
+					if (op->arguments[0]->type == Node::TYPE_SELF) {
+						node_type = _reduce_member_type(NULL, member_id->name, op->line);
+					} else {
+						DataType base_type = _reduce_node_type(op->arguments[0], op->line);
+						node_type = _reduce_member_type(&base_type, member_id->name, op->line);
+					}
+					if (error_set) {
 						return DataType();
 					}
-
-					node_type = _type_from_property(pi);
 				} break;
 				case OperatorNode::OP_INDEX: {
+
 					DataType base_type = _reduce_node_type(op->arguments[0], p_line);
 					DataType index_type = _reduce_node_type(op->arguments[1], p_line);
+
+					if (op->arguments[1]->type == Node::TYPE_CONSTANT) {
+						ConstantNode *cn = static_cast<ConstantNode *>(op->arguments[1]);
+						if (cn->value.get_type() == Variant::STRING) {
+							// Treat this as named indexing
+							String member = cn->value;
+							if (op->arguments[0]->type == Node::TYPE_SELF) {
+								node_type = _reduce_member_type(NULL, member, op->line);
+							} else {
+								node_type = _reduce_member_type(&base_type, member, op->line);
+							}
+							break;
+						}
+					}
 
 					if (!base_type.has_type) {
 						break;
@@ -5576,22 +5588,17 @@ GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const StringNam
 		}
 	}
 
-	// Check for constants
-	for (int i = 0; i < current_class->constant_expressions.size(); i++) {
-		ClassNode::Constant &c = current_class->constant_expressions[i];
-		if (p_identifier == c.identifier) {
-			r_is_constant = true;
-			return c.data_type;
-		}
+	// Try to reduce the identifier from class member
+	DataType d = _reduce_member_type(NULL, p_identifier, p_line, &r_is_constant);
+	if (error_set) {
+		// Ignore error in this case and keep trying
+		error_set = false;
+		error = "";
+	} else {
+		return d;
 	}
 
-	// Check for class variables
-	for (int i = 0; i < current_class->variables.size(); i++) {
-		ClassNode::Member &v = current_class->variables[i];
-		if (p_identifier == v.identifier) {
-			return v.data_type;
-		}
-	}
+	r_is_constant = true; // From now on everything is a constant
 
 	// Check for global constants
 	if (GDScriptLanguage::get_singleton()->get_global_map().has(p_identifier)) {
@@ -5880,7 +5887,8 @@ GDScriptParser::DataType GDScriptParser::_reduce_function_call_type(const Operat
 				base_type.script_type;
 			}
 
-			if (base_script.is_valid()) {
+			bool found = false;
+			while (base_script.is_valid()) {
 				Map<StringName, GDScriptFunction *> funcs = base_script->get_member_functions();
 
 				if (funcs.has(func_id->name)) {
@@ -5890,8 +5898,15 @@ GDScriptParser::DataType GDScriptParser::_reduce_function_call_type(const Operat
 					for (int i = 0; i < f->get_argument_count(); i++) {
 						arg_types.push_back(_type_from_gdtype(f->get_argument_type(i)));
 					}
+					found = true;
 					break;
 				}
+
+				base_script = base_script->get_base_script();
+			}
+
+			if (found) {
+				break;
 			}
 
 			// Couldn't find in base script, look up native types
@@ -5905,18 +5920,21 @@ GDScriptParser::DataType GDScriptParser::_reduce_function_call_type(const Operat
 				native = base_type.class_name;
 			}
 
-			bool valid = false;
-
 			if (!ClassDB::class_exists(native)) {
 				_set_error("Could not find native type '" + String(native) + "'.", p_call->line);
 				return DataType();
 			}
 
-			MethodInfo mi;
 			MethodBind *method = ClassDB::get_method(native, func_id->name);
+			String base_name;
+			if (p_call->arguments[0]->type == Node::TYPE_SELF) {
+				base_name = current_class->name == StringName() ? "self" : current_class->name;
+			} else {
+				base_name = _get_type_string(base_type);
+			}
 			if (!method) {
 				_set_error("Method '" + func_id->name + "' does not exist for base '" +
-								   _get_type_string(base_type) + "'.",
+								   base_name + "'.",
 						p_call->line);
 				return DataType();
 			}
@@ -5953,6 +5971,133 @@ GDScriptParser::DataType GDScriptParser::_reduce_function_call_type(const Operat
 	}
 
 	return return_type;
+}
+
+GDScriptParser::DataType GDScriptParser::_reduce_member_type(const DataType *p_base_type, const StringName &p_identifier, int p_line, bool *r_is_constant) {
+
+	if (r_is_constant) {
+		*r_is_constant = false;
+	}
+
+	ClassNode *base = NULL;
+	if (p_base_type && !p_base_type->has_type) {
+		return DataType();
+	}
+
+	if (!p_base_type) {
+		base = current_class;
+	} else if (p_base_type->is_custom) {
+		if (!custom_types.has(p_base_type->class_name)) {
+			_set_error(String("Parser bug: invalid custom type: '") + p_base_type->class_name + "'.", p_line);
+			return DataType();
+		}
+		CustomType &ct = custom_types[p_base_type->class_name];
+		if (ct.is_inner_class) {
+			base = ct.class_type;
+		}
+	}
+
+	while (base) {
+		// Check properties
+		for (int i = 0; i < base->variables.size(); i++) {
+			ClassNode::Member m = base->variables[i];
+			if (m.identifier == p_identifier) {
+				return m.data_type;
+			}
+		}
+
+		// Check constants
+		for (int i = 0; i < base->constant_expressions.size(); i++) {
+			ClassNode::Constant c = base->constant_expressions[i];
+			if (c.identifier == p_identifier) {
+				if (r_is_constant) {
+					*r_is_constant = true;
+				}
+				return c.data_type;
+			}
+		}
+
+		// Go to parent
+		if (base->inheritance_type == ClassNode::CLASS_INHERIT_SUBCLASS) {
+			base = base->base_class;
+		} else {
+			break;
+		}
+	}
+
+	// Check script types
+	Ref<GDScript> script;
+	if (base) {
+		script = base->base_script;
+	} else if (p_base_type) {
+		if (p_base_type->is_custom) {
+			CustomType &ct = custom_types[p_base_type->class_name];
+			script = ct.script_type;
+		} else {
+			script = p_base_type->script_type;
+		}
+	}
+
+	while (script.is_valid()) {
+
+		if (script->get_members().has(p_identifier)) {
+			return _type_from_gdtype(script->get_member_type(p_identifier));
+		}
+
+		if (script->get_constants().has(p_identifier)) {
+			if (r_is_constant) {
+				*r_is_constant = true;
+			}
+			return _type_from_gdtype(script->get_constant_type(p_identifier));
+		}
+
+		script = script->get_base_script();
+	}
+
+	// Check native types
+	StringName native;
+
+	if (base) {
+		native = base->native_class;
+	} else if (p_base_type) {
+		if (p_base_type->is_custom) {
+			CustomType &ct = custom_types[p_base_type->class_name];
+			native = ct.script_type->get_instance_base_type();
+		} else {
+			native = p_base_type->class_name;
+		}
+	}
+
+	if (!ClassDB::class_exists(native)) {
+		_set_error("Could not find native type '" + String(native) + "'.", p_line);
+		return DataType();
+	}
+
+	List<PropertyInfo> properties;
+
+	ClassDB::get_property_list(native, &properties);
+
+	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
+		if (E->get().name == p_identifier) {
+			return _type_from_property(E->get());
+		}
+	}
+
+	bool valid = false;
+	ClassDB::get_integer_constant(native, p_identifier, &valid);
+	if (valid) {
+		if (r_is_constant) {
+			*r_is_constant = true;
+		}
+		DataType ct;
+		ct.has_type = true;
+		ct.variant_type = Variant::INT;
+		return ct;
+	}
+
+	String base_name = p_base_type ? _get_type_string(*p_base_type) : "self";
+	_set_error("Property '" + String(p_identifier) + "' does not exist for base '" + base_name + "'.", p_line);
+	return DataType();
 }
 
 PropertyInfo GDScriptParser::_get_member_info_from_type(const DataType &p_data_type, const StringName &p_member, bool &p_valid) const {
@@ -6038,6 +6183,7 @@ GDScriptParser::DataType GDScriptParser::_type_from_gdtype(const GDScriptDataTyp
 	result.variant_type = p_gdtype.variant_type;
 	result.class_name = p_gdtype.class_name;
 	result.script_type = p_gdtype.base_script;
+	return result;
 }
 
 GDScriptParser::DataType GDScriptParser::_validate_casting(const DataType &p_base_type, const DataType &p_cast_type, bool &p_valid) const {

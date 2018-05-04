@@ -37,6 +37,7 @@
 class GDScriptCompiler {
 
 	const GDScriptParser *parser;
+	Map<String, GDScriptParser::CustomType> custom_types;
 	struct CodeGen {
 
 		GDScript *script;
@@ -143,6 +144,7 @@ class GDScriptCompiler {
 	Error _parse_block(CodeGen &codegen, const GDScriptParser::BlockNode *p_block, int p_stack_level = 0, int p_break_addr = -1, int p_continue_addr = -1);
 	Error _parse_function(GDScript *p_script, const GDScriptParser::ClassNode *p_class, const GDScriptParser::FunctionNode *p_func, bool p_for_ready = false);
 	Error _parse_class(GDScript *p_script, GDScript *p_owner, const GDScriptParser::ClassNode *p_class, bool p_keep_state);
+	GDScriptDataType _gdtype_from_parser_type(const GDScriptParser::DataType &p_datatype) const;
 	int err_line;
 	int err_column;
 	StringName source;

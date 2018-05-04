@@ -1562,6 +1562,7 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 	//}
 
 	PropertyInfo return_val = PropertyInfo(Variant::NIL, "Variant");
+	gdfunc->return_type = memnew(GDScriptDataType);
 
 	if (p_func) {
 		gdfunc->_static = p_func->_static;
@@ -1570,6 +1571,13 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 			return_val.type = p_func->return_type.variant_type;
 			return_val.class_name = p_func->return_type.class_name;
 		}
+
+		GDScriptDataType ret = _gdtype_from_parser_type(p_func->return_type);
+		gdfunc->return_type->has_type = ret.has_type;
+		gdfunc->return_type->variant_type = ret.variant_type;
+		gdfunc->return_type->class_name = ret.class_name;
+		gdfunc->return_type->is_script = ret.is_script;
+		gdfunc->return_type->base_script = ret.base_script;
 	}
 
 	gdfunc->info.return_val = return_val;
@@ -1577,6 +1585,13 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 #ifdef TOOLS_ENABLED
 	gdfunc->arg_names = argnames;
 #endif
+	gdfunc->argument_types.resize(argtypes.size());
+	if (p_func) {
+		for (int i = 0; i < gdfunc->argument_types.size(); i++) {
+			gdfunc->argument_types[i] = _gdtype_from_parser_type(p_func->argument_types[i]);
+		}
+	}
+
 	gdfunc->info.arguments = argtypes;
 	//constants
 	if (codegen.constant_map.size()) {
@@ -1919,6 +1934,7 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 
 		p_script->member_lines[name] = p_class->constant_expressions[i].expression->line;
 #endif
+		p_script->constant_types.insert(name, _gdtype_from_parser_type(p_class->constant_expressions[i].data_type));
 	}
 
 	for (int i = 0; i < p_class->variables.size(); i++) {
@@ -1953,28 +1969,7 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 		minfo.setter = p_class->variables[i].setter;
 		minfo.getter = p_class->variables[i].getter;
 		minfo.rpc_mode = p_class->variables[i].rpc_mode;
-		if (p_class->variables[i].data_type.has_type) {
-			GDScriptParser::DataType type = p_class->variables[i].data_type;
-
-			minfo.data_type.has_type = true;
-			minfo.data_type.variant_type = type.variant_type;
-			minfo.data_type.class_name = type.class_name;
-			minfo.data_type.is_script = type.is_custom;
-
-			// Ignore for now
-#if 0
-			if (type.is_custom) {
-
-				GDScriptParser::CustomType ct = p_class->custom_types[type.class_name];
-				if (ct.is_inner_class) {
-					minfo.data_type.base_script = p_script->subclasses[ct.base_class->name];
-				} else {
-					minfo.data_type.base_script = ct.base_script;
-				}
-				minfo.data_type.class_name = "GDScript";
-			}
-#endif
-		}
+		minfo.data_type = _gdtype_from_parser_type(p_class->variables[i].data_type);
 
 		p_script->member_indices[name] = minfo;
 		p_script->members.insert(name);
@@ -2175,12 +2170,35 @@ Error GDScriptCompiler::_parse_class(GDScript *p_script, GDScript *p_owner, cons
 	return OK;
 }
 
+GDScriptDataType GDScriptCompiler::_gdtype_from_parser_type(const GDScriptParser::DataType &p_datatype) const {
+	GDScriptDataType result;
+	result.has_type = p_datatype.has_type;
+	result.variant_type = p_datatype.variant_type;
+	result.class_name = p_datatype.class_name;
+
+	if (p_datatype.is_custom) {
+		GDScriptParser::CustomType ct = custom_types[p_datatype.class_name];
+		if (ct.is_inner_class) {
+			// TODO: Deal with inner classes
+		} else {
+			result.is_script = true;
+			result.base_script = ct.script_type;
+		}
+	} else if (p_datatype.script_type.is_valid()) {
+		result.is_script = true;
+		result.base_script = p_datatype.script_type;
+	}
+
+	return result;
+}
+
 Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_script, bool p_keep_state) {
 
 	err_line = -1;
 	err_column = -1;
 	error = "";
 	parser = p_parser;
+	custom_types = p_parser->custom_types;
 	const GDScriptParser::Node *root = parser->get_parse_tree();
 	ERR_FAIL_COND_V(root->type != GDScriptParser::Node::TYPE_CLASS, ERR_INVALID_DATA);
 
