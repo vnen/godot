@@ -4636,7 +4636,7 @@ void GDScriptParser::_determine_inheritance(ClassNode *p_class) {
 					_set_error("Could not resolve relative path for parent class: " + path, p_class->line);
 					return;
 				}
-				path = base.get_base_dir().plus_file(path).simplify_path();
+				path = base.plus_file(path).simplify_path();
 			}
 
 			script = ResourceLoader::load(path);
@@ -5060,11 +5060,16 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 							_set_error("Parser bug: operation without enough arguments.", op->line, op->column);
 							return;
 						}
-						if (op->arguments[0]->type != GDScriptParser::Node::TYPE_IDENTIFIER) break;
-
-						IdentifierNode *id = static_cast<IdentifierNode *>(op->arguments[0]);
 						bool is_constant = false;
-						DataType id_type = _reduce_identifier_type(id->name, op->line, is_constant);
+						DataType id_type;
+
+						if (op->arguments[0]->type == GDScriptParser::Node::TYPE_IDENTIFIER) {
+							IdentifierNode *id = static_cast<IdentifierNode *>(op->arguments[0]);
+							id_type = _reduce_identifier_type(id->name, op->line, is_constant);
+							id->set_datatype(id_type);
+						} else {
+							id_type = _reduce_node_type(op->arguments[0], op->line);
+						}
 
 						if (error_set) {
 							return;
@@ -5075,7 +5080,7 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 							return;
 						}
 
-						id->set_datatype(id_type);
+						DataType exp_type;
 
 						if (op->op != OperatorNode::OP_ASSIGN) {
 							// Check if operation is valid
@@ -5095,31 +5100,29 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 								return;
 							}
 
-							DataType exp_type;
 							exp_type.has_type = true;
 							exp_type.variant_type = ret_type;
 
-							if (!_is_type_compatible(id_type, exp_type)) {
-								_set_error("Assigned expression type (" + _get_type_string(exp_type) + ") doesn't match variable's type (" +
-												   _get_type_string(id_type) + ").",
-										op->line);
-								return;
-							}
-
 						} else {
-							ClassNode::Member fake_member;
-							fake_member.data_type = id_type;
-							fake_member.identifier = id->name;
-							fake_member.line = id->line;
-							_check_variable_assign_type(fake_member, op->arguments[1]);
+							exp_type = _reduce_node_type(op->arguments[1], op->line);
 						}
 
 						if (error_set) return;
+
+						if (!_is_type_compatible(id_type, exp_type)) {
+							_set_error("Assigned expression type (" + _get_type_string(exp_type) + ") doesn't match variable's type (" +
+											   _get_type_string(id_type) + ").",
+									op->line);
+							return;
+						}
 
 					} break;
 					case OperatorNode::OP_CALL: {
 						_reduce_function_call_type(op);
 						if (error_set) return;
+					} break;
+					case OperatorNode::OP_PARENT_CALL: {
+						// Nothing for now
 					} break;
 					default: {
 						// TODO: Make this a warning
