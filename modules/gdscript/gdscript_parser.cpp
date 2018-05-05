@@ -633,6 +633,11 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 					TypeNode *tn = alloc_node<TypeNode>();
 					tn->vtype = bi_type;
+					tn->data_type.has_type = true;
+					tn->data_type.is_meta_type = true;
+					tn->data_type.variant_type = bi_type;
+					tn->data_type.class_name = "Object";
+
 					construct->arguments.push_back(tn);
 
 					OperatorNode *op = alloc_node<OperatorNode>();
@@ -695,6 +700,10 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				if (!replaced) {
 					TypeNode *tn = alloc_node<TypeNode>();
 					tn->vtype = tokenizer->get_token_type();
+					tn->data_type.has_type = true;
+					tn->data_type.is_meta_type = true;
+					tn->data_type.variant_type = tn->vtype;
+					tn->data_type.class_name = "Object";
 					op->arguments.push_back(tn);
 					tokenizer->advance(2);
 				}
@@ -2880,6 +2889,11 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 									case 2: tn->vtype = Variant::VECTOR2; break;
 									case 3: tn->vtype = Variant::VECTOR3; break;
 								}
+
+								tn->data_type.has_type = true;
+								tn->data_type.is_meta_type = true;
+								tn->data_type.variant_type = tn->vtype;
+								tn->data_type.class_name = "Object";
 
 								for (int i = 0; i < args.size(); i++) {
 									on->arguments.push_back(args[i]);
@@ -5358,7 +5372,57 @@ GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node, int p_l
 						node_type = _reduce_member_type(NULL, member_id->name, op->line);
 					} else {
 						DataType base_type = _reduce_node_type(op->arguments[0], op->line);
-						node_type = _reduce_member_type(&base_type, member_id->name, op->line);
+						if (base_type.variant_type == Variant::OBJECT) {
+							node_type = _reduce_member_type(&base_type, member_id->name, op->line);
+						} else {
+							// Variant type, just test if it's possible
+							// For variable collections, infer content type
+							DataType result;
+							result.has_type = true;
+							switch (base_type.variant_type) {
+								case Variant::ARRAY:
+								case Variant::DICTIONARY: {
+									result.has_type = false;
+								} break;
+								case Variant::STRING:
+								case Variant::POOL_STRING_ARRAY: {
+									result.variant_type = Variant::STRING;
+								} break;
+								case Variant::POOL_BYTE_ARRAY:
+								case Variant::POOL_INT_ARRAY: {
+									result.variant_type = Variant::INT;
+								} break;
+								case Variant::POOL_COLOR_ARRAY: {
+									result.variant_type = Variant::COLOR;
+								} break;
+								case Variant::POOL_REAL_ARRAY: {
+									result.variant_type = Variant::REAL;
+								} break;
+								case Variant::POOL_VECTOR2_ARRAY: {
+									result.variant_type = Variant::VECTOR2;
+								} break;
+								case Variant::POOL_VECTOR3_ARRAY: {
+									result.variant_type = Variant::VECTOR3;
+								} break;
+								default: {
+									Variant::CallError err;
+									Variant temp = Variant::construct(base_type.variant_type, NULL, 0, err);
+
+									bool valid = false;
+									Variant res = temp.get(member_id->name.operator String(), &valid);
+
+									if (!valid) {
+										_set_error("Can't get index '" + String(member_id->name.operator String()) + "' on base '" +
+														   _get_type_string(base_type) + "'.",
+												op->line);
+										return DataType();
+									}
+
+									result.variant_type = res.get_type();
+								} break;
+							}
+							node_type = result;
+						}
 					}
 					if (error_set) {
 						return DataType();

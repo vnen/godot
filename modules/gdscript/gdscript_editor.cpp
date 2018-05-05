@@ -584,6 +584,16 @@ static bool _guess_identifier_type(GDScriptCompletionContext &context, int p_lin
 
 static bool _guess_expression_type(GDScriptCompletionContext &context, const GDScriptParser::Node *p_node, int p_line, GDScriptCompletionIdentifier &r_type, bool p_for_indexing = false) {
 
+	GDScriptParser::DataType dt = p_node->get_datatype();
+	if (dt.has_type) {
+		r_type.type = dt.variant_type;
+		if (!dt.is_custom) {
+			r_type.obj_type = dt.class_name;
+		}
+		r_type.script = dt.script_type;
+		return true;
+	}
+
 	if (p_node->type == GDScriptParser::Node::TYPE_CONSTANT) {
 
 		const GDScriptParser::ConstantNode *cn = static_cast<const GDScriptParser::ConstantNode *>(p_node);
