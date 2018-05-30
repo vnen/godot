@@ -1628,7 +1628,7 @@ MethodInfo GDScriptFunctions::get_info(Function p_func) {
 
 			MethodInfo mi("weakref", PropertyInfo(Variant::OBJECT, "obj"));
 			mi.return_val.type = Variant::OBJECT;
-			mi.return_val.name = "WeakRef";
+			mi.return_val.class_name = "WeakRef";
 
 			return mi;
 
@@ -1637,19 +1637,20 @@ MethodInfo GDScriptFunctions::get_info(Function p_func) {
 
 			MethodInfo mi("funcref", PropertyInfo(Variant::OBJECT, "instance"), PropertyInfo(Variant::STRING, "funcname"));
 			mi.return_val.type = Variant::OBJECT;
-			mi.return_val.name = "FuncRef";
+			mi.return_val.class_name = "FuncRef";
 			return mi;
 
 		} break;
 		case TYPE_CONVERT: {
 
-			MethodInfo mi("convert", PropertyInfo(Variant::NIL, "what"), PropertyInfo(Variant::INT, "type"));
-			mi.return_val.type = Variant::OBJECT;
+			MethodInfo mi("convert", PropertyInfo(Variant::NIL, "what", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT), PropertyInfo(Variant::INT, "type"));
+			mi.return_val.type = Variant::NIL;
+			mi.return_val.usage |= PROPERTY_USAGE_NIL_IS_VARIANT;
 			return mi;
 		} break;
 		case TYPE_OF: {
 
-			MethodInfo mi("typeof", PropertyInfo(Variant::NIL, "what"));
+			MethodInfo mi("typeof", PropertyInfo(Variant::NIL, "what", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT));
 			mi.return_val.type = Variant::INT;
 			return mi;
 
@@ -1717,7 +1718,7 @@ MethodInfo GDScriptFunctions::get_info(Function p_func) {
 
 		} break;
 		case VAR_TO_STR: {
-			MethodInfo mi("var2str", PropertyInfo(Variant::NIL, "var"));
+			MethodInfo mi("var2str", PropertyInfo(Variant::NIL, "var", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT));
 			mi.return_val.type = Variant::STRING;
 			return mi;
 
@@ -1730,7 +1731,7 @@ MethodInfo GDScriptFunctions::get_info(Function p_func) {
 			return mi;
 		} break;
 		case VAR_TO_BYTES: {
-			MethodInfo mi("var2bytes", PropertyInfo(Variant::NIL, "var"));
+			MethodInfo mi("var2bytes", PropertyInfo(Variant::NIL, "var", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT));
 			mi.return_val.type = Variant::POOL_BYTE_ARRAY;
 			return mi;
 
@@ -1753,7 +1754,7 @@ MethodInfo GDScriptFunctions::get_info(Function p_func) {
 
 			MethodInfo mi("load", PropertyInfo(Variant::STRING, "path"));
 			mi.return_val.type = Variant::OBJECT;
-			mi.return_val.name = "Resource";
+			mi.return_val.class_name = "Resource";
 			return mi;
 		} break;
 		case INST2DICT: {
@@ -1783,13 +1784,13 @@ MethodInfo GDScriptFunctions::get_info(Function p_func) {
 		} break;
 		case TO_JSON: {
 
-			MethodInfo mi("to_json", PropertyInfo(Variant::NIL, "var"));
+			MethodInfo mi("to_json", PropertyInfo(Variant::NIL, "var", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT));
 			mi.return_val.type = Variant::STRING;
 			return mi;
 		} break;
 		case HASH: {
 
-			MethodInfo mi("hash", PropertyInfo(Variant::NIL, "var"));
+			MethodInfo mi("hash", PropertyInfo(Variant::NIL, "var", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT));
 			mi.return_val.type = Variant::INT;
 			return mi;
 		} break;
@@ -1820,7 +1821,7 @@ MethodInfo GDScriptFunctions::get_info(Function p_func) {
 			return mi;
 		} break;
 		case LEN: {
-			MethodInfo mi("len", PropertyInfo(Variant::NIL, "var"));
+			MethodInfo mi("len", PropertyInfo(Variant::NIL, "var", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NIL_IS_VARIANT));
 			mi.return_val.type = Variant::INT;
 			return mi;
 		} break;
