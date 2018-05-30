@@ -100,6 +100,8 @@ const char *GDScriptTokenizer::token_names[TK_MAX] = {
 	"setget",
 	"const",
 	"var",
+	"as",
+	"void",
 	"enum",
 	"preload",
 	"assert",
@@ -124,6 +126,7 @@ const char *GDScriptTokenizer::token_names[TK_MAX] = {
 	"'.'",
 	"'?'",
 	"':'",
+	"'->'",
 	"'$'",
 	"'\\n'",
 	"PI",
@@ -195,6 +198,8 @@ static const _kws _keyword_list[] = {
 	{ GDScriptTokenizer::TK_PR_EXPORT, "export" },
 	{ GDScriptTokenizer::TK_PR_SETGET, "setget" },
 	{ GDScriptTokenizer::TK_PR_VAR, "var" },
+	{ GDScriptTokenizer::TK_PR_AS, "as" },
+	{ GDScriptTokenizer::TK_PR_VOID, "void" },
 	{ GDScriptTokenizer::TK_PR_PRELOAD, "preload" },
 	{ GDScriptTokenizer::TK_PR_ASSERT, "assert" },
 	{ GDScriptTokenizer::TK_PR_YIELD, "yield" },
@@ -705,11 +710,9 @@ void GDScriptTokenizerText::_advance() {
 				if (GETCHAR(1) == '=') {
 					_make_token(TK_OP_ASSIGN_SUB);
 					INCPOS(1);
-					/*
-				}  else if (GETCHAR(1)=='-') {
-					_make_token(TK_OP_MINUS_MINUS);
+				} else if (GETCHAR(1) == '>') {
+					_make_token(TK_FORWARD_ARROW);
 					INCPOS(1);
-				*/
 				} else {
 					_make_token(TK_OP_SUB);
 				}
@@ -1137,7 +1140,7 @@ void GDScriptTokenizerText::advance(int p_amount) {
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define BYTECODE_VERSION 12
+#define BYTECODE_VERSION 13
 
 Error GDScriptTokenizerBuffer::set_code_buffer(const Vector<uint8_t> &p_buffer) {
 
