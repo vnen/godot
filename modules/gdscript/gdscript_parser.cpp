@@ -2676,7 +2676,11 @@ void GDScriptParser::_parse_block(BlockNode *p_block, bool p_static) {
 				Node *assigned = NULL;
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
-					if (!_parse_type(lv->datatype)) {
+					if (tokenizer->get_token(1) == GDScriptTokenizer::TK_OP_ASSIGN) {
+						lv->datatype = DataType();
+						lv->datatype.infer_type = true;
+						tokenizer->advance();
+					} else if (!_parse_type(lv->datatype)) {
 						_set_error("Expected type for variable.");
 						return;
 					}
@@ -4374,7 +4378,11 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				rpc_mode = MultiplayerAPI::RPC_MODE_DISABLED;
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
-					if (!_parse_type(member.data_type)) {
+					if (tokenizer->get_token(1) == GDScriptTokenizer::TK_OP_ASSIGN) {
+						member.data_type = DataType();
+						member.data_type.infer_type = true;
+						tokenizer->advance();
+					} else if (!_parse_type(member.data_type)) {
 						_set_error("Expected type for class variable.");
 						return;
 					}
@@ -4566,7 +4574,11 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				tokenizer->advance();
 
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_COLON) {
-					if (!_parse_type(constant.type)) {
+					if (tokenizer->get_token(1) == GDScriptTokenizer::TK_OP_ASSIGN) {
+						constant.type = DataType();
+						constant.type.infer_type = true;
+						tokenizer->advance();
+					} else if (!_parse_type(constant.type)) {
 						_set_error("Expected type for class constant.");
 						return;
 					}
@@ -6726,6 +6738,15 @@ void GDScriptParser::_check_class_level_types(ClassNode *p_class) {
 				v.expression = convert_call;
 				v.initial_assignment->arguments[1] = convert_call;
 			}
+
+			if (v.data_type.infer_type) {
+				if (!expr_type.has_type) {
+					_set_error("Assigned value does not have a set type, variable type cannot be inferred.", v.line);
+					return;
+				}
+				v.data_type = expr_type;
+				v.data_type.is_constant = false;
+			}
 		} else if (v.data_type.has_type && v.data_type.kind == DataType::BUILTIN) {
 			// Create default value based on the type
 			IdentifierNode *id = alloc_node<IdentifierNode>();
@@ -7001,6 +7022,14 @@ void GDScriptParser::_check_block_types(BlockNode *p_block) {
 						convert_call->arguments.push_back(tgt_type);
 
 						lv->assign = convert_call;
+					}
+					if (lv->datatype.infer_type) {
+						if (!assign_type.has_type) {
+							_set_error("Assigned value does not have a set type, variable type cannot be inferred.", lv->line);
+							return;
+						}
+						lv->datatype = assign_type;
+						lv->datatype.is_constant = false;
 					}
 					if (lv->datatype.has_type && !assign_type.has_type) {
 						_mark_line_as_unsafe(lv->line);
