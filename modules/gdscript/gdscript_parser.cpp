@@ -140,8 +140,9 @@ bool GDScriptParser::_parse_arguments(Node *p_parent, Vector<Node *> &p_args, bo
 			}
 
 			Node *arg = _parse_expression(p_parent, p_static);
-			if (!arg)
+			if (!arg) {
 				return false;
+			}
 
 			p_args.push_back(arg);
 
@@ -999,7 +1000,7 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 
 			expr = dict;
 
-		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PERIOD && (tokenizer->is_token_literal(1) || tokenizer->get_token(1) == GDScriptTokenizer::TK_CURSOR) && tokenizer->get_token(2) == GDScriptTokenizer::TK_PARENTHESIS_OPEN) {
+		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PERIOD && (tokenizer->is_token_literal(1) || tokenizer->get_token(1) == GDScriptTokenizer::TK_CURSOR)) {
 			// We check with is_token_literal, as this allows us to use match/sync/etc. as a name
 			// parent call
 
@@ -1011,17 +1012,23 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 			op->arguments.push_back(self);
 			forbidden for now */
 			StringName identifier;
-			if (_get_completable_identifier(COMPLETION_PARENT_FUNCTION, identifier)) {
-				//indexing stuff
-			}
+			bool is_completion = _get_completable_identifier(COMPLETION_PARENT_FUNCTION, identifier) && for_completion;
 
 			IdentifierNode *id = alloc_node<IdentifierNode>();
 			id->name = identifier;
 			op->arguments.push_back(id);
 
-			tokenizer->advance(1);
-			if (!_parse_arguments(op, op->arguments, p_static))
-				return NULL;
+			if (tokenizer->get_token() != GDScriptTokenizer::TK_PARENTHESIS_OPEN) {
+				if (!is_completion) {
+					_set_error("Expected '(' for parent function call.");
+					return NULL;
+				}
+			} else {
+				tokenizer->advance();
+				if (!_parse_arguments(op, op->arguments, p_static)) {
+					return NULL;
+				}
+			}
 
 			expr = op;
 
@@ -4760,13 +4767,13 @@ void GDScriptParser::_determine_inheritance(ClassNode *p_class) {
 
 			if (path.is_rel_path()) {
 
-				String base = self_path;
+				String base = base_path;
 
 				if (base == "" || base.is_rel_path()) {
 					_set_error("Could not resolve relative path for parent class: " + path, p_class->line);
 					return;
 				}
-				path = base.get_base_dir().plus_file(path).simplify_path();
+				path = base.plus_file(path).simplify_path();
 			}
 			script = ResourceLoader::load(path);
 			if (script.is_null()) {
@@ -7278,7 +7285,7 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 		_set_error("Parse Error: " + tokenizer->get_token_error());
 	}
 
-	if (error_set) {
+	if (error_set && !for_completion) {
 		return ERR_PARSE_ERROR;
 	}
 
@@ -7293,13 +7300,11 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 	current_block = NULL;
 	if (for_completion) check_types = false;
 
-	if (check_types) {
-		// Resolve all class-level stuff before getting into function blocks
-		_check_class_level_types(main_class);
+	// Resolve all class-level stuff before getting into function blocks
+	_check_class_level_types(main_class);
 
-		if (error_set) {
-			return ERR_PARSE_ERROR;
-		}
+	if (error_set) {
+		return ERR_PARSE_ERROR;
 	}
 
 	// Resolve the function blocks
