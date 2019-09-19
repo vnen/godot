@@ -3983,7 +3983,8 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				current_function = function;
 				function->body = block;
 				current_block = block;
-				_parse_block(block, _static);
+				// _parse_block(block, _static);
+				_skip_block();
 				current_block = NULL;
 
 				//arguments
@@ -5245,6 +5246,23 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 			} break;
 		}
 	}
+}
+
+void GDScriptParser::_skip_block() {
+	int initial_indent = tab_level.back()->get() - 1;
+	int current_indent = initial_indent + 1;
+
+	while (current_indent > initial_indent) {
+		while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
+			if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
+				return;
+			}
+			tokenizer->advance();
+		}
+		current_indent = tokenizer->get_token_line_indent();
+		tokenizer->advance(); // Skip newline too
+	}
+	tab_level.pop_back();
 }
 
 void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive) {
