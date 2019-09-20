@@ -218,6 +218,7 @@ public:
 		Vector<Node *> default_values;
 		BlockNode *body;
 		int token_offset; // Pointing to just before the colon (before _enter_indent_block())
+		int indent_level;
 #ifdef DEBUG_ENABLED
 		Vector<int> arguments_usage;
 #endif // DEBUG_ENABLED
@@ -233,6 +234,7 @@ public:
 			has_yield = false;
 			has_unreachable_code = false;
 			token_offset = 0;
+			indent_level = 0;
 		}
 	};
 
