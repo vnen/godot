@@ -468,6 +468,8 @@ void GDScriptTokenizerText::_advance() {
 		return;
 	}
 
+	current_token_offset += 1;
+
 	if (code_pos >= len) {
 		_make_token(TK_EOF);
 		return;
@@ -1113,6 +1115,7 @@ void GDScriptTokenizerText::set_code(const String &p_code) {
 #endif // DEBUG_ENABLED
 	last_error = "";
 	file_indent_type = INDENT_NONE;
+	current_token_offset = 0;
 	for (int i = 0; i < MAX_LOOKAHEAD + 1; i++)
 		_advance();
 }
