@@ -3968,6 +3968,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				}
 
 				function->token_offset = tokenizer->get_token_offset();
+				function->indent_level = indent_level.back()->get();
 
 				if (!_enter_indent_block(block)) {
 
@@ -5257,6 +5258,7 @@ void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
 	for (int i = 0; i < p_class->functions.size(); i++) {
 		FunctionNode *func = p_class->functions[i];
 		tokenizer->advance(func->token_offset - tokenizer->get_token_offset());
+		indent_level.push_back(func->indent_level);
 		if (!_enter_indent_block(func->body)) {
 			_set_error("Indented block expected.");
 			return;
@@ -5265,12 +5267,14 @@ void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
 		current_block = func->body;
 		_parse_block(func->body, false);
 		if (error_set) return;
+		indent_level.pop_back();
 	}
 	// Same with static functions
-	tokenizer->reset();
+	tokenizer->reset(); // TODO: Maybe create an array of all functions to avoid resetting this?
 	for (int i = 0; i < p_class->static_functions.size(); i++) {
 		FunctionNode *func = p_class->static_functions[i];
 		tokenizer->advance(func->token_offset - tokenizer->get_token_offset());
+		indent_level.push_back(func->indent_level);
 		if (!_enter_indent_block(func->body)) {
 			_set_error("Indented block expected.");
 			return;
@@ -5279,17 +5283,28 @@ void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
 		current_block = func->body;
 		_parse_block(func->body, false);
 		if (error_set) return;
+		indent_level.pop_back();
 	}
 	current_function = NULL;
 	current_block = NULL;
-	// TODO: recurse into inner classes
+
+	// Should be safe to assume the indent level increased in inner classes
+	IndentLevel current_indent = indent_level.back()->get();
+	current_indent.indent += 1;
+	indent_level.push_back(current_indent);
+	for (int i = 0; i < p_class->subclasses.size(); i++) {
+		ClassNode *subclass = p_class->subclasses[i];
+		_parse_class_contents(subclass);
+	}
+	indent_level.pop_back();
+	current_class = NULL;
 }
 
 void GDScriptParser::_skip_block() {
-	int initial_indent = indent_level.back()->get().indent - 1;
-	int current_indent = initial_indent + 1;
+	int initial_indent = indent_level.back()->prev()->get().indent;
+	int current_indent = indent_level.back()->get().indent;
 
-	while (current_indent > initial_indent) {
+	do {
 		while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
 			if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
 				return;
@@ -5298,8 +5313,9 @@ void GDScriptParser::_skip_block() {
 		}
 		current_indent = tokenizer->get_token_line_indent();
 		tokenizer->advance(); // Skip newline too
-	}
-	indent_level.pop_back();
+	} while (current_indent > initial_indent);
+
+	indent_level.pop_back(); // Remove block indent level
 }
 
 void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive) {
@@ -8037,6 +8053,8 @@ void GDScriptParser::_check_function_types(FunctionNode *p_function) {
 
 void GDScriptParser::_check_class_blocks_types(ClassNode *p_class) {
 
+	current_class = p_class;
+
 	// Function blocks
 	for (int i = 0; i < p_class->static_functions.size(); i++) {
 		current_function = p_class->static_functions[i];
@@ -8077,7 +8095,6 @@ void GDScriptParser::_check_class_blocks_types(ClassNode *p_class) {
 		current_class = p_class->subclasses[i];
 		_check_class_blocks_types(current_class);
 		if (error_set) return;
-		current_class = p_class;
 	}
 }
 
@@ -8574,6 +8591,8 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 	}
 
 	// Parse the content of function blocks
+	indent_level.clear();
+	indent_level.push_back(IndentLevel(0, 0));
 	_parse_class_contents(main_class);
 	if (error_set) {
 		return ERR_PARSE_ERROR;

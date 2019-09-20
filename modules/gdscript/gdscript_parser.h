@@ -42,6 +42,26 @@ struct GDScriptWarning;
 
 class GDScriptParser {
 public:
+	struct IndentLevel {
+		int indent;
+		int tabs;
+
+		bool is_mixed(IndentLevel other) {
+			return (
+					(indent == other.indent && tabs != other.tabs) ||
+					(indent > other.indent && tabs < other.tabs) ||
+					(indent < other.indent && tabs > other.tabs));
+		}
+
+		IndentLevel() :
+				indent(0),
+				tabs(0) {}
+
+		IndentLevel(int p_indent, int p_tabs) :
+				indent(p_indent),
+				tabs(p_tabs) {}
+	};
+
 	struct ClassNode;
 
 	struct DataType {
@@ -218,6 +238,7 @@ public:
 		Vector<Node *> default_values;
 		BlockNode *body;
 		int token_offset; // Pointing to just before the colon (before _enter_indent_block())
+		IndentLevel indent_level;
 #ifdef DEBUG_ENABLED
 		Vector<int> arguments_usage;
 #endif // DEBUG_ENABLED
@@ -233,6 +254,7 @@ public:
 			has_yield = false;
 			has_unreachable_code = false;
 			token_offset = 0;
+			indent_level = IndentLevel(0, 0);
 		}
 	};
 
@@ -553,26 +575,6 @@ private:
 #endif // DEBUG_ENABLED
 
 	int pending_newline;
-
-	struct IndentLevel {
-		int indent;
-		int tabs;
-
-		bool is_mixed(IndentLevel other) {
-			return (
-					(indent == other.indent && tabs != other.tabs) ||
-					(indent > other.indent && tabs < other.tabs) ||
-					(indent < other.indent && tabs > other.tabs));
-		}
-
-		IndentLevel() :
-				indent(0),
-				tabs(0) {}
-
-		IndentLevel(int p_indent, int p_tabs) :
-				indent(p_indent),
-				tabs(p_tabs) {}
-	};
 
 	List<IndentLevel> indent_level;
 
