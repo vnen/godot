@@ -3967,6 +3967,8 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 					}
 				}
 
+				function->token_offset = tokenizer->get_token_offset();
+
 				if (!_enter_indent_block(block)) {
 
 					_set_error("Indented block expected.");
@@ -5248,8 +5250,43 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 	}
 }
 
+void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
+	current_class = p_class;
+	// Parse each function
+	tokenizer->reset();
+	for (int i = 0; i < p_class->functions.size(); i++) {
+		FunctionNode *func = p_class->functions[i];
+		tokenizer->advance(func->token_offset - tokenizer->get_token_offset());
+		if (!_enter_indent_block(func->body)) {
+			_set_error("Indented block expected.");
+			return;
+		}
+		current_function = func;
+		current_block = func->body;
+		_parse_block(func->body, false);
+		if (error_set) return;
+	}
+	// Same with static functions
+	tokenizer->reset();
+	for (int i = 0; i < p_class->static_functions.size(); i++) {
+		FunctionNode *func = p_class->static_functions[i];
+		tokenizer->advance(func->token_offset - tokenizer->get_token_offset());
+		if (!_enter_indent_block(func->body)) {
+			_set_error("Indented block expected.");
+			return;
+		}
+		current_function = func;
+		current_block = func->body;
+		_parse_block(func->body, false);
+		if (error_set) return;
+	}
+	current_function = NULL;
+	current_block = NULL;
+	// TODO: recurse into inner classes
+}
+
 void GDScriptParser::_skip_block() {
-	int initial_indent = tab_level.back()->get() - 1;
+	int initial_indent = indent_level.back()->get().indent - 1;
 	int current_indent = initial_indent + 1;
 
 	while (current_indent > initial_indent) {
@@ -5262,7 +5299,7 @@ void GDScriptParser::_skip_block() {
 		current_indent = tokenizer->get_token_line_indent();
 		tokenizer->advance(); // Skip newline too
 	}
-	tab_level.pop_back();
+	indent_level.pop_back();
 }
 
 void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive) {
@@ -8532,6 +8569,12 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 	// Resolve all class-level stuff before getting into function blocks
 	_check_class_level_types(main_class);
 
+	if (error_set) {
+		return ERR_PARSE_ERROR;
+	}
+
+	// Parse the content of function blocks
+	_parse_class_contents(main_class);
 	if (error_set) {
 		return ERR_PARSE_ERROR;
 	}
