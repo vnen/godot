@@ -552,6 +552,7 @@ private:
 	int error_column;
 	bool check_types;
 	bool dependencies_only;
+	bool interface_only;
 	List<String> dependencies;
 #ifdef DEBUG_ENABLED
 	Set<int> *safe_lines;
@@ -616,7 +617,8 @@ private:
 	bool _end_statement();
 	void _skip_block();
 	void _skip_expression();
-	void _parse_class_contents(ClassNode *p_class);
+	void _parse_class_member_initalizers(ClassNode *p_class);
+	void _parse_class_function_bodies(ClassNode *p_class);
 	void _parse_member_initialization(ClassNode *p_class, ClassNode::Member &p_member);
 	void _parse_constant_initialization(ClassNode *p_class, ClassNode::Constant &p_constant);
 
@@ -663,6 +665,7 @@ public:
 #endif // DEBUG_ENABLED
 	Error parse(const String &p_code, const String &p_base_path = "", bool p_just_validate = false, const String &p_self_path = "", bool p_for_completion = false, Set<int> *r_safe_lines = NULL, bool p_dependencies_only = false);
 	Error parse_bytecode(const Vector<uint8_t> &p_bytecode, const String &p_base_path = "", const String &p_self_path = "");
+	Error parse_interface(const String &p_code, const String &p_base_path = "", const String &p_self_path = "");
 
 	bool is_tool_script() const;
 	const Node *get_parse_tree() const;
