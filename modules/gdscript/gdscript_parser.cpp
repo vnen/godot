@@ -7779,6 +7779,7 @@ void GDScriptParser::_check_class_level_types(ClassNode *p_class) {
 	// "__meta__" could also be in here, but since it doesn't really affect object metadata,
 	// it is okay to override it on script.
 	StringName script_name = CoreStringNames::get_singleton()->_script;
+	current_class = p_class;
 
 	_mark_line_as_safe(p_class->line);
 
@@ -7965,8 +7966,7 @@ void GDScriptParser::_check_class_level_types(ClassNode *p_class) {
 
 	// Inner classes
 	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		current_class = p_class->subclasses[i];
-		_check_class_level_types(current_class);
+		_check_class_level_types(p_class->subclasses[i]);
 		if (error_set) return;
 		current_class = p_class;
 	}
@@ -8146,8 +8146,7 @@ void GDScriptParser::_check_class_blocks_types(ClassNode *p_class) {
 
 	// Inner classes
 	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		current_class = p_class->subclasses[i];
-		_check_class_blocks_types(current_class);
+		_check_class_blocks_types(p_class->subclasses[i]);
 		if (error_set) return;
 	}
 }
@@ -8644,8 +8643,6 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 	if (error_set) {
 		return ERR_PARSE_ERROR;
 	}
-
-	current_class = main_class;
 
 	// Resolve all class-level stuff before getting into function blocks
 	_check_class_level_types(main_class);
