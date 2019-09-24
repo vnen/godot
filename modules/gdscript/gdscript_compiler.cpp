@@ -1929,18 +1929,18 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 #endif
 	}
 
-	for (Map<StringName, GDScriptParser::ClassNode::Constant>::Element *E = p_class->constant_expressions.front(); E; E = E->next()) {
+	for (OrderedHashMap<StringName, GDScriptParser::ClassNode::Constant>::ConstElement E = p_class->constant_expressions.front(); E; E = E.next()) {
 
-		StringName name = E->key();
+		StringName name = E.key();
 
-		ERR_CONTINUE(E->get().expression->type != GDScriptParser::Node::TYPE_CONSTANT);
+		ERR_CONTINUE(E.get().expression->type != GDScriptParser::Node::TYPE_CONSTANT);
 
-		GDScriptParser::ConstantNode *constant = static_cast<GDScriptParser::ConstantNode *>(E->get().expression);
+		GDScriptParser::ConstantNode *constant = static_cast<GDScriptParser::ConstantNode *>(E.get().expression);
 
 		p_script->constants.insert(name, constant->value);
 #ifdef TOOLS_ENABLED
 
-		p_script->member_lines[name] = E->get().expression->line;
+		p_script->member_lines[name] = E.get().expression->line;
 #endif
 	}
 
