@@ -615,7 +615,7 @@ private:
 	void _parse_class(ClassNode *p_class);
 	bool _end_statement();
 	void _skip_block();
-	void _skip_line();
+	void _skip_expression();
 	void _parse_class_contents(ClassNode *p_class);
 	void _parse_member_initialization(ClassNode *p_class, ClassNode::Member &p_member);
 	void _parse_constant_initialization(ClassNode *p_class, ClassNode::Constant &p_constant);
