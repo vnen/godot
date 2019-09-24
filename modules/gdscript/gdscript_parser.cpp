@@ -4839,7 +4839,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 					member.need_assign = true;
 
 					// Initialization parsing will be done later
-					_skip_line();
+					_skip_expression();
 
 				} else {
 
@@ -4991,7 +4991,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				constant.token_offset = tokenizer->get_token_offset();
 				p_class->constant_expressions.insert(const_id, constant);
 
-				_skip_line(); // Initialization will be parsed later
+				_skip_expression(); // Initialization will be parsed later
 
 				if (!_end_statement()) {
 					_set_error("Expected end of statement (constant).", line);
@@ -5355,7 +5355,7 @@ void GDScriptParser::_skip_block() {
 	int current_indent = indent_level.back()->get().indent;
 
 	do {
-		_skip_line();
+		_skip_expression();
 		current_indent = tokenizer->get_token_line_indent();
 		tokenizer->advance(); // Skip newline too
 	} while (current_indent > initial_indent);
@@ -5363,10 +5363,15 @@ void GDScriptParser::_skip_block() {
 	indent_level.pop_back(); // Remove block indent level
 }
 
-void GDScriptParser::_skip_line() {
-	while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
+void GDScriptParser::_skip_expression() {
+	int parentheses = 0;
+	while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE || parentheses > 0) {
 		if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF || tokenizer->get_token() == GDScriptTokenizer::TK_ERROR) {
 			return;
+		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PARENTHESIS_OPEN) {
+			parentheses++;
+		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PARENTHESIS_CLOSE) {
+			parentheses--;
 		}
 		tokenizer->advance();
 	}
