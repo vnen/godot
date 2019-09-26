@@ -37,6 +37,8 @@ class GDScriptParser;
 class GDScriptCache {
 
 	Set<String> parsing_scripts;
+	Set<String> compiling_scripts;
+	Set<String> scripts_pending_compilation;
 	OrderedHashMap<String, GDScriptParser *> interface_parsed_scripts; // Key is path
 	OrderedHashMap<String, GDScriptParser *> parsed_scripts; // Key is path
 	OrderedHashMap<String, Ref<GDScript> > compiled_scripts; // Key is path
@@ -51,7 +53,13 @@ public:
 	static String get_source_code(const String &p_path);
 
 	static Ref<GDScript> get_shallow_script(const String &p_path);
-	static Ref<GDScript> get_full_script(const String &p_path);
+	static Ref<GDScript> get_full_script(const String &p_path, Error *r_error = NULL, const String &p_original_path = String());
+
+	static void mark_as_compiled(const String &p_path);
+	static void mark_as_compiling(const String &p_path);
+
+	static void add_pending_script_compilation(const String &p_path);
+	static Error compile_pending_scripts();
 
 	static bool is_gdscript(const String &p_path);
 

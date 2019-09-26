@@ -5460,6 +5460,8 @@ void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive
 				return;
 			}
 
+			GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 			ClassNode *parsed_class = static_cast<ClassNode *>(parsed_interface->head);
 			native = parsed_class->base_type.native_type;
 			if (extend_iter >= p_class->extends_class.size()) {
@@ -5522,6 +5524,8 @@ void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive
 						_set_error("Constant is a GDScript, but couldn't be parsed: " + base + ". Error code: " + itos(err) + ".", p_class->line);
 						return;
 					}
+
+					GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
 
 					if (extend_iter >= p_class->extends_class.size()) {
 						p = NULL;
@@ -5792,6 +5796,8 @@ GDScriptParser::DataType GDScriptParser::_resolve_type(const DataType &p_source,
 							return DataType();
 						}
 
+						GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 						result.kind = DataType::GDSCRIPT;
 						result.script_type = GDScriptCache::get_shallow_script(script_path);
 						result.class_type = static_cast<ClassNode *>(parsed_interface->head);
@@ -5839,6 +5845,8 @@ GDScriptParser::DataType GDScriptParser::_resolve_type(const DataType &p_source,
 						return DataType();
 					}
 
+					GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 					result.kind = DataType::GDSCRIPT;
 					result.script_type = GDScriptCache::get_shallow_script(singleton_path);
 					result.class_type = static_cast<ClassNode *>(parsed_interface->head);
@@ -5876,6 +5884,9 @@ GDScriptParser::DataType GDScriptParser::_resolve_type(const DataType &p_source,
 						_set_error("The constant \"" + id + "\" is known be GDScript, but its script couldn't be parsed. Error code: " + itos(err) + ".", p_line);
 						return DataType();
 					}
+
+					GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 					result.kind = DataType::GDSCRIPT;
 					result.script_type = gds;
 					result.class_type = static_cast<ClassNode *>(parsed_interface->head);
@@ -5944,6 +5955,9 @@ GDScriptParser::DataType GDScriptParser::_resolve_type(const DataType &p_source,
 							_set_error("The constant \"" + id + "\" is known be GDScript, but its script couldn't be parsed. Error code: " + itos(err) + ".", p_line);
 							return DataType();
 						}
+
+						GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 						result.kind = DataType::GDSCRIPT;
 						result.script_type = gds;
 						result.class_type = static_cast<ClassNode *>(parsed_interface->head);
@@ -6014,6 +6028,9 @@ GDScriptParser::DataType GDScriptParser::_type_from_variant(const Variant &p_val
 				if (err != OK || parsed_interface->head->type != Node::TYPE_CLASS) {
 					return DataType();
 				}
+
+				GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 				result.kind = DataType::GDSCRIPT;
 				result.script_type = gds;
 				result.class_type = static_cast<ClassNode *>(parsed_interface->head);
@@ -6074,6 +6091,9 @@ GDScriptParser::DataType GDScriptParser::_type_from_gdtype(const GDScriptDataTyp
 			if (err != OK || parsed_interface->head->type != Node::TYPE_CLASS) {
 				return DataType();
 			}
+
+			GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 			result.kind = DataType::GDSCRIPT;
 			result.script_type = p_gdtype.script_type;
 			result.class_type = static_cast<ClassNode *>(parsed_interface->head);
@@ -7655,6 +7675,8 @@ GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const DataType 
 				Error err = GDScriptCache::parse_script_interface(script_path, &parsed_interface);
 
 				if (err == OK && parsed_interface->head->type == Node::TYPE_CLASS) {
+					GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
+
 					DataType result;
 					result.kind = DataType::GDSCRIPT;
 					result.script_type = GDScriptCache::get_shallow_script(script_path);
@@ -7713,6 +7735,7 @@ GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const DataType 
 						_set_error("Couldn't parse the singleton script \"" + p_identifier + "\". Error code: " + itos(err) + ".", p_line);
 						return DataType();
 					}
+					GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
 				} else {
 					Ref<Script> singleton = ResourceLoader::load(script_path);
 					if (singleton.is_valid() && singleton->is_valid()) {
