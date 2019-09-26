@@ -133,17 +133,84 @@ Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path) {
 	return new_script;
 }
 
-Ref<GDScript> GDScriptCache::get_full_script(const String &p_path) {
+Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error *r_error, const String &p_original_path) {
+	if (singleton->compiling_scripts.has(p_path)) {
+		if (r_error) {
+			*r_error = ERR_ALREADY_IN_USE;
+		}
+		ERR_FAIL_V(Ref<GDScript>());
+	}
 	if (singleton->compiled_scripts.has(p_path)) {
-		return singleton->compiled_scripts[p_path];
+		// TODO: Setting the script path should make it update the reference in the cache
+		Ref<GDScript> found_script = singleton->compiled_scripts[p_path];
+		found_script->set_script_path(p_original_path);
+		if (r_error) {
+			*r_error = OK;
+		}
+		return found_script;
 	}
+
 	Ref<GDScript> full_script = get_shallow_script(p_path);
-	full_script->set_source_code(get_source_code(p_path));
-	if (!full_script->reload()) {
-		return Ref<GDScript>();
+	String original_path = p_original_path.empty() ? p_path : p_original_path;
+	Error err = ERR_FILE_CANT_READ;
+
+	// TODO: Use the already parsed tree if it's there
+	if (p_path.ends_with(".gde") || p_path.ends_with(".gdc")) {
+		full_script->set_script_path(original_path); // script needs this.
+		full_script->set_path(original_path);
+		err = full_script->load_byte_code(p_path);
+	} else {
+		err = full_script->load_source_code(p_path);
+		if (err == OK) {
+			full_script->set_script_path(original_path); // script needs this.
+			full_script->set_path(original_path);
+
+			full_script->reload();
+		}
 	}
+	if (r_error) {
+		*r_error = err;
+	}
+
+	ERR_FAIL_COND_V(err != OK, Ref<GDScript>());
+
 	singleton->compiled_scripts.insert(p_path, full_script);
 	return full_script;
+}
+
+void GDScriptCache::mark_as_compiled(const String &p_path) {
+	if (singleton->compiled_scripts.has(p_path)) {
+		return; // Already marked
+	}
+	Ref<GDScript> compiled_script = get_shallow_script(p_path); // Make sure it's created
+	singleton->compiled_scripts[p_path] = compiled_script;
+	singleton->created_scripts.erase(p_path);
+	if (singleton->compiling_scripts.has(p_path)) {
+		singleton->compiling_scripts.erase(p_path);
+	}
+}
+
+void GDScriptCache::mark_as_compiling(const String &p_path) {
+	if (singleton->compiling_scripts.has(p_path)) {
+		return; // Already done
+	}
+	get_shallow_script(p_path); // Make sure it's created
+	singleton->compiling_scripts.insert(p_path);
+}
+
+void GDScriptCache::add_pending_script_compilation(const String &p_path) {
+	singleton->scripts_pending_compilation.insert(p_path);
+}
+
+Error GDScriptCache::compile_pending_scripts() {
+	for (Set<String>::Element *E = singleton->scripts_pending_compilation.front(); E; E = E->next()) {
+		Error err = ERR_FILE_CANT_READ;
+		get_full_script(E->get(), &err); // No need to get the script here, it's already in the cache
+		if (err != OK) {
+			return err;
+		}
+	}
+	return OK;
 }
 
 bool GDScriptCache::is_gdscript(const String &p_path) {

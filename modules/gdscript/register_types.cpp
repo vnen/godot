@@ -176,14 +176,14 @@ void register_gdscript_types() {
 
 void unregister_gdscript_types() {
 
+	if (gds_cache) {
+		memdelete(gds_cache);
+	}
+
 	ScriptServer::unregister_language(script_language_gd);
 
 	if (script_language_gd)
 		memdelete(script_language_gd);
-
-	if (gds_cache) {
-		memdelete(gds_cache);
-	}
 
 	ResourceLoader::remove_resource_format_loader(resource_loader_gd);
 	resource_loader_gd.unref();

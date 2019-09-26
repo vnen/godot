@@ -683,6 +683,8 @@ public:
 	int get_completion_argument_index();
 	int get_completion_identifier_is_function();
 
+	// dependencies
+
 	const List<String> &get_dependencies() const { return dependencies; }
 
 	void clear();

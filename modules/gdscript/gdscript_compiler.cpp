@@ -31,6 +31,7 @@
 #include "gdscript_compiler.h"
 
 #include "gdscript.h"
+#include "gdscript_cache.h"
 
 bool GDScriptCompiler::_is_class_member_property(CodeGen &codegen, const StringName &p_name) {
 
@@ -325,7 +326,14 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 					return -1;
 				}
 
-				RES res = ResourceLoader::load(ScriptServer::get_global_class_path(identifier));
+				String global_class_path = ScriptServer::get_global_class_path(identifier);
+				RES res;
+				if (GDScriptCache::is_gdscript(global_class_path)) {
+					res = GDScriptCache::get_shallow_script(global_class_path);
+					GDScriptCache::add_pending_script_compilation(global_class_path);
+				} else {
+					res = ResourceLoader::load(global_class_path);
+				}
 				if (res.is_null()) {
 					_set_error("Can't load global class " + String(identifier) + ", cyclic reference?", p_expression);
 					return -1;
@@ -1863,7 +1871,7 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 			p_script->native = native;
 		} break;
 		case GDScriptDataType::GDSCRIPT: {
-			Ref<GDScript> base = base_type.script_type;
+			Ref<GDScript> base = GDScriptCache::get_full_script(base_type.script_type->get_path()); // Make sure it's already compiled
 			p_script->base = base;
 			p_script->_base = base.ptr();
 			p_script->member_indices = base->member_indices;
@@ -2146,6 +2154,7 @@ Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_scri
 	ERR_FAIL_COND_V(root->type != GDScriptParser::Node::TYPE_CLASS, ERR_INVALID_DATA);
 
 	source = p_script->get_path();
+	GDScriptCache::mark_as_compiling(source);
 
 	// Create scripts for subclasses beforehand so they can be referenced
 	_make_scripts(p_script, static_cast<const GDScriptParser::ClassNode *>(root), p_keep_state);
@@ -2160,6 +2169,13 @@ Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_scri
 
 	if (err)
 		return err;
+
+	GDScriptCache::mark_as_compiled(source);
+	err = GDScriptCache::compile_pending_scripts();
+
+	if (err) {
+		return err;
+	}
 
 	return OK;
 }
