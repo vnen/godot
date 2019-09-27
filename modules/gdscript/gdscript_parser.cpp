@@ -5712,7 +5712,7 @@ GDScriptParser::DataType GDScriptParser::_resolve_type(const DataType &p_source,
 					result.kind = DataType::CLASS;
 					result.class_type = static_cast<ClassNode *>(head);
 				} else {
-					if (ScriptServer::get_global_class_language(script_path) == GDScriptLanguage::get_singleton()->get_name()) {
+					if (GDScriptCache::is_gdscript(script_path)) {
 						GDScriptParser *parsed_interface = NULL;
 						Error err = GDScriptCache::parse_script_interface(script_path, &parsed_interface);
 
@@ -7586,9 +7586,12 @@ GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const DataType 
 					GDScriptCache::add_pending_script_compilation(parsed_interface->self_path);
 
 					DataType result;
+					result.has_type = true;
 					result.kind = DataType::GDSCRIPT;
 					result.script_type = GDScriptCache::get_shallow_script(script_path);
 					result.class_type = static_cast<ClassNode *>(parsed_interface->head);
+					result.is_meta_type = true;
+					return result;
 				}
 			} else {
 				Ref<Script> scr = ResourceLoader::load(ScriptServer::get_global_class_path(p_identifier));

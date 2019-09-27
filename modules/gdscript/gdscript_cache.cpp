@@ -203,12 +203,15 @@ void GDScriptCache::add_pending_script_compilation(const String &p_path) {
 }
 
 Error GDScriptCache::compile_pending_scripts() {
-	for (Set<String>::Element *E = singleton->scripts_pending_compilation.front(); E; E = E->next()) {
+	for (Set<String>::Element *E = singleton->scripts_pending_compilation.front(); E;) {
 		Error err = ERR_FILE_CANT_READ;
 		get_full_script(E->get(), &err); // No need to get the script here, it's already in the cache
 		if (err != OK) {
 			return err;
 		}
+		Set<String>::Element *to_delete = E;
+		E = E->next();
+		singleton->scripts_pending_compilation.erase(to_delete);
 	}
 	return OK;
 }
