@@ -60,10 +60,13 @@ public:
 		bool is_meta_type; // Whether the value can be used as a type
 		bool infer_type;
 		bool may_yield; // For function calls
+		bool inheritance_solved; // For GDSCRIPT type
+		bool interface_solved; // For GDSCRIPT type
 
 		Variant::Type builtin_type;
 		StringName native_type;
 		Ref<Script> script_type;
+		String script_path;
 		ClassNode *class_type;
 
 		String to_string() const;
@@ -102,6 +105,8 @@ public:
 				is_meta_type(false),
 				infer_type(false),
 				may_yield(false),
+				inheritance_solved(false),
+				interface_solved(false),
 				builtin_type(Variant::NIL),
 				class_type(NULL) {}
 	};
@@ -553,6 +558,7 @@ private:
 	bool check_types;
 	bool dependencies_only;
 	bool interface_only;
+	bool inheritance_only;
 	List<String> dependencies;
 #ifdef DEBUG_ENABLED
 	Set<int> *safe_lines;
@@ -625,6 +631,8 @@ private:
 	void _determine_inheritance(ClassNode *p_class, bool p_recursive = true);
 	bool _parse_type(DataType &r_type, bool p_can_be_void = false);
 	DataType _resolve_type(const DataType &p_source, int p_line);
+	void _solve_gdscript_inheritance(DataType &p_gdscript_type, int p_line = 0);
+	void _solve_gdscript_interface(DataType &p_gdscript_type, int p_line = 0);
 	DataType _type_from_variant(const Variant &p_value) const;
 	DataType _type_from_property(const PropertyInfo &p_property, bool p_nil_is_variant = true) const;
 	DataType _type_from_gdtype(const GDScriptDataType &p_gdtype) const;
@@ -666,6 +674,7 @@ public:
 	Error parse(const String &p_code, const String &p_base_path = "", bool p_just_validate = false, const String &p_self_path = "", bool p_for_completion = false, Set<int> *r_safe_lines = NULL, bool p_dependencies_only = false);
 	Error parse_bytecode(const Vector<uint8_t> &p_bytecode, const String &p_base_path = "", const String &p_self_path = "");
 	Error parse_interface(const String &p_code, const String &p_base_path = "", const String &p_self_path = "");
+	Error parse_inheritance(const String &p_code, const String &p_base_path = "", const String &p_self_path = "");
 
 	bool is_tool_script() const;
 	const Node *get_parse_tree() const;
