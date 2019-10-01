@@ -5185,7 +5185,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 	}
 }
 
-void GDScriptParser::_parse_class_member_initalizers(ClassNode *p_class) {
+void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
 	current_class = p_class;
 	// Parse constants
 	tokenizer->reset();
@@ -5208,20 +5208,6 @@ void GDScriptParser::_parse_class_member_initalizers(ClassNode *p_class) {
 		p_class->variables.set(i, member);
 	}
 
-	// Should be safe to assume the indent level increased in inner classes
-	IndentLevel current_indent = indent_level.back()->get();
-	current_indent.indent += 1;
-	indent_level.push_back(current_indent);
-	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		ClassNode *subclass = p_class->subclasses[i];
-		_parse_class_member_initalizers(subclass);
-	}
-	indent_level.pop_back();
-	current_class = NULL;
-}
-
-void GDScriptParser::_parse_class_function_bodies(ClassNode *p_class) {
-	current_class = p_class;
 	// Parse each function
 	tokenizer->reset();
 	for (int i = 0; i < p_class->functions.size(); i++) {
@@ -5263,7 +5249,7 @@ void GDScriptParser::_parse_class_function_bodies(ClassNode *p_class) {
 	indent_level.push_back(current_indent);
 	for (int i = 0; i < p_class->subclasses.size(); i++) {
 		ClassNode *subclass = p_class->subclasses[i];
-		_parse_class_function_bodies(subclass);
+		_parse_class_contents(subclass);
 	}
 	indent_level.pop_back();
 	current_class = NULL;
@@ -8678,10 +8664,10 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 
 	if (for_completion) check_types = false;
 
-	// Parse the initializers for constants and class variables (for type inference)
+	// Parse the content of function blocks
 	indent_level.clear();
 	indent_level.push_back(IndentLevel(0, 0));
-	_parse_class_member_initalizers(main_class);
+	_parse_class_contents(main_class);
 	if (error_set) {
 		return ERR_PARSE_ERROR;
 	}
@@ -8689,18 +8675,6 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 	// Resolve all class-level stuff before getting into function blocks
 	_check_class_level_types(main_class);
 
-	if (error_set) {
-		return ERR_PARSE_ERROR;
-	}
-
-	if (interface_only) {
-		return OK;
-	}
-
-	// Parse the content of function blocks
-	indent_level.clear();
-	indent_level.push_back(IndentLevel(0, 0));
-	_parse_class_function_bodies(main_class);
 	if (error_set) {
 		return ERR_PARSE_ERROR;
 	}
