@@ -39,6 +39,7 @@ class GDScriptCache {
 	Set<String> parsing_scripts;
 	Set<String> compiling_scripts;
 	Set<String> scripts_pending_compilation;
+	OrderedHashMap<String, GDScriptParser *> inheritance_parsed_scripts; // Key is path
 	OrderedHashMap<String, GDScriptParser *> interface_parsed_scripts; // Key is path
 	OrderedHashMap<String, GDScriptParser *> parsed_scripts; // Key is path
 	OrderedHashMap<String, Ref<GDScript> > compiled_scripts; // Key is path
@@ -49,6 +50,7 @@ class GDScriptCache {
 public:
 	static Error parse_script(const String &p_path, GDScriptParser **r_parsed);
 	static Error parse_script_interface(const String &p_path, GDScriptParser **r_parsed);
+	static Error parse_script_inheritance(const String &p_path, GDScriptParser **r_parsed);
 
 	static String get_source_code(const String &p_path);
 

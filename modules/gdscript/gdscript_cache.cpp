@@ -89,7 +89,42 @@ Error GDScriptCache::parse_script_interface(const String &p_path, GDScriptParser
 	}
 
 	singleton->interface_parsed_scripts.insert(p_path, parser);
-	*r_parsed = singleton->interface_parsed_scripts[p_path];
+	*r_parsed = parser;
+	(void)r_parsed; // Suppress unused warning
+	return OK;
+}
+
+Error GDScriptCache::parse_script_inheritance(const String &p_path, GDScriptParser **r_parsed) {
+	// TODO: Use a reference counting system to dealloc the created parsers when not needed anymore
+	ERR_FAIL_COND_V_MSG(singleton->parsing_scripts.has(p_path), ERR_ALREADY_IN_USE, "Script \"" + p_path + "\" is already being parsed");
+
+	if (singleton->parsed_scripts.has(p_path)) {
+		*r_parsed = singleton->parsed_scripts[p_path];
+		return OK;
+	}
+	if (singleton->interface_parsed_scripts.has(p_path)) {
+		*r_parsed = singleton->interface_parsed_scripts[p_path];
+		return OK;
+	}
+	if (singleton->inheritance_parsed_scripts.has(p_path)) {
+		*r_parsed = singleton->inheritance_parsed_scripts[p_path];
+		return OK;
+	}
+
+	String source = get_source_code(p_path);
+	ERR_FAIL_COND_V_MSG(source.empty(), ERR_INVALID_DATA, "Couldn't load script source code from \"" + p_path + "\".");
+
+	GDScriptParser *parser = memnew(GDScriptParser);
+	singleton->parsing_scripts.insert(p_path);
+	Error err = parser->parse_inheritance(source, p_path.get_base_dir(), p_path);
+	singleton->parsing_scripts.erase(p_path);
+	if (err) {
+		memdelete(parser);
+		return err;
+	}
+
+	singleton->inheritance_parsed_scripts.insert(p_path, parser);
+	*r_parsed = parser;
 	(void)r_parsed; // Suppress unused warning
 	return OK;
 }
@@ -172,22 +207,22 @@ Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error *r_erro
 		*r_error = err;
 	}
 
+	singleton->compiling_scripts.erase(p_path);
+
 	ERR_FAIL_COND_V(err != OK, Ref<GDScript>());
 
-	singleton->compiled_scripts.insert(p_path, full_script);
 	return full_script;
 }
 
 void GDScriptCache::mark_as_compiled(const String &p_path) {
 	if (singleton->compiled_scripts.has(p_path)) {
+		singleton->compiling_scripts.erase(p_path);
 		return; // Already marked
 	}
 	Ref<GDScript> compiled_script = get_shallow_script(p_path); // Make sure it's created
 	singleton->compiled_scripts[p_path] = compiled_script;
 	singleton->created_scripts.erase(p_path);
-	if (singleton->compiling_scripts.has(p_path)) {
-		singleton->compiling_scripts.erase(p_path);
-	}
+	singleton->compiling_scripts.erase(p_path);
 }
 
 void GDScriptCache::mark_as_compiling(const String &p_path) {
@@ -199,7 +234,10 @@ void GDScriptCache::mark_as_compiling(const String &p_path) {
 }
 
 void GDScriptCache::add_pending_script_compilation(const String &p_path) {
-	singleton->scripts_pending_compilation.insert(p_path);
+	if (!singleton->compiled_scripts.has(p_path)) {
+		// Don't add if compiling
+		singleton->scripts_pending_compilation.insert(p_path);
+	}
 }
 
 Error GDScriptCache::compile_pending_scripts() {
