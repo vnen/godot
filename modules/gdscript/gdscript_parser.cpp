@@ -4739,13 +4739,13 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				ClassNode::Member member;
 
-				member.auto_export = tokenizer->get_token(-1) == GDScriptTokenizer::TK_PR_EXPORT;
+				bool autoexport = tokenizer->get_token(-1) == GDScriptTokenizer::TK_PR_EXPORT;
 				if (current_export.type != Variant::NIL) {
 					member._export = current_export;
 					current_export = PropertyInfo();
 				}
 
-				member.onready = tokenizer->get_token(-1) == GDScriptTokenizer::TK_PR_ONREADY;
+				bool onready = tokenizer->get_token(-1) == GDScriptTokenizer::TK_PR_ONREADY;
 
 				tokenizer->advance();
 				if (!tokenizer->is_token_literal(0, true)) {
@@ -4760,7 +4760,6 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				member.line = tokenizer->get_token_line();
 				member.usages = 0;
 				member.rpc_mode = rpc_mode;
-				member.need_assign = false;
 
 				if (current_class->constant_expressions.has(member.identifier)) {
 					_set_error("A constant named \"" + String(member.identifier) + "\" already exists in this class (at line: " +
@@ -4813,7 +4812,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 					}
 				}
 
-				if (member.auto_export && member.data_type.has_type) {
+				if (autoexport && member.data_type.has_type) {
 					if (member.data_type.kind == DataType::BUILTIN) {
 						member._export.type = member.data_type.builtin_type;
 					} else if (member.data_type.kind == DataType::NATIVE) {
@@ -4842,19 +4841,107 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				if (tokenizer->get_token() == GDScriptTokenizer::TK_OP_ASSIGN) {
 
 #ifdef DEBUG_ENABLED
-					member.line = tokenizer->get_token_line();
+					int line = tokenizer->get_token_line();
 #endif
 					tokenizer->advance();
 
-					member.token_offset = tokenizer->get_token_offset();
-					member.need_assign = true;
+					Node *subexpr = _parse_and_reduce_expression(p_class, false, autoexport || member._export.type != Variant::NIL);
+					if (!subexpr) {
+						if (_recover_from_completion()) {
+							break;
+						}
+						return;
+					}
 
-					// Initialization parsing will be done later
-					_skip_expression();
+					//discourage common error
+					if (!onready && subexpr->type == Node::TYPE_OPERATOR) {
+
+						OperatorNode *op = static_cast<OperatorNode *>(subexpr);
+						if (op->op == OperatorNode::OP_CALL && op->arguments[0]->type == Node::TYPE_SELF && op->arguments[1]->type == Node::TYPE_IDENTIFIER) {
+							IdentifierNode *id = static_cast<IdentifierNode *>(op->arguments[1]);
+							if (id->name == "get_node") {
+
+								_set_error("Use \"onready var " + String(member.identifier) + " = get_node(...)\" instead.");
+								return;
+							}
+						}
+					}
+
+					member.expression = subexpr;
+
+					if (autoexport && !member.data_type.has_type) {
+
+						if (subexpr->type != Node::TYPE_CONSTANT) {
+
+							_set_error("Type-less export needs a constant expression assigned to infer type.");
+							return;
+						}
+
+						ConstantNode *cn = static_cast<ConstantNode *>(subexpr);
+						if (cn->value.get_type() == Variant::NIL) {
+
+							_set_error("Can't accept a null constant expression for inferring export type.");
+							return;
+						}
+						member._export.type = cn->value.get_type();
+						member._export.usage |= PROPERTY_USAGE_SCRIPT_VARIABLE;
+						if (cn->value.get_type() == Variant::OBJECT) {
+							Object *obj = cn->value;
+							Resource *res = Object::cast_to<Resource>(obj);
+							if (res == NULL) {
+								_set_error("The exported constant isn't a type or resource.");
+								return;
+							}
+							member._export.hint = PROPERTY_HINT_RESOURCE_TYPE;
+							member._export.hint_string = res->get_class();
+						}
+					}
+#ifdef TOOLS_ENABLED
+					if (subexpr->type == Node::TYPE_CONSTANT && (member._export.type != Variant::NIL || member.data_type.has_type)) {
+
+						ConstantNode *cn = static_cast<ConstantNode *>(subexpr);
+						if (cn->value.get_type() != Variant::NIL) {
+							if (member._export.type != Variant::NIL && cn->value.get_type() != member._export.type) {
+								if (Variant::can_convert(cn->value.get_type(), member._export.type)) {
+									Variant::CallError err;
+									const Variant *args = &cn->value;
+									cn->value = Variant::construct(member._export.type, &args, 1, err);
+								} else {
+									_set_error("Can't convert the provided value to the export type.");
+									return;
+								}
+							}
+							member.default_value = cn->value;
+						}
+					}
+#endif
+
+					IdentifierNode *id = alloc_node<IdentifierNode>();
+					id->name = member.identifier;
+
+					OperatorNode *op = alloc_node<OperatorNode>();
+					op->op = OperatorNode::OP_INIT_ASSIGN;
+					op->arguments.push_back(id);
+					op->arguments.push_back(subexpr);
+
+#ifdef DEBUG_ENABLED
+					NewLineNode *nl2 = alloc_node<NewLineNode>();
+					nl2->line = line;
+					if (onready)
+						p_class->ready->statements.push_back(nl2);
+					else
+						p_class->initializer->statements.push_back(nl2);
+#endif
+					if (onready)
+						p_class->ready->statements.push_back(op);
+					else
+						p_class->initializer->statements.push_back(op);
+
+					member.initial_assignment = op;
 
 				} else {
 
-					if (member.auto_export && !member.data_type.has_type) {
+					if (autoexport && !member.data_type.has_type) {
 						_set_error("Type-less export needs a constant expression assigned to infer type.");
 						return;
 					}
@@ -4884,7 +4971,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 					member.initial_assignment = op;
 				}
 
-				if (member.auto_export && member.data_type.has_type) {
+				if (autoexport && member.data_type.has_type) {
 					if (member.data_type.kind == DataType::BUILTIN) {
 						member._export.type = member.data_type.builtin_type;
 					} else if (member.data_type.kind == DataType::NATIVE) {
@@ -4936,7 +5023,7 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 				p_class->variables.push_back(member);
 
 				if (!_end_statement()) {
-					_set_error("Expected end of statement (\"var\").");
+					_set_error("Expected end of statement (\"continue\").");
 					return;
 				}
 			} break;
@@ -4998,11 +5085,22 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 				tokenizer->advance();
 
-				constant.line = line;
-				constant.token_offset = tokenizer->get_token_offset();
-				p_class->constant_expressions.insert(const_id, constant);
+				Node *subexpr = _parse_and_reduce_expression(p_class, true, true);
+				if (!subexpr) {
+					if (_recover_from_completion()) {
+						break;
+					}
+					return;
+				}
 
-				_skip_expression(); // Initialization will be parsed later
+				if (subexpr->type != Node::TYPE_CONSTANT) {
+					_set_error("Expected a constant expression.", line);
+					return;
+				}
+				subexpr->line = line;
+				constant.expression = subexpr;
+
+				p_class->constant_expressions.insert(const_id, constant);
 
 				if (!_end_statement()) {
 					_set_error("Expected end of statement (constant).", line);
@@ -5187,27 +5285,6 @@ void GDScriptParser::_parse_class(ClassNode *p_class) {
 
 void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
 	current_class = p_class;
-	// Parse constants
-	tokenizer->reset();
-	for (OrderedHashMap<StringName, ClassNode::Constant>::Element E = p_class->constant_expressions.front(); E; E = E.next()) {
-		ClassNode::Constant constant = E.get();
-		tokenizer->advance(constant.token_offset - tokenizer->get_token_offset());
-		_parse_constant_initialization(p_class, constant);
-		p_class->constant_expressions[E.key()] = constant;
-	}
-
-	// Parse variables
-	tokenizer->reset();
-	for (int i = 0; i < p_class->variables.size(); i++) {
-		ClassNode::Member member = p_class->variables[i];
-		if (!member.need_assign) {
-			continue;
-		}
-		tokenizer->advance(member.token_offset - tokenizer->get_token_offset());
-		_parse_member_initialization(p_class, member);
-		p_class->variables.set(i, member);
-	}
-
 	// Parse each function
 	tokenizer->reset();
 	for (int i = 0; i < p_class->functions.size(); i++) {
@@ -5255,140 +5332,22 @@ void GDScriptParser::_parse_class_contents(ClassNode *p_class) {
 	current_class = NULL;
 }
 
-void GDScriptParser::_parse_member_initialization(ClassNode *p_class, ClassNode::Member &p_member) {
-	Node *subexpr = _parse_and_reduce_expression(p_class, false, p_member.auto_export || p_member._export.type != Variant::NIL);
-	if (!subexpr) {
-		_recover_from_completion();
-		return;
-	}
-
-	//discourage common error
-	if (!p_member.onready && subexpr->type == Node::TYPE_OPERATOR) {
-
-		OperatorNode *op = static_cast<OperatorNode *>(subexpr);
-		if (op->op == OperatorNode::OP_CALL && op->arguments[0]->type == Node::TYPE_SELF && op->arguments[1]->type == Node::TYPE_IDENTIFIER) {
-			IdentifierNode *id = static_cast<IdentifierNode *>(op->arguments[1]);
-			if (id->name == "get_node") {
-
-				_set_error("Use \"onready var " + String(p_member.identifier) + " = get_node(...)\" instead.");
-				return;
-			}
-		}
-	}
-
-	p_member.expression = subexpr;
-
-	if (p_member.auto_export && !p_member.data_type.has_type) {
-
-		if (subexpr->type != Node::TYPE_CONSTANT) {
-
-			_set_error("Type-less export needs a constant expression assigned to infer type.");
-			return;
-		}
-
-		ConstantNode *cn = static_cast<ConstantNode *>(subexpr);
-		if (cn->value.get_type() == Variant::NIL) {
-
-			_set_error("Can't accept a null constant expression for inferring export type.");
-			return;
-		}
-		p_member._export.type = cn->value.get_type();
-		p_member._export.usage |= PROPERTY_USAGE_SCRIPT_VARIABLE;
-		if (cn->value.get_type() == Variant::OBJECT) {
-			Object *obj = cn->value;
-			Resource *res = Object::cast_to<Resource>(obj);
-			if (res == NULL) {
-				_set_error("The exported constant isn't a type or resource.");
-				return;
-			}
-			p_member._export.hint = PROPERTY_HINT_RESOURCE_TYPE;
-			p_member._export.hint_string = res->get_class();
-		}
-	}
-#ifdef TOOLS_ENABLED
-	if (subexpr->type == Node::TYPE_CONSTANT && (p_member._export.type != Variant::NIL || p_member.data_type.has_type)) {
-
-		ConstantNode *cn = static_cast<ConstantNode *>(subexpr);
-		if (cn->value.get_type() != Variant::NIL) {
-			if (p_member._export.type != Variant::NIL && cn->value.get_type() != p_member._export.type) {
-				if (Variant::can_convert(cn->value.get_type(), p_member._export.type)) {
-					Variant::CallError err;
-					const Variant *args = &cn->value;
-					cn->value = Variant::construct(p_member._export.type, &args, 1, err);
-				} else {
-					_set_error("Can't convert the provided value to the export type.");
-					return;
-				}
-			}
-			p_member.default_value = cn->value;
-		}
-	}
-#endif
-
-	IdentifierNode *id = alloc_node<IdentifierNode>();
-	id->name = p_member.identifier;
-
-	OperatorNode *op = alloc_node<OperatorNode>();
-	op->op = OperatorNode::OP_INIT_ASSIGN;
-	op->arguments.push_back(id);
-	op->arguments.push_back(subexpr);
-
-#ifdef DEBUG_ENABLED
-	NewLineNode *nl2 = alloc_node<NewLineNode>();
-	nl2->line = p_member.line;
-	if (p_member.onready)
-		p_class->ready->statements.push_back(nl2);
-	else
-		p_class->initializer->statements.push_back(nl2);
-#endif
-	if (p_member.onready)
-		p_class->ready->statements.push_back(op);
-	else
-		p_class->initializer->statements.push_back(op);
-
-	p_member.initial_assignment = op;
-}
-
-void GDScriptParser::_parse_constant_initialization(ClassNode *p_class, ClassNode::Constant &p_constant) {
-	Node *subexpr = _parse_and_reduce_expression(p_class, true, true);
-	if (!subexpr) {
-		_recover_from_completion();
-		return;
-	}
-
-	if (subexpr->type != Node::TYPE_CONSTANT) {
-		_set_error("Expected a constant expression.", p_constant.line);
-		return;
-	}
-	subexpr->line = p_constant.line;
-	p_constant.expression = subexpr;
-}
-
 void GDScriptParser::_skip_block() {
 	int initial_indent = indent_level.back()->prev()->get().indent;
 	int current_indent = indent_level.back()->get().indent;
 
 	do {
-		_skip_expression();
+		while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE) {
+			if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF) {
+				return;
+			}
+			tokenizer->advance();
+		}
 		current_indent = tokenizer->get_token_line_indent();
 		tokenizer->advance(); // Skip newline too
 	} while (current_indent > initial_indent);
 
 	indent_level.pop_back(); // Remove block indent level
-}
-
-void GDScriptParser::_skip_expression() {
-	int parentheses = 0;
-	while (tokenizer->get_token() != GDScriptTokenizer::TK_NEWLINE || parentheses > 0) {
-		if (tokenizer->get_token() == GDScriptTokenizer::TK_EOF || tokenizer->get_token() == GDScriptTokenizer::TK_ERROR) {
-			return;
-		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PARENTHESIS_OPEN) {
-			parentheses++;
-		} else if (tokenizer->get_token() == GDScriptTokenizer::TK_PARENTHESIS_CLOSE) {
-			parentheses--;
-		}
-		tokenizer->advance();
-	}
 }
 
 void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive) {
@@ -7788,8 +7747,8 @@ void GDScriptParser::_check_class_level_types(ClassNode *p_class) {
 	_mark_line_as_safe(p_class->line);
 
 	// Constants
-	for (OrderedHashMap<StringName, ClassNode::Constant>::Element E = p_class->constant_expressions.front(); E; E = E.next()) {
-		ClassNode::Constant &c = E.get();
+	for (Map<StringName, ClassNode::Constant>::Element *E = p_class->constant_expressions.front(); E; E = E->next()) {
+		ClassNode::Constant &c = E->get();
 		_mark_line_as_safe(c.expression->line);
 		DataType cont = _resolve_type(c.type, c.expression->line);
 		DataType expr = _resolve_type(c.expression->get_datatype(), c.expression->line);
@@ -7810,7 +7769,7 @@ void GDScriptParser::_check_class_level_types(ClassNode *p_class) {
 		c.expression->set_datatype(expr);
 
 		DataType tmp;
-		const StringName &constant_name = E.key();
+		const StringName &constant_name = E->key();
 		if (constant_name == script_name || _get_member_type(p_class->base_type, constant_name, tmp)) {
 			_set_error("The member \"" + String(constant_name) + "\" already exists in a parent class.", c.expression->line);
 			return;
@@ -7991,7 +7950,8 @@ void GDScriptParser::_check_class_level_types(ClassNode *p_class) {
 
 	// Inner classes
 	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		_check_class_level_types(p_class->subclasses[i]);
+		current_class = p_class->subclasses[i];
+		_check_class_level_types(current_class);
 		if (error_set) return;
 		current_class = p_class;
 	}
@@ -8158,7 +8118,8 @@ void GDScriptParser::_check_class_blocks_types(ClassNode *p_class) {
 
 	// Inner classes
 	for (int i = 0; i < p_class->subclasses.size(); i++) {
-		_check_class_blocks_types(p_class->subclasses[i]);
+		current_class = p_class->subclasses[i];
+		_check_class_blocks_types(current_class);
 		if (error_set) return;
 	}
 }
@@ -8664,17 +8625,17 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 
 	if (for_completion) check_types = false;
 
-	// Parse the content of function blocks
-	indent_level.clear();
-	indent_level.push_back(IndentLevel(0, 0));
-	_parse_class_contents(main_class);
+	// Resolve all class-level stuff before getting into function blocks
+	_check_class_level_types(main_class);
+
 	if (error_set) {
 		return ERR_PARSE_ERROR;
 	}
 
-	// Resolve all class-level stuff before getting into function blocks
-	_check_class_level_types(main_class);
-
+	// Parse the content of function blocks
+	indent_level.clear();
+	indent_level.push_back(IndentLevel(0, 0));
+	_parse_class_contents(main_class);
 	if (error_set) {
 		return ERR_PARSE_ERROR;
 	}
