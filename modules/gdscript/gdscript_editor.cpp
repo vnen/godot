@@ -1867,8 +1867,8 @@ static void _find_identifiers_in_class(const GDScriptCompletionContext &p_contex
 		}
 
 		if (!p_only_functions) {
-			for (OrderedHashMap<StringName, GDScriptParser::ClassNode::Constant>::ConstElement E = p_context._class->constant_expressions.front(); E; E = E.next()) {
-				ScriptCodeCompletionOption option(E.key(), ScriptCodeCompletionOption::KIND_CONSTANT);
+			for (Map<StringName, GDScriptParser::ClassNode::Constant>::Element *E = p_context._class->constant_expressions.front(); E; E = E->next()) {
+				ScriptCodeCompletionOption option(E->key(), ScriptCodeCompletionOption::KIND_CONSTANT);
 				r_result.insert(option.display, option);
 			}
 			for (int i = 0; i < p_context._class->subclasses.size(); i++) {
@@ -2812,15 +2812,15 @@ Error GDScriptLanguage::complete_code(const String &p_code, const String &p_path
 		case GDScriptParser::COMPLETION_TYPE_HINT: {
 			const GDScriptParser::ClassNode *clss = context._class;
 			while (clss) {
-				for (OrderedHashMap<StringName, GDScriptParser::ClassNode::Constant>::ConstElement E = clss->constant_expressions.front(); E; E = E.next()) {
+				for (Map<StringName, GDScriptParser::ClassNode::Constant>::Element *E = clss->constant_expressions.front(); E; E = E->next()) {
 					GDScriptCompletionIdentifier constant;
 					GDScriptCompletionContext c = context;
 					c.function = NULL;
 					c.block = NULL;
-					c.line = E.value().expression->line;
-					if (_guess_expression_type(c, E.value().expression, constant)) {
+					c.line = E->value().expression->line;
+					if (_guess_expression_type(c, E->value().expression, constant)) {
 						if (constant.type.has_type && constant.type.is_meta_type) {
-							ScriptCodeCompletionOption option(E.key().operator String(), ScriptCodeCompletionOption::KIND_CLASS);
+							ScriptCodeCompletionOption option(E->key().operator String(), ScriptCodeCompletionOption::KIND_CLASS);
 							options.insert(option.display, option);
 						}
 					}
@@ -2910,16 +2910,16 @@ Error GDScriptLanguage::complete_code(const String &p_code, const String &p_path
 				switch (base_type.kind) {
 					case GDScriptParser::DataType::CLASS: {
 						if (base_type.class_type) {
-							for (OrderedHashMap<StringName, GDScriptParser::ClassNode::Constant>::Element E = base_type.class_type->constant_expressions.front(); E; E = E.next()) {
+							for (Map<StringName, GDScriptParser::ClassNode::Constant>::Element *E = base_type.class_type->constant_expressions.front(); E; E = E->next()) {
 								GDScriptCompletionIdentifier constant;
 								GDScriptCompletionContext c2 = context;
 								c2._class = base_type.class_type;
 								c2.function = NULL;
 								c2.block = NULL;
-								c2.line = E.value().expression->line;
-								if (_guess_expression_type(c2, E.value().expression, constant)) {
+								c2.line = E->value().expression->line;
+								if (_guess_expression_type(c2, E->value().expression, constant)) {
 									if (constant.type.has_type && constant.type.is_meta_type) {
-										ScriptCodeCompletionOption option(E.key().operator String(), ScriptCodeCompletionOption::KIND_CLASS);
+										ScriptCodeCompletionOption option(E->key().operator String(), ScriptCodeCompletionOption::KIND_CLASS);
 										options.insert(option.display, option);
 									}
 								}

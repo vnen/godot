@@ -185,17 +185,17 @@ void ExtendGDScriptParser::parse_class_symbol(const GDScriptParser::ClassNode *p
 		r_symbol.children.push_back(symbol);
 	}
 
-	for (OrderedHashMap<StringName, GDScriptParser::ClassNode::Constant>::ConstElement E = p_class->constant_expressions.front(); E; E = E.next()) {
+	for (Map<StringName, GDScriptParser::ClassNode::Constant>::Element *E = p_class->constant_expressions.front(); E; E = E->next()) {
 		lsp::DocumentSymbol symbol;
-		const GDScriptParser::ClassNode::Constant &c = E.value();
+		const GDScriptParser::ClassNode::Constant &c = E->value();
 		const GDScriptParser::ConstantNode *node = dynamic_cast<const GDScriptParser::ConstantNode *>(c.expression);
 		ERR_FAIL_COND(!node);
-		symbol.name = E.key();
+		symbol.name = E->key();
 		symbol.kind = lsp::SymbolKind::Constant;
 		symbol.deprecated = false;
-		const int line = LINE_NUMBER_TO_INDEX(E.get().expression->line);
+		const int line = LINE_NUMBER_TO_INDEX(E->get().expression->line);
 		symbol.range.start.line = line;
-		symbol.range.start.character = E.get().expression->column;
+		symbol.range.start.character = E->get().expression->column;
 		symbol.range.end.line = symbol.range.start.line;
 		symbol.range.end.character = lines[line].length();
 		symbol.selectionRange.start.line = symbol.range.start.line;
@@ -669,14 +669,14 @@ Dictionary ExtendGDScriptParser::dump_class_api(const GDScriptParser::ClassNode 
 	class_api["sub_classes"] = subclasses;
 
 	Array constants;
-	for (OrderedHashMap<StringName, GDScriptParser::ClassNode::Constant>::ConstElement E = p_class->constant_expressions.front(); E; E = E.next()) {
+	for (Map<StringName, GDScriptParser::ClassNode::Constant>::Element *E = p_class->constant_expressions.front(); E; E = E->next()) {
 
-		const GDScriptParser::ClassNode::Constant &c = E.value();
+		const GDScriptParser::ClassNode::Constant &c = E->value();
 		const GDScriptParser::ConstantNode *node = dynamic_cast<const GDScriptParser::ConstantNode *>(c.expression);
 		ERR_FAIL_COND_V(!node, class_api);
 
 		Dictionary api;
-		api["name"] = E.key();
+		api["name"] = E->key();
 		api["value"] = node->value;
 		api["data_type"] = node->datatype.to_string();
 		if (const lsp::DocumentSymbol *symbol = get_symbol_defined_at_line(LINE_NUMBER_TO_INDEX(node->line))) {

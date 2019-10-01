@@ -451,9 +451,9 @@ static void _parser_show_class(const GDScriptParser::ClassNode *p_class, int p_i
 		print_line("\n");
 	}
 
-	for (OrderedHashMap<StringName, GDScriptParser::ClassNode::Constant>::ConstElement E = p_class->constant_expressions.front(); E; E = E.next()) {
-		const GDScriptParser::ClassNode::Constant &constant = E.get();
-		_print_indent(p_indent, "const " + String(E.key()) + "=" + _parser_expr(constant.expression));
+	for (Map<StringName, GDScriptParser::ClassNode::Constant>::Element *E = p_class->constant_expressions.front(); E; E = E->next()) {
+		const GDScriptParser::ClassNode::Constant &constant = E->get();
+		_print_indent(p_indent, "const " + String(E->key()) + "=" + _parser_expr(constant.expression));
 	}
 
 	for (int i = 0; i < p_class->variables.size(); i++) {

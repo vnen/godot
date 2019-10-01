@@ -33,7 +33,6 @@
 
 #include "core/map.h"
 #include "core/object.h"
-#include "core/ordered_hash_map.h"
 #include "core/script_language.h"
 #include "gdscript_functions.h"
 #include "gdscript_tokenizer.h"
@@ -175,17 +174,11 @@ public:
 			OperatorNode *initial_assignment;
 			MultiplayerAPI::RPCMode rpc_mode;
 			int usages;
-			bool need_assign;
-			int token_offset;
-			bool auto_export;
-			bool onready;
 		};
 
 		struct Constant {
 			Node *expression;
 			DataType type;
-			int token_offset;
-			int line;
 		};
 
 		struct Signal {
@@ -197,7 +190,7 @@ public:
 
 		Vector<ClassNode *> subclasses;
 		Vector<Member> variables;
-		OrderedHashMap<StringName, Constant> constant_expressions;
+		Map<StringName, Constant> constant_expressions;
 		Vector<FunctionNode *> functions;
 		Vector<FunctionNode *> static_functions;
 		Vector<Signal> _signals;
@@ -622,10 +615,7 @@ private:
 	void _parse_class(ClassNode *p_class);
 	bool _end_statement();
 	void _skip_block();
-	void _skip_expression();
 	void _parse_class_contents(ClassNode *p_class);
-	void _parse_member_initialization(ClassNode *p_class, ClassNode::Member &p_member);
-	void _parse_constant_initialization(ClassNode *p_class, ClassNode::Constant &p_constant);
 
 	void _determine_inheritance(ClassNode *p_class, bool p_recursive = true);
 	bool _parse_type(DataType &r_type, bool p_can_be_void = false);
