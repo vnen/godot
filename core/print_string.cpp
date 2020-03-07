@@ -37,6 +37,8 @@
 static PrintHandlerList *print_handler_list = NULL;
 bool _print_line_enabled = true;
 bool _print_error_enabled = true;
+bool _stdout_enabled = true;
+bool _stderr_enabled = true;
 
 void add_print_handler(PrintHandlerList *p_handler) {
 
@@ -74,10 +76,13 @@ void remove_print_handler(PrintHandlerList *p_handler) {
 
 void print_line(String p_string) {
 
-	if (!_print_line_enabled)
+	if (!_print_line_enabled) {
 		return;
+	}
 
-	OS::get_singleton()->print("%s\n", p_string.utf8().get_data());
+	if (_stdout_enabled) {
+		OS::get_singleton()->print("%s\n", p_string.utf8().get_data());
+	}
 
 	_global_lock();
 	PrintHandlerList *l = print_handler_list;
@@ -92,10 +97,13 @@ void print_line(String p_string) {
 
 void print_error(String p_string) {
 
-	if (!_print_error_enabled)
+	if (_print_error_enabled) {
 		return;
+	}
 
-	OS::get_singleton()->printerr("%s\n", p_string.utf8().get_data());
+	if (_stderr_enabled) {
+		OS::get_singleton()->printerr("%s\n", p_string.utf8().get_data());
+	}
 
 	_global_lock();
 	PrintHandlerList *l = print_handler_list;

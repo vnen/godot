@@ -117,10 +117,17 @@ void OS::add_logger(Logger *p_logger) {
 
 void OS::print_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, Logger::ErrorType p_type) {
 
+	if (!_stderr_enabled) {
+		return;
+	}
+
 	_logger->log_error(p_function, p_file, p_line, p_code, p_rationale, p_type);
 }
 
 void OS::print(const char *p_format, ...) {
+	if (!_stdout_enabled) {
+		return;
+	}
 
 	va_list argp;
 	va_start(argp, p_format);
