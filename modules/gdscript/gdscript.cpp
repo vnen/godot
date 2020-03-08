@@ -38,6 +38,7 @@
 #include "core/os/os.h"
 #include "core/project_settings.h"
 #include "gdscript_compiler.h"
+#include "gdscript_test.h"
 
 ///////////////////////////
 
@@ -1452,6 +1453,10 @@ void GDScriptLanguage::init() {
 
 		_add_global(E->get().name, E->get().ptr);
 	}
+
+#ifdef TOOLS_ENABLED
+	GDScriptTestRunner::handle_cmdline();
+#endif
 }
 
 String GDScriptLanguage::get_type() const {
