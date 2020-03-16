@@ -222,8 +222,6 @@ public:
 		Vector<DataType> argument_types;
 		Vector<Node *> default_values;
 		BlockNode *body;
-		int token_offset; // Pointing to just before the colon (before _enter_indent_block())
-		int indent_level;
 #ifdef DEBUG_ENABLED
 		Vector<int> arguments_usage;
 #endif // DEBUG_ENABLED
@@ -238,8 +236,6 @@ public:
 			rpc_mode = MultiplayerAPI::RPC_MODE_DISABLED;
 			has_yield = false;
 			has_unreachable_code = false;
-			token_offset = 0;
-			indent_level = 0;
 		}
 	};
 
@@ -614,8 +610,6 @@ private:
 	void _parse_extends(ClassNode *p_class);
 	void _parse_class(ClassNode *p_class);
 	bool _end_statement();
-	void _skip_block();
-	void _parse_class_contents(ClassNode *p_class);
 
 	void _determine_inheritance(ClassNode *p_class, bool p_recursive = true);
 	bool _parse_type(DataType &r_type, bool p_can_be_void = false);
