@@ -169,10 +169,8 @@ public:
 	virtual int get_token_column(int p_offset = 0) const = 0;
 	virtual int get_token_line_indent(int p_offset = 0) const = 0;
 	virtual int get_token_line_tab_indent(int p_offset = 0) const = 0;
-	virtual int get_token_offset() const = 0;
 	virtual String get_token_error(int p_offset = 0) const = 0;
 	virtual void advance(int p_amount = 1) = 0;
-	virtual void reset() = 0;
 #ifdef DEBUG_ENABLED
 	virtual const Vector<Pair<int, String> > &get_warning_skips() const = 0;
 	virtual const Set<String> &get_warning_global_skips() const = 0;
@@ -230,7 +228,6 @@ class GDScriptTokenizerText : public GDScriptTokenizer {
 		INDENT_SPACES,
 		INDENT_TABS,
 	} file_indent_type;
-	int current_token_offset;
 
 #ifdef DEBUG_ENABLED
 	Vector<Pair<int, String> > warning_skips;
@@ -252,9 +249,7 @@ public:
 	virtual int get_token_line_tab_indent(int p_offset = 0) const;
 	virtual const Variant &get_token_constant(int p_offset = 0) const;
 	virtual String get_token_error(int p_offset = 0) const;
-	virtual int get_token_offset() const { return current_token_offset; };
 	virtual void advance(int p_amount = 1);
-	virtual void reset() { set_code(code); }
 #ifdef DEBUG_ENABLED
 	virtual const Vector<Pair<int, String> > &get_warning_skips() const { return warning_skips; }
 	virtual const Set<String> &get_warning_global_skips() const { return warning_global_skips; }
@@ -293,9 +288,7 @@ public:
 	virtual int get_token_line_tab_indent(int p_offset = 0) const { return 0; }
 	virtual const Variant &get_token_constant(int p_offset = 0) const;
 	virtual String get_token_error(int p_offset = 0) const;
-	virtual int get_token_offset() const { return token; };
 	virtual void advance(int p_amount = 1);
-	virtual void reset() { token = 0; }
 #ifdef DEBUG_ENABLED
 	virtual const Vector<Pair<int, String> > &get_warning_skips() const {
 		static Vector<Pair<int, String> > v;
