@@ -55,7 +55,7 @@ public:
 	static String get_source_code(const String &p_path);
 
 	static Ref<GDScript> get_shallow_script(const String &p_path);
-	static Ref<GDScript> get_full_script(const String &p_path, Error *r_error = NULL, const String &p_original_path = String());
+	static Ref<GDScript> get_full_script(const String &p_path, Error *r_error = NULL, const String &p_original_path = String(), bool p_from_loader = false);
 
 	static void mark_as_compiled(const String &p_path);
 	static void mark_as_compiling(const String &p_path);

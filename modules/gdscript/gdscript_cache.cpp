@@ -31,6 +31,7 @@
 #include "gdscript_cache.h"
 
 #include "core/os/file_access.h"
+#include "core/os/thread_safe.h"
 #include "core/pool_vector.h"
 #include "gdscript.h"
 #include "gdscript_parser.h"
@@ -168,11 +169,8 @@ Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path) {
 	return new_script;
 }
 
-Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error *r_error, const String &p_original_path) {
+Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error *r_error, const String &p_original_path, bool p_from_loader) {
 	String path_cache = p_path;
-	if (singleton->compiling_scripts.has(path_cache)) {
-		ERR_FAIL_V(get_shallow_script(p_path));
-	}
 	if (singleton->compiled_scripts.has(path_cache)) {
 		// TODO: Setting the script path should make it update the reference in the cache
 		Ref<GDScript> found_script = singleton->compiled_scripts[path_cache];
@@ -181,6 +179,9 @@ Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error *r_erro
 			*r_error = OK;
 		}
 		return found_script;
+	}
+	if (singleton->compiling_scripts.has(path_cache)) {
+		ERR_FAIL_V(get_shallow_script(p_path));
 	}
 
 	Ref<GDScript> full_script = get_shallow_script(path_cache);
@@ -209,6 +210,13 @@ Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error *r_erro
 
 	ERR_FAIL_COND_V(err != OK, Ref<GDScript>());
 
+	if (p_from_loader) {
+		while (singleton->scripts_pending_compilation.size() > 0) {
+			err = compile_pending_scripts();
+			ERR_FAIL_COND_V(err != OK, Ref<GDScript>());
+		}
+	}
+
 	return full_script;
 }
 
@@ -232,24 +240,25 @@ void GDScriptCache::mark_as_compiling(const String &p_path) {
 }
 
 void GDScriptCache::add_pending_script_compilation(const String &p_path) {
-	if (!singleton->compiled_scripts.has(p_path)) {
+	if (!singleton->compiling_scripts.has(p_path) && !singleton->compiled_scripts.has(p_path)) {
 		// Don't add if compiling
 		singleton->scripts_pending_compilation.insert(p_path);
 	}
 }
 
 Error GDScriptCache::compile_pending_scripts() {
-	List<String> to_delete;
-	for (Set<String>::Element *E = singleton->scripts_pending_compilation.front(); E; E = E->next()) {
+	Set<String> pending(singleton->scripts_pending_compilation);
+	singleton->scripts_pending_compilation.clear();
+	for (Set<String>::Element *E = pending.front(); E; E = E->next()) {
+		if (singleton->compiling_scripts.has(E->get()) || singleton->compiled_scripts.has(E->get())) {
+			// Already compiling/compiled, skip.
+			continue;
+		}
 		Error err = ERR_FILE_CANT_READ;
-		get_full_script(E->get(), &err); // No need to get the script here, it's already in the cache
+		get_full_script(E->get(), &err); // No need to store the return value here, it's already in the cache
 		if (err != OK) {
 			return err;
 		}
-		to_delete.push_back(E->get());
-	}
-	for (List<String>::Element *E = to_delete.front(); E; E = E->next()) {
-		singleton->scripts_pending_compilation.erase(E->get());
 	}
 	return OK;
 }

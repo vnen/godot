@@ -2226,7 +2226,7 @@ Ref<GDScript> GDScriptLanguage::get_orphan_subclass(const String &p_qualified_na
 
 RES ResourceFormatLoaderGDScript::load(const String &p_path, const String &p_original_path, Error *r_error) {
 
-	return GDScriptCache::get_full_script(p_path, r_error, p_original_path);
+	return GDScriptCache::get_full_script(p_path, r_error, p_original_path, true);
 }
 
 void ResourceFormatLoaderGDScript::get_recognized_extensions(List<String> *p_extensions) const {

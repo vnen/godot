@@ -1874,6 +1874,9 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 		} break;
 		case GDScriptDataType::GDSCRIPT: {
 			Ref<GDScript> base = GDScriptCache::get_full_script(base_type.script_type->get_path()); // Make sure it's already compiled
+			if (base.is_null()) {
+				ERR_FAIL_V(ERR_COMPILATION_FAILED);
+			}
 			p_script->base = base;
 			p_script->_base = base.ptr();
 			p_script->member_indices = base->member_indices;
@@ -2183,7 +2186,7 @@ Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_scri
 		return err;
 
 	GDScriptCache::mark_as_compiled(source);
-	err = GDScriptCache::compile_pending_scripts();
+	// err = GDScriptCache::compile_pending_scripts();
 
 	if (err) {
 		return err;

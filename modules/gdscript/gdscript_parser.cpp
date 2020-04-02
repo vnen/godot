@@ -1839,6 +1839,17 @@ GDScriptParser::Node *GDScriptParser::_reduce_expression(Node *p_node, bool p_to
 					ConstantNode *ca = static_cast<ConstantNode *>(op->arguments[0]);
 					IdentifierNode *ib = static_cast<IdentifierNode *>(op->arguments[1]);
 
+					if (ca->datatype.kind == DataType::GDSCRIPT) {
+						if (!ca->datatype.class_type->constant_expressions.has(ib->name)) {
+							_set_error("Invalid index '" + String(ib->name) + "' from script '" + ca->datatype.script_path + "'");
+							return op;
+						}
+						ConstantNode *cn = alloc_node<ConstantNode>();
+						cn->value = static_cast<ConstantNode *>(ca->datatype.class_type->constant_expressions[ib->name].expression)->value;
+						cn->datatype = _type_from_variant(cn->value);
+						return cn;
+					}
+
 					bool valid;
 					Variant v = ca->value.get_named(ib->name, &valid);
 					if (!valid) {
@@ -5297,11 +5308,12 @@ void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive
 		//look around for the subclasses
 
 		int extend_iter = 1;
-		String base = p_class->extends_class[0];
+		String base;
 		ClassNode *p = p_class->owner;
 		String base_path = path;
 
 		if (base_path.empty()) {
+			base = p_class->extends_class[0];
 			if (ScriptServer::is_global_class(base) && ScriptServer::get_global_class_language(base) == GDScriptLanguage::get_singleton()->get_name()) {
 				base_path = ScriptServer::get_global_class_path(base);
 			} else {
@@ -5330,6 +5342,9 @@ void GDScriptParser::_determine_inheritance(ClassNode *p_class, bool p_recursive
 		}
 
 		if (!base_path.empty()) {
+			if (base_path.is_rel_path()) {
+				base_path = this->base_path.plus_file(base_path).simplify_path();
+			}
 			GDScriptParser *parsed_interface = NULL;
 			Error err = GDScriptCache::parse_script_inheritance(base_path, &parsed_interface);
 
@@ -5839,6 +5854,16 @@ GDScriptParser::DataType GDScriptParser::_resolve_type(const DataType &p_source,
 		name_part++;
 	}
 
+	if (result.kind == DataType::GDSCRIPT) {
+		GDScriptParser *other_parser = NULL;
+		Error err = GDScriptCache::parse_script_interface(result.script_path, &other_parser);
+		if (err != OK) {
+			_set_error("The script \"" + result.script_path + "\" was found in global scope, but its script couldn't be parsed.", p_line);
+			return DataType();
+		}
+		result.class_type = static_cast<ClassNode *>(other_parser->head);
+	}
+
 	return result;
 }
 
@@ -5918,6 +5943,15 @@ GDScriptParser::DataType GDScriptParser::_type_from_variant(const Variant &p_val
 		} else {
 			result.kind = DataType::NATIVE;
 		}
+	}
+
+	if (result.kind == DataType::GDSCRIPT) {
+		GDScriptParser *other_parser = NULL;
+		Error err = GDScriptCache::parse_script_interface(result.script_path, &other_parser);
+		if (err != OK) {
+			return DataType();
+		}
+		result.class_type = static_cast<ClassNode *>(other_parser->head);
 	}
 
 	return result;
@@ -6252,6 +6286,11 @@ bool GDScriptParser::_is_type_compatible(const DataType &p_container, const Data
 				if (expr_class == p_container.class_type) {
 					return true;
 				}
+				if (expr_class->classname_used && p_container.class_type->classname_used &&
+						expr_class->name == p_container.class_type->name) {
+					// Share the same class_name, must be the same
+					return true;
+				}
 				expr_class = expr_class->base_type.class_type;
 			}
 			return false;
@@ -6407,10 +6446,12 @@ GDScriptParser::DataType GDScriptParser::_reduce_node_type(Node *p_node) {
 						DataType base_type = _reduce_node_type(op->arguments[0]);
 						DataType signal_type = _reduce_node_type(op->arguments[1]);
 						// TODO: Check if signal exists when it's a constant
-						if (base_type.has_type && base_type.kind == DataType::BUILTIN && base_type.builtin_type != Variant::NIL && base_type.builtin_type != Variant::OBJECT) {
-							_set_error("The first argument of \"yield()\" must be an object.", op->line);
-							return DataType();
-						}
+
+						// Can't check for this since even if a function returns a builtin type it can still yield and return a function state
+						// if (base_type.has_type && base_type.kind == DataType::BUILTIN && base_type.builtin_type != Variant::NIL && base_type.builtin_type != Variant::OBJECT) {
+						// 	_set_error("The first argument of \"yield()\" must be an object.", op->line);
+						// 	return DataType();
+						// }
 						if (signal_type.has_type && (signal_type.kind != DataType::BUILTIN || signal_type.builtin_type != Variant::STRING)) {
 							_set_error("The second argument of \"yield()\" must be a string.", op->line);
 							return DataType();
@@ -7572,6 +7613,13 @@ GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const DataType 
 				result.script_path = script_path;
 				result.is_meta_type = true;
 				GDScriptCache::add_pending_script_compilation(script_path);
+				GDScriptParser *other_parser = NULL;
+				Error err = GDScriptCache::parse_script_interface(result.script_path, &other_parser);
+				if (err != OK) {
+					_set_error("The script \"" + result.script_path + "\" was found in global scope, but its script couldn't be parsed.", p_line);
+					return DataType();
+				}
+				result.class_type = static_cast<ClassNode *>(other_parser->head);
 				return result;
 			} else {
 				Ref<Script> scr = ResourceLoader::load(ScriptServer::get_global_class_path(p_identifier));
@@ -7626,6 +7674,13 @@ GDScriptParser::DataType GDScriptParser::_reduce_identifier_type(const DataType 
 					result.script_type = GDScriptCache::get_shallow_script(script_path);
 					result.script_path = script_path;
 					GDScriptCache::add_pending_script_compilation(result.script_path);
+					GDScriptParser *other_parser = NULL;
+					Error err = GDScriptCache::parse_script_interface(result.script_path, &other_parser);
+					if (err != OK) {
+						_set_error("The script \"" + result.script_path + "\" was found in global scope, but its script couldn't be parsed.", p_line);
+						return DataType();
+					}
+					result.class_type = static_cast<ClassNode *>(other_parser->head);
 					return result;
 				} else {
 					Ref<Script> singleton = ResourceLoader::load(script_path);
@@ -8558,6 +8613,10 @@ Error GDScriptParser::_parse(const String &p_base_path) {
 
 	if (error_set) {
 		return ERR_PARSE_ERROR;
+	}
+
+	if (interface_only || validating) {
+		return OK;
 	}
 
 	// Resolve the function blocks
