@@ -58,7 +58,7 @@ Error GDScriptCache::parse_script(const String &p_path, GDScriptParser **r_parse
 		return err;
 	}
 
-	singleton->parsed_scripts.insert(p_path, parser);
+	singleton->parsed_scripts[p_path] = parser;
 	*r_parsed = singleton->parsed_scripts[p_path];
 	(void)r_parsed; // Suppress unused warning
 	return OK;
@@ -89,7 +89,7 @@ Error GDScriptCache::parse_script_interface(const String &p_path, GDScriptParser
 		return err;
 	}
 
-	singleton->interface_parsed_scripts.insert(p_path, parser);
+	singleton->interface_parsed_scripts[p_path] = parser;
 	*r_parsed = parser;
 	(void)r_parsed; // Suppress unused warning
 	return OK;
@@ -124,7 +124,7 @@ Error GDScriptCache::parse_script_inheritance(const String &p_path, GDScriptPars
 		return err;
 	}
 
-	singleton->inheritance_parsed_scripts.insert(p_path, parser);
+	singleton->inheritance_parsed_scripts[p_path] = parser;
 	*r_parsed = parser;
 	(void)r_parsed; // Suppress unused warning
 	return OK;
@@ -165,7 +165,7 @@ Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path) {
 	new_script.instance();
 	new_script->set_path(p_path);
 	new_script->set_script_path(p_path);
-	singleton->created_scripts.insert(p_path, new_script);
+	singleton->created_scripts[p_path] = new_script;
 	return new_script;
 }
 

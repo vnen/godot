@@ -28,7 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#include "core/ordered_hash_map.h"
+#include "core/hash_map.h"
 #include "core/reference.h"
 
 class GDScript;
@@ -39,11 +39,11 @@ class GDScriptCache {
 	Set<String> parsing_scripts;
 	Set<String> compiling_scripts;
 	Set<String> scripts_pending_compilation;
-	OrderedHashMap<String, GDScriptParser *> inheritance_parsed_scripts; // Key is path
-	OrderedHashMap<String, GDScriptParser *> interface_parsed_scripts; // Key is path
-	OrderedHashMap<String, GDScriptParser *> parsed_scripts; // Key is path
-	OrderedHashMap<String, Ref<GDScript> > compiled_scripts; // Key is path
-	OrderedHashMap<String, Ref<GDScript> > created_scripts; // Key is path
+	HashMap<String, GDScriptParser *> inheritance_parsed_scripts; // Key is path
+	HashMap<String, GDScriptParser *> interface_parsed_scripts; // Key is path
+	HashMap<String, GDScriptParser *> parsed_scripts; // Key is path
+	HashMap<String, Ref<GDScript> > compiled_scripts; // Key is path
+	HashMap<String, Ref<GDScript> > created_scripts; // Key is path
 
 	static GDScriptCache *singleton;
 
