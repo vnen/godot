@@ -269,6 +269,40 @@ bool GDScriptCache::is_gdscript(const String &p_path) {
 	return extensions.find(p_path.get_extension().to_lower()) != NULL;
 }
 
+void GDScriptCache::clear_cache() {
+	parsing_scripts.clear();
+	compiling_scripts.clear();
+	scripts_pending_compilation.clear();
+
+	List<String> list;
+	inheritance_parsed_scripts.get_key_list(&list);
+	for (List<String>::Element *E = list.front(); E != NULL; E = E->next()) {
+		GDScriptParser *parser = inheritance_parsed_scripts[E->get()];
+		memdelete(parser);
+		inheritance_parsed_scripts.erase(E->get());
+	}
+
+	list.clear();
+	interface_parsed_scripts.get_key_list(&list);
+	for (List<String>::Element *E = list.front(); E != NULL; E = E->next()) {
+		GDScriptParser *parser = interface_parsed_scripts[E->get()];
+		memdelete(parser);
+		interface_parsed_scripts.erase(E->get());
+	}
+
+	list.clear();
+	parsed_scripts.get_key_list(&list);
+	for (List<String>::Element *E = list.front(); E != NULL; E = E->next()) {
+		GDScriptParser *parser = parsed_scripts[E->get()];
+		memdelete(parser);
+		parsed_scripts.erase(E->get());
+	}
+}
+
 GDScriptCache::GDScriptCache() {
 	singleton = this;
+}
+
+GDScriptCache::~GDScriptCache() {
+	clear_cache();
 }

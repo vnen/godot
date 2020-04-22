@@ -47,6 +47,8 @@ class GDScriptCache {
 
 	static GDScriptCache *singleton;
 
+	void clear_cache();
+
 public:
 	static Error parse_script(const String &p_path, GDScriptParser **r_parsed);
 	static Error parse_script_interface(const String &p_path, GDScriptParser **r_parsed);
@@ -66,4 +68,5 @@ public:
 	static bool is_gdscript(const String &p_path);
 
 	GDScriptCache();
+	~GDScriptCache();
 };
