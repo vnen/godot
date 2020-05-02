@@ -172,6 +172,8 @@ void GDScriptNewTokenizer::set_source_code(const String &p_source_code) {
 	_current = _source;
 	line = 1;
 	column = 1;
+	length = p_source_code.length();
+	position = 0;
 }
 
 void GDScriptNewTokenizer::set_cursor_position(int p_line, int p_column) {
@@ -192,11 +194,12 @@ CharType GDScriptNewTokenizer::_advance() {
 		return '\0';
 	}
 	_current++;
+	position++;
 	column++;
 	if (column > rightmost_column) {
 		rightmost_column = column;
 	}
-	return _current[-1];
+	return _peek(-1);
 }
 
 void GDScriptNewTokenizer::push_paren(CharType p_char) {
@@ -322,7 +325,6 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::annotation() {
 }
 
 GDScriptNewTokenizer::Token GDScriptNewTokenizer::potential_identifier() {
-	// TODO: named literals (true, false, null)
 #define KEYWORDS(KEYWORD_GROUP, KEYWORD)     \
 	KEYWORD_GROUP('a')                       \
 	KEYWORD("as", Token::AS)                 \
@@ -603,7 +605,6 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::string() {
 
 	CharType quote_char = _peek(-1);
 
-	// TODO: Check if this is not past the end of the source code.
 	if (_peek() == quote_char && _peek(1) == quote_char) {
 		is_multiline = true;
 		// Consume all quotes.
@@ -688,7 +689,12 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::string() {
 							value += 10;
 						} else {
 							// Make error, but keep parsing the string.
-							push_error("Invalid hexadecimal escape in string.");
+							Token error = make_error("Invalid hexadecimal digit in unicode escape sequence.");
+							error.start_column = column;
+							error.leftmost_column = error.start_column;
+							error.end_column = column + 1;
+							error.rightmost_column = error.end_column;
+							push_error(error);
 							valid_escape = false;
 							break;
 						}
@@ -714,7 +720,10 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::string() {
 					valid_escape = false; // Don't add to the string.
 					break;
 				default:
-					push_error("Invalid escape in string.");
+					Token error = make_error("Invalid escape in string.");
+					error.start_column = column - 2;
+					error.leftmost_column = error.start_column;
+					push_error(error);
 					valid_escape = false;
 					break;
 			}
@@ -772,7 +781,6 @@ void GDScriptNewTokenizer::check_indent() {
 	}
 
 	for (;;) {
-		// FIXME: This breaks when mixing spaces and tabs in the same line.
 		CharType current_indent_char = _peek();
 		int indent_count = 0;
 
@@ -801,20 +809,38 @@ void GDScriptNewTokenizer::check_indent() {
 		}
 
 		// Check indent level.
-		while (_peek() == current_indent_char && !_is_at_end()) {
-			_advance();
-			if (current_indent_char == '\t') {
+		bool mixed = false;
+		while (!_is_at_end()) {
+			CharType space = _peek();
+			if (space == '\t') {
 				// Consider individual tab columns.
 				column += tab_size - 1;
+				indent_count += tab_size;
+			} else if (space == ' ') {
+				indent_count += 1;
+			} else {
+				break;
 			}
-			indent_count++;
+			mixed = mixed || space != current_indent_char;
+			_advance();
 		}
+
+		if (mixed) {
+			Token error = make_error("Mixed use of tabs and spaces for indentation.");
+			error.start_line = line;
+			error.start_column = 1;
+			error.leftmost_column = 1;
+			error.rightmost_column = column;
+			push_error(error);
+		}
+
 		if (_is_at_end()) {
 			// Reached the end with an empty line, so just dedent as much as needed.
 			pending_indents -= indent_level();
 			indent_stack.clear();
 			return;
 		}
+
 		if (_peek() == '\r') {
 			_advance();
 			if (_peek() != '\n') {
@@ -828,6 +854,7 @@ void GDScriptNewTokenizer::check_indent() {
 			continue;
 		}
 		if (_peek() == '#') {
+			// TODO: Warning ignores.
 			// Comment. Advance to the next line.
 			while (_peek() != '\n' && !_is_at_end()) {
 				_advance();
@@ -854,7 +881,12 @@ void GDScriptNewTokenizer::check_indent() {
 			// First time indenting, choose character now.
 			indent_char = current_indent_char;
 		} else if (current_indent_char != indent_char) {
-			push_error("Mixed use of tabs and spaces for indentation.");
+			Token error = make_error(vformat("Used \"%c\" for indentation instead \"%c\" as used before in the file.", String(&current_indent_char, 1).c_escape(), String(&indent_char, 1).c_escape()));
+			error.start_line = line;
+			error.start_column = 1;
+			error.leftmost_column = 1;
+			error.rightmost_column = column;
+			push_error(error);
 		}
 
 		// Now we can do actual indentation changes.
@@ -881,6 +913,17 @@ void GDScriptNewTokenizer::check_indent() {
 			while (indent_level() > 0 && indent_stack.back()->get() > indent_count) {
 				indent_stack.pop_back();
 				pending_indents--;
+			}
+			if ((indent_level() > 0 && indent_stack.back()->get() != indent_count) || (indent_level() == 0 && indent_count != 0)) {
+				// Mismatched indentation alignment.
+				Token error = make_error("Unindent doesn't match the previous indentation level.");
+				error.start_line = line;
+				error.start_column = 1;
+				error.leftmost_column = 1;
+				error.rightmost_column = column;
+				push_error(error);
+				// Still, we be lenient and keep going, so keep this level in the stack.
+				indent_stack.push_back(indent_count);
 			}
 		}
 		break; // Get out of the loop in any case.
@@ -943,7 +986,12 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::scan() {
 
 	_skip_whitespace();
 
-	// Check for potential errors when skipping whitespace().
+	if (pending_newline) {
+		pending_newline = false;
+		return last_newline;
+	}
+
+	// Check for potential errors after skipping whitespace().
 	if (has_error()) {
 		return pop_error();
 	}
@@ -953,11 +1001,6 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::scan() {
 	start_column = column;
 	leftmost_column = column;
 	rightmost_column = column;
-
-	if (pending_newline) {
-		pending_newline = false;
-		return last_newline;
-	}
 
 	if (pending_indents != 0) {
 		// Adjust position for indent.

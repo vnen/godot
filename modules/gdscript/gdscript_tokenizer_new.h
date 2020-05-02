@@ -204,9 +204,11 @@ private:
 	List<int> indent_stack;
 	List<CharType> paren_stack;
 	CharType indent_char = '\0';
+	int position = 0;
+	int length = 0;
 
 	_FORCE_INLINE_ bool _is_at_end() { return *_current == '\0'; }
-	_FORCE_INLINE_ CharType _peek(int p_offset = 0) { return _current[p_offset]; }
+	_FORCE_INLINE_ CharType _peek(int p_offset = 0) { return position + p_offset >= 0 && position + p_offset < length ? _current[p_offset] : '\0'; }
 	int indent_level() const { return indent_stack.size(); }
 	bool has_error() const { return !error_stack.empty(); }
 	Token pop_error();
