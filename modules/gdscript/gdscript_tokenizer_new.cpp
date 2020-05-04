@@ -150,7 +150,7 @@ static const char *token_names[] = {
 	"INF", // CONST_INF,
 	"NaN", // CONST_NAN,
 	// Error message improvement
-	"Conflict marker", // VCS_CONFLICT_MARKER,
+	"VCS conflict marker", // VCS_CONFLICT_MARKER,
 	"`", // BACKTICK,
 	"?", // QUESTION_MARK,
 	// Special
@@ -641,25 +641,25 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::string() {
 
 			switch (code) {
 				case 'a':
-					escaped = 7;
+					escaped = '\a';
 					break;
 				case 'b':
-					escaped = 8;
-					break;
-				case 't':
-					escaped = 9;
-					break;
-				case 'n':
-					escaped = 10;
-					break;
-				case 'v':
-					escaped = 11;
+					escaped = '\b';
 					break;
 				case 'f':
-					escaped = 12;
+					escaped = '\f';
+					break;
+				case 'n':
+					escaped = '\n';
 					break;
 				case 'r':
-					escaped = 13;
+					escaped = '\r';
+					break;
+				case 't':
+					escaped = '\t';
+					break;
+				case 'v':
+					escaped = '\v';
 					break;
 				case '\'':
 					escaped = '\'';
@@ -785,7 +785,7 @@ void GDScriptNewTokenizer::check_indent() {
 		int indent_count = 0;
 
 		if (current_indent_char != ' ' && current_indent_char != '\t' && current_indent_char != '\r' && current_indent_char != '\n') {
-			// First character of the line is not whitespace, so we clear all indenation levels.
+			// First character of the line is not whitespace, so we clear all indentation levels.
 			// Unless we are in a continuation.
 			if (line_continuation) {
 				return;
@@ -919,9 +919,10 @@ void GDScriptNewTokenizer::check_indent() {
 				error.start_line = line;
 				error.start_column = 1;
 				error.leftmost_column = 1;
-				error.rightmost_column = column;
+				error.end_column = column + 1;
+				error.rightmost_column = column + 1;
 				push_error(error);
-				// Still, we be lenient and keep going, so keep this level in the stack.
+				// Still, we'll be lenient and keep going, so keep this level in the stack.
 				indent_stack.push_back(indent_count);
 			}
 		}
@@ -936,6 +937,11 @@ void GDScriptNewTokenizer::_skip_whitespace() {
 	}
 
 	bool is_bol = column == 1; // Beginning of line.
+
+	if (is_bol) {
+		check_indent();
+		return;
+	}
 
 	for (;;) {
 		CharType c = _peek();
@@ -1013,7 +1019,10 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::scan() {
 		} else {
 			// Dedents.
 			pending_indents++;
-			return make_token(Token::DEDENT);
+			Token dedent = make_token(Token::DEDENT);
+			dedent.end_column += 1;
+			dedent.rightmost_column += 1;
+			return dedent;
 		}
 	}
 
