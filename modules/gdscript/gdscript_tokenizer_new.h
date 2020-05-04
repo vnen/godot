@@ -35,8 +35,6 @@
 #include "core/set.h"
 #include "core/variant.h"
 #include "core/vector.h"
-#include "gdscript_functions.h"
-#include "gdscript_warning.h"
 
 class GDScriptNewTokenizer {
 public:
@@ -233,13 +231,6 @@ private:
 	Token string();
 	Token annotation();
 
-#ifdef DEBUG_ENABLED
-	struct WarningSkip {
-		int line = 0;
-		GDScriptWarning::Code warning = GDScriptWarning::WARNING_MAX;
-	};
-#endif // DEBUG_ENABLED
-
 public:
 	Token scan();
 
@@ -249,12 +240,6 @@ public:
 	int get_cursor_column() const;
 
 	void set_cursor_position(int p_line, int p_column);
-
-#ifdef DEBUG_ENABLED
-	const Vector<WarningSkip> &get_warning_skips() const;
-	const Set<GDScriptWarning::Code> &get_warning_global_skips() const;
-	bool is_ignoring_warnings() const;
-#endif // DEBUG_ENABLED
 
 	GDScriptNewTokenizer();
 };

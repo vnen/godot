@@ -854,7 +854,6 @@ void GDScriptNewTokenizer::check_indent() {
 			continue;
 		}
 		if (_peek() == '#') {
-			// TODO: Warning ignores.
 			// Comment. Advance to the next line.
 			while (_peek() != '\n' && !_is_at_end()) {
 				_advance();
