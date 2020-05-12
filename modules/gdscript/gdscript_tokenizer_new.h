@@ -42,8 +42,6 @@ public:
 		enum Type {
 			EMPTY,
 			// Basic
-			// BUILT_IN_FUNC,
-			// BUILT_IN_TYPE,
 			ANNOTATION,
 			IDENTIFIER,
 			LITERAL,
@@ -106,21 +104,12 @@ public:
 			CLASS_NAME,
 			CONST,
 			ENUM,
-			// EXPORT, // Annotation
 			EXTENDS,
 			FUNC,
 			IN,
 			IS,
-			// MASTER, // Annotation
-			// MASTERSYNC, // Annotation
 			NAMESPACE,
-			// ONREADY, // Annotation
 			PRELOAD,
-			// PROPERTY, // Annotation?
-			// PUPPET, // Annotation
-			// PUPPETSYNC, // Annotation
-			// REMOTE, // Annotation
-			// REMOTESYNC, // Annotation
 			SELF,
 			SIGNAL,
 			STATIC,
@@ -168,7 +157,8 @@ public:
 		int leftmost_column = 0, rightmost_column = 0; // Column span for multiline tokens.
 
 		const char *get_name() const;
-		bool is_identifier() const;
+		// TODO: Allow some keywords as identifiers?
+		bool is_identifier() const { return type == IDENTIFIER; }
 		StringName get_identifier() const;
 
 		Token(Type p_type) {
@@ -205,7 +195,7 @@ private:
 	int position = 0;
 	int length = 0;
 
-	_FORCE_INLINE_ bool _is_at_end() { return *_current == '\0'; }
+	_FORCE_INLINE_ bool _is_at_end() { return position >= length; }
 	_FORCE_INLINE_ CharType _peek(int p_offset = 0) { return position + p_offset >= 0 && position + p_offset < length ? _current[p_offset] : '\0'; }
 	int indent_level() const { return indent_stack.size(); }
 	bool has_error() const { return !error_stack.empty(); }

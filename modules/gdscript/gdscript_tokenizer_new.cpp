@@ -42,8 +42,6 @@ static const char *token_names[] = {
 	"Annotation", // ANNOTATION
 	"Identifier", // IDENTIFIER,
 	"Literal", // LITERAL,
-	// "Built-in Type",            // BUILT_IN_TYPE,
-	// "Built-in Function",        // BUILT_IN_FUNC,
 	// Comparison
 	"<", // LESS,
 	"<=", // LESS_EQUAL,
@@ -103,21 +101,12 @@ static const char *token_names[] = {
 	"class_name", // CLASS_NAME,
 	"const", // CONST,
 	"enum", // ENUM,
-	//"export",                 // // EXPORT, // Annotation
 	"extends", // EXTENDS,
 	"func", // FUNC,
 	"in", // IN,
 	"is", // IS,
-	//"master",                 // // MASTER, // Annotation
-	//"mastersync",             // // MASTERSYNC, // Annotation
 	"namespace", // NAMESPACE
-	//"onready",                // ONREADY, // Annotation
 	"preload", // PRELOAD,
-	//"property",               // PROPERTY, // Annotation
-	//"puppet",                 // // PUPPET, // Annotation
-	//"puppetsync",             // // PUPPETSYNC, // Annotation
-	//"remote",                 // // REMOTE, // Annotation
-	//"remotesync",             // // REMOTESYNC, // Annotation
 	"self", // SELF,
 	"signal", // SIGNAL,
 	"static", // STATIC,
@@ -155,7 +144,7 @@ static const char *token_names[] = {
 	"?", // QUESTION_MARK,
 	// Special
 	"Error", // ERROR,
-	"EOF", // EOF,
+	"End of file", // EOF,
 };
 
 // Avoid desync.
@@ -168,7 +157,11 @@ const char *GDScriptNewTokenizer::Token::get_name() const {
 
 void GDScriptNewTokenizer::set_source_code(const String &p_source_code) {
 	source = p_source_code;
-	_source = source.ptr();
+	if (source.empty()) {
+		_source = L"";
+	} else {
+		_source = source.ptr();
+	}
 	_current = _source;
 	line = 1;
 	column = 1;

@@ -38,6 +38,7 @@
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_GDSCRIPT_ENABLED
 
+#include "modules/gdscript/gdscript_parser_new.h"
 #include "modules/gdscript/gdscript_tokenizer_new.h"
 
 #ifdef TOOLS_ENABLED
@@ -78,7 +79,6 @@ static void test_tokenizer(const String &p_code, const Vector<String> &p_lines) 
 			for (int col = 1; col < rightmost_column; col++) {
 				if (col < current.leftmost_column) {
 					pointer += " ";
-					// token += " ";
 				} else {
 					pointer += "^";
 				}
@@ -86,11 +86,6 @@ static void test_tokenizer(const String &p_code, const Vector<String> &p_lines) 
 			print_line(pointer.as_string());
 		}
 
-		// int line = current.start_line;
-		// token += vformat("%4d ", line);
-		// token += vformat("%3d-%-3d %-30s", current.start_column, current.end_column, current.get_name());
-
-		// token += "|--> ";
 		token += current.get_name();
 
 		if (current.type == GDScriptNewTokenizer::Token::ERROR || current.type == GDScriptNewTokenizer::Token::LITERAL || current.type == GDScriptNewTokenizer::Token::IDENTIFIER || current.type == GDScriptNewTokenizer::Token::ANNOTATION) {
@@ -108,6 +103,24 @@ static void test_tokenizer(const String &p_code, const Vector<String> &p_lines) 
 	}
 
 	print_line(current.get_name()); // Should be EOF
+}
+
+static void test_parser(const String &p_code, const String &p_script_path, const Vector<String> &p_lines) {
+
+	GDScriptNewParser parser;
+	Error err = parser.parse(p_code, p_script_path, false);
+
+	if (err != OK) {
+		const List<GDScriptNewParser::ParserError> &errors = parser.get_errors();
+		for (const List<GDScriptNewParser::ParserError>::Element *E = errors.front(); E != nullptr; E = E->next()) {
+			const GDScriptNewParser::ParserError &error = E->get();
+			print_line(vformat("%02d:%02d: %s", error.line, error.column, error.message));
+		}
+	}
+
+	GDScriptNewParser::TreePrinter printer;
+
+	printer.print_tree(parser);
 }
 
 MainLoop *test(TestType p_type) {
@@ -149,6 +162,8 @@ MainLoop *test(TestType p_type) {
 			test_tokenizer(code, lines);
 			break;
 		case TEST_PARSER:
+			test_parser(code, test, lines);
+			break;
 		case TEST_COMPILER:
 		case TEST_BYTECODE:
 			print_line("Not implemented.");
