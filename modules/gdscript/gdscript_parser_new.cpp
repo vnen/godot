@@ -68,7 +68,7 @@ void GDScriptNewParser::push_error(const String &p_message) {
 	// TODO: Errors might point at more than one place at once (e.g. show previous declaration).
 	panic_mode = true;
 	// TODO: Improve positional information.
-	errors.push_back({ message : p_message, line : current.start_line, column : current.start_column });
+	errors.push_back({ p_message, current.start_line, current.start_column });
 }
 
 Error GDScriptNewParser::parse(const String &p_source_code, const String &p_script_path, bool p_for_completion) {
@@ -309,12 +309,7 @@ void GDScriptNewParser::parse_class_body() {
 				if (current_class->members_indices.has(field->identifier->name)) {
 					push_error(vformat(R"(Variable "%s" has the same name as a previously declared %s.)", field->identifier->name, current_class->get_member(field->identifier->name).get_type_name()));
 				} else {
-					ClassNode::Member member = {
-						type : ClassNode::Member::VARIABLE,
-						variable : field,
-					};
-					current_class->members_indices[field->identifier->name] = current_class->members.size();
-					current_class->members.push_back(member);
+					current_class->add_member(field);
 				}
 				break;
 			}
@@ -328,12 +323,7 @@ void GDScriptNewParser::parse_class_body() {
 				if (current_class->members_indices.has(constant->identifier->name)) {
 					push_error(vformat(R"(Constant "%s" has the same name as a previously declared %s.)", constant->identifier->name, current_class->get_member(constant->identifier->name).get_type_name()));
 				} else {
-					ClassNode::Member member = {
-						type : ClassNode::Member::CONSTANT,
-						constant : constant,
-					};
-					current_class->members_indices[constant->identifier->name] = current_class->members.size();
-					current_class->members.push_back(member);
+					current_class->add_member(constant);
 				}
 				break;
 			}
@@ -347,12 +337,7 @@ void GDScriptNewParser::parse_class_body() {
 				if (current_class->members_indices.has(signal->identifier->name)) {
 					push_error(vformat(R"(Signal "%s" has the same name as a previously declared %s.)", signal->identifier->name, current_class->get_member(signal->identifier->name).get_type_name()));
 				} else {
-					ClassNode::Member member = {
-						type : ClassNode::Member::SIGNAL,
-						signal : signal,
-					};
-					current_class->members_indices[signal->identifier->name] = current_class->members.size();
-					current_class->members.push_back(member);
+					current_class->add_member(signal);
 				}
 				break;
 			}
@@ -367,12 +352,7 @@ void GDScriptNewParser::parse_class_body() {
 				if (current_class->members_indices.has(function->identifier->name)) {
 					push_error(vformat(R"(Function "%s" has the same name as a previously declared %s.)", function->identifier->name, current_class->get_member(function->identifier->name).get_type_name()));
 				} else {
-					ClassNode::Member member = {
-						type : ClassNode::Member::FUNCTION,
-						function : function,
-					};
-					current_class->members_indices[function->identifier->name] = current_class->members.size();
-					current_class->members.push_back(member);
+					current_class->add_member(function);
 				}
 				break;
 			}
@@ -383,12 +363,7 @@ void GDScriptNewParser::parse_class_body() {
 				if (current_class->members_indices.has(inner_class->identifier->name)) {
 					push_error(vformat(R"(Class "%s" has the same name as a previously declared %s.)", inner_class->identifier->name, current_class->get_member(inner_class->identifier->name).get_type_name()));
 				} else {
-					ClassNode::Member member = {
-						type : ClassNode::Member::CLASS,
-						m_class : inner_class,
-					};
-					current_class->members_indices[inner_class->identifier->name] = current_class->members.size();
-					current_class->members.push_back(member);
+					current_class->add_member(inner_class);
 				}
 				break;
 			}
@@ -611,8 +586,7 @@ GDScriptNewParser::SuiteNode *GDScriptNewParser::parse_suite(const String &p_con
 					}
 					push_error(vformat(R"(There is already a %s named "%s" declared in this scope.)", name, variable->identifier->name));
 				}
-				current_suite->locals_indices[variable->identifier->name] = current_suite->locals.size();
-				current_suite->locals.push_back({ type : SuiteNode::Local::VARIABLE, variable : variable });
+				current_suite->add_local(variable);
 				break;
 			}
 			case Node::CONSTANT: {
@@ -627,8 +601,7 @@ GDScriptNewParser::SuiteNode *GDScriptNewParser::parse_suite(const String &p_con
 					}
 					push_error(vformat(R"(There is already a %s named "%s" declared in this scope.)", name, constant->identifier->name));
 				}
-				current_suite->locals_indices[constant->identifier->name] = current_suite->locals.size();
-				current_suite->locals.push_back({ type : SuiteNode::Local::CONSTANT, constant : constant });
+				current_suite->add_local(constant);
 				break;
 			}
 			default:
@@ -932,7 +905,7 @@ GDScriptNewParser::PatternNode *GDScriptNewParser::parse_match_pattern() {
 						} else {
 							PatternNode *sub_pattern = alloc_node<PatternNode>();
 							sub_pattern->pattern_type = PatternNode::PT_REST;
-							pattern->dictionary.push_back({ key : nullptr, value_pattern : sub_pattern });
+							pattern->dictionary.push_back({ nullptr, sub_pattern });
 							has_rest = true;
 						}
 					} else if (consume(GDScriptNewTokenizer::Token::LITERAL, R"(Expected key for dictionary pattern.)")) {
@@ -953,7 +926,7 @@ GDScriptNewParser::PatternNode *GDScriptNewParser::parse_match_pattern() {
 							} else if (sub_pattern->pattern_type == PatternNode::PT_REST) {
 								push_error(R"(The ".." pattern cannot be used as a value.)");
 							} else {
-								pattern->dictionary.push_back({ key : key, value_pattern : sub_pattern });
+								pattern->dictionary.push_back({ key, sub_pattern });
 							}
 						}
 					}

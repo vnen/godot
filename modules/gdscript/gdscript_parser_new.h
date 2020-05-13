@@ -347,14 +347,16 @@ public:
 
 	struct ClassNode : public Node {
 		struct Member {
-			enum {
+			enum Type {
 				UNDEFINED,
 				CLASS,
 				CONSTANT,
 				FUNCTION,
 				SIGNAL,
 				VARIABLE,
-			} type = UNDEFINED;
+			};
+
+			Type type = UNDEFINED;
 
 			union {
 				ClassNode *m_class = nullptr;
@@ -381,6 +383,29 @@ public:
 				}
 				return "";
 			}
+
+			Member() {}
+
+			Member(ClassNode *p_class) {
+				type = CLASS;
+				m_class = p_class;
+			}
+			Member(ConstantNode *p_constant) {
+				type = CONSTANT;
+				constant = p_constant;
+			}
+			Member(VariableNode *p_variable) {
+				type = VARIABLE;
+				variable = p_variable;
+			}
+			Member(SignalNode *p_signal) {
+				type = SIGNAL;
+				signal = p_signal;
+			}
+			Member(FunctionNode *p_function) {
+				type = FUNCTION;
+				function = p_function;
+			}
 		};
 
 		IdentifierNode *identifier = nullptr;
@@ -394,6 +419,11 @@ public:
 
 		Member get_member(const StringName &p_name) const {
 			return members[members_indices[p_name]];
+		}
+		template <class T>
+		void add_member(T *p_member_node) {
+			members_indices[p_member_node->identifier->name] = members.size();
+			members.push_back(Member(p_member_node));
 		}
 
 		ClassNode() {
@@ -603,13 +633,28 @@ public:
 				ConstantNode *constant = nullptr;
 				VariableNode *variable;
 			};
+
+			Local() {}
+			Local(ConstantNode *p_constant) {
+				type = CONSTANT;
+				constant = p_constant;
+			}
+			Local(VariableNode *p_variable) {
+				type = VARIABLE;
+				variable = p_variable;
+			}
 		};
-		Local empty = { type : Local::UNDEFINED, constant : nullptr };
+		Local empty;
 		Vector<Local> locals;
 		HashMap<StringName, int> locals_indices;
 
 		bool has_local(const StringName &p_name) const;
 		const Local &get_local(const StringName &p_name) const;
+		template <class T>
+		void add_local(T *p_local) {
+			locals_indices[p_local->identifier->name] = locals.size();
+			locals.push_back(Local(p_local));
+		}
 
 		SuiteNode() {
 			type = SUITE;
