@@ -368,6 +368,9 @@ template <class T>
 void GDScriptNewParser::parse_class_member(T *(GDScriptNewParser::*p_parse_function)(), AnnotationInfo::TargetKind p_target, const String &p_member_kind) {
 	advance();
 	T *member = (this->*p_parse_function)();
+	if (member == nullptr) {
+		return;
+	}
 	// Consume annotations.
 	while (!annotation_stack.empty()) {
 		AnnotationNode *last_annotation = annotation_stack.back()->get();
@@ -402,14 +405,15 @@ void GDScriptNewParser::parse_class_body() {
 				parse_class_member(&GDScriptNewParser::parse_signal, AnnotationInfo::SIGNAL, "signal");
 				break;
 			case GDScriptNewTokenizer::Token::STATIC:
-			case GDScriptNewTokenizer::Token::FUNC: {
+			case GDScriptNewTokenizer::Token::FUNC:
 				parse_class_member(&GDScriptNewParser::parse_function, AnnotationInfo::FUNCTION, "function");
 				break;
-			}
-			case GDScriptNewTokenizer::Token::CLASS: {
+			case GDScriptNewTokenizer::Token::CLASS:
 				parse_class_member(&GDScriptNewParser::parse_class, AnnotationInfo::CLASS, "class");
 				break;
-			}
+			case GDScriptNewTokenizer::Token::ENUM:
+				parse_class_member(&GDScriptNewParser::parse_enum, AnnotationInfo::NONE, "enum");
+				break;
 			case GDScriptNewTokenizer::Token::ANNOTATION: {
 				advance();
 				AnnotationNode *annotation = parse_annotation(AnnotationInfo::CLASS_LEVEL);
@@ -548,6 +552,44 @@ GDScriptNewParser::SignalNode *GDScriptNewParser::parse_signal() {
 	end_statement("signal declaration");
 
 	return signal;
+}
+
+GDScriptNewParser::EnumNode *GDScriptNewParser::parse_enum() {
+	EnumNode *enum_node = alloc_node<EnumNode>();
+	if (!consume(GDScriptNewTokenizer::Token::IDENTIFIER, R"(Expected identifier as enum name after "enum".)")) {
+		return nullptr;
+	}
+
+	enum_node->identifier = parse_identifier();
+
+	consume(GDScriptNewTokenizer::Token::BRACE_OPEN, R"(Expected "{" after "enum".)");
+
+	do {
+		if (consume(GDScriptNewTokenizer::Token::IDENTIFIER, R"(Expected identifer for enum key.)")) {
+			EnumNode::Value item;
+			item.name = parse_identifier();
+
+			if (match(GDScriptNewTokenizer::Token::EQUAL)) {
+				if (consume(GDScriptNewTokenizer::Token::LITERAL, R"(Expected integer value after "=".)")) {
+					item.value = parse_literal();
+
+					if (item.value->value.get_type() != Variant::INT) {
+						push_error(R"(Expected integer value after "=".)");
+						item.value = nullptr;
+					}
+				}
+			}
+			enum_node->values.push_back(item);
+		}
+	} while (match(GDScriptNewTokenizer::Token::COMMA));
+
+	match(GDScriptNewTokenizer::Token::COMMA); // Allow trailing comma.
+
+	consume(GDScriptNewTokenizer::Token::BRACE_CLOSE, R"(Expected closing "}" for enum.)");
+
+	end_statement("enum");
+
+	return enum_node;
 }
 
 GDScriptNewParser::FunctionNode *GDScriptNewParser::parse_function() {
@@ -971,7 +1013,7 @@ GDScriptNewParser::PatternNode *GDScriptNewParser::parse_match_pattern() {
 		case GDScriptNewTokenizer::Token::LITERAL:
 			advance();
 			pattern->pattern_type = PatternNode::PT_LITERAL;
-			pattern->literal = static_cast<LiteralNode *>(parse_literal(nullptr, false));
+			pattern->literal = parse_literal();
 			if (pattern->literal == nullptr) {
 				// Error happened.
 				return nullptr;
@@ -1038,7 +1080,7 @@ GDScriptNewParser::PatternNode *GDScriptNewParser::parse_match_pattern() {
 							has_rest = true;
 						}
 					} else if (consume(GDScriptNewTokenizer::Token::LITERAL, R"(Expected key for dictionary pattern.)")) {
-						LiteralNode *key = static_cast<LiteralNode *>(parse_literal(nullptr, false));
+						LiteralNode *key = parse_literal();
 						if (key == nullptr) {
 							push_error(R"(Expected literal as key for dictionary pattern.)");
 							continue;
@@ -1142,6 +1184,10 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_identifier(Expressio
 	IdentifierNode *identifier = alloc_node<IdentifierNode>();
 	identifier->name = previous.literal;
 	return identifier;
+}
+
+GDScriptNewParser::LiteralNode *GDScriptNewParser::parse_literal() {
+	return static_cast<LiteralNode *>(parse_literal(nullptr, false));
 }
 
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_literal(ExpressionNode *p_previous_operand, bool p_can_assign) {
@@ -1479,7 +1525,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_get_node(ExpressionN
 			return nullptr;
 		}
 		GetNodeNode *get_node = alloc_node<GetNodeNode>();
-		get_node->string = static_cast<LiteralNode *>(parse_literal(nullptr, false));
+		get_node->string = parse_literal();
 		return get_node;
 	} else if (check(GDScriptNewTokenizer::Token::IDENTIFIER)) {
 		GetNodeNode *get_node = alloc_node<GetNodeNode>();
@@ -2113,6 +2159,9 @@ void GDScriptNewParser::TreePrinter::print_class(ClassNode *p_class) {
 			case ClassNode::Member::FUNCTION:
 				print_function(m.function);
 				break;
+			case ClassNode::Member::ENUM:
+				print_enum(m.m_enum);
+				break;
 			case ClassNode::Member::UNDEFINED:
 				push_line("<unknown member>");
 				break;
@@ -2207,6 +2256,33 @@ void GDScriptNewParser::TreePrinter::print_expression(ExpressionNode *p_expressi
 	}
 	// Surround in parenthesis for disambiguation.
 	push_text(")");
+}
+
+void GDScriptNewParser::TreePrinter::print_enum(EnumNode *p_enum) {
+	push_text("Enum ");
+	if (p_enum->identifier != nullptr) {
+		print_identifier(p_enum->identifier);
+	} else {
+		push_text("<unnamed>");
+	}
+
+	push_line(" {");
+	increase_indent();
+	int last_value = 0;
+	for (int i = 0; i < p_enum->values.size(); i++) {
+		const EnumNode::Value &item = p_enum->values[i];
+		print_identifier(item.name);
+		push_text(" = ");
+		if (item.value != nullptr) {
+			print_literal(item.value);
+			last_value = item.value->value;
+		} else {
+			push_text(itos(last_value++));
+		}
+		push_line(" ,");
+	}
+	decrease_indent();
+	push_line("}");
 }
 
 void GDScriptNewParser::TreePrinter::print_for(ForNode *p_for) {

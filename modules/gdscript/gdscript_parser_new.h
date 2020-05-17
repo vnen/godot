@@ -374,6 +374,7 @@ public:
 				FUNCTION,
 				SIGNAL,
 				VARIABLE,
+				ENUM,
 			};
 
 			Type type = UNDEFINED;
@@ -384,6 +385,7 @@ public:
 				FunctionNode *function;
 				SignalNode *signal;
 				VariableNode *variable;
+				EnumNode *m_enum;
 			};
 
 			String get_type_name() const {
@@ -400,6 +402,8 @@ public:
 						return "signal";
 					case VARIABLE:
 						return "variable";
+					case ENUM:
+						return "enum";
 				}
 				return "";
 			}
@@ -425,6 +429,10 @@ public:
 			Member(FunctionNode *p_function) {
 				type = FUNCTION;
 				function = p_function;
+			}
+			Member(EnumNode *p_enum) {
+				type = ENUM;
+				m_enum = p_enum;
 			}
 		};
 
@@ -477,6 +485,19 @@ public:
 
 		DictionaryNode() {
 			type = DICTIONARY;
+		}
+	};
+
+	struct EnumNode : public Node {
+		struct Value {
+			IdentifierNode *name = nullptr;
+			LiteralNode *value = nullptr;
+		};
+		IdentifierNode *identifier = nullptr;
+		Vector<Value> values;
+
+		EnumNode() {
+			type = ENUM;
 		}
 	};
 
@@ -764,6 +785,7 @@ private:
 	typedef bool (GDScriptNewParser::*AnnotationAction)(const AnnotationNode *p_annotation, Node *p_target);
 	struct AnnotationInfo {
 		enum TargetKind {
+			NONE = 0,
 			SCRIPT = 1 << 0,
 			CLASS = 1 << 1,
 			VARIABLE = 1 << 2,
@@ -838,6 +860,7 @@ private:
 	template <class T>
 	void parse_class_member(T *(GDScriptNewParser::*p_parse_function)(), AnnotationInfo::TargetKind p_target, const String &p_member_kind);
 	SignalNode *parse_signal();
+	EnumNode *parse_enum();
 	ParameterNode *parse_parameter();
 	FunctionNode *parse_function();
 	SuiteNode *parse_suite(const String &p_context);
@@ -870,6 +893,7 @@ private:
 	ExpressionNode *parse_expression(bool p_can_assign);
 	ExpressionNode *parse_precedence(Precedence p_precedence, bool p_can_assign);
 	ExpressionNode *parse_literal(ExpressionNode *p_previous_operand, bool p_can_assign);
+	LiteralNode *parse_literal();
 	ExpressionNode *parse_self(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_identifier(ExpressionNode *p_previous_operand, bool p_can_assign);
 	IdentifierNode *parse_identifier();
@@ -924,6 +948,7 @@ public:
 		void print_constant(ConstantNode *p_constant);
 		void print_dictionary(DictionaryNode *p_dictionary);
 		void print_expression(ExpressionNode *p_expression);
+		void print_enum(EnumNode *p_enum);
 		void print_for(ForNode *p_for);
 		void print_function(FunctionNode *p_function);
 		void print_get_node(GetNodeNode *p_get_node);
