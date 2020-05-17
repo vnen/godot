@@ -32,6 +32,7 @@
 #define GDSCRIPT_PARSER_H
 
 #include "core/hash_map.h"
+#include "core/io/multiplayer_api.h"
 #include "core/list.h"
 #include "core/map.h"
 #include "core/reference.h"
@@ -42,11 +43,15 @@
 #include "core/vector.h"
 #include "gdscript_tokenizer_new.h"
 
+#include <initializer_list>
+
 #ifdef DEBUG_ENABLED
 #include "core/string_builder.h"
 #endif // DEBUG_ENABLED
 
 class GDScriptNewParser {
+	struct AnnotationInfo;
+
 public:
 	// Forward-declare all parser nodes, to avoid ordering issues.
 	struct AnnotationNode;
@@ -71,7 +76,6 @@ public:
 	struct GetNodeNode;
 	struct IdentifierNode;
 	struct IfNode;
-	struct IndexingNode;
 	struct LiteralNode;
 	struct MatchNode;
 	struct MatchBranchNode;
@@ -206,6 +210,7 @@ public:
 		int start_line = 0, end_line = 0;
 		int leftmost_column = 0, rightmost_column = 0;
 		Node *next = nullptr;
+		List<AnnotationNode *> annotations;
 
 		virtual DataType get_datatype() const { return DataType(); }
 		virtual void set_datatype(const DataType &p_datatype) {}
@@ -222,6 +227,21 @@ public:
 
 	protected:
 		ExpressionNode() {}
+	};
+
+	struct AnnotationNode : public Node {
+		StringName name;
+		Vector<ExpressionNode *> arguments;
+		Vector<Variant> resolved_arguments;
+
+		AnnotationInfo *info = nullptr;
+
+		bool apply(GDScriptNewParser *p_this, Node *p_target) const;
+		bool applies_to(uint32_t p_target_kinds) const;
+
+		AnnotationNode() {
+			type = ANNOTATION;
+		}
 	};
 
 	struct ArrayNode : public ExpressionNode {
@@ -431,12 +451,6 @@ public:
 		}
 	};
 
-	struct ContinueNode : public Node {
-		ContinueNode() {
-			type = CONTINUE;
-		}
-	};
-
 	struct ConstantNode : public Node {
 		IdentifierNode *identifier = nullptr;
 		ExpressionNode *initializer = nullptr;
@@ -445,6 +459,12 @@ public:
 
 		ConstantNode() {
 			type = CONSTANT;
+		}
+	};
+
+	struct ContinueNode : public Node {
+		ContinueNode() {
+			type = CONTINUE;
 		}
 	};
 
@@ -477,6 +497,7 @@ public:
 		TypeNode *return_type = nullptr;
 		SuiteNode *body = nullptr;
 		bool is_static = false;
+		MultiplayerAPI::RPCMode rpc_mode = MultiplayerAPI::RPC_MODE_DISABLED;
 
 		FunctionNode() {
 			type = FUNCTION;
@@ -702,6 +723,9 @@ public:
 		ExpressionNode *initializer = nullptr;
 		TypeNode *datatype_specifier = nullptr;
 		bool infer_datatype = false;
+		bool exported = false;
+		PropertyInfo export_info;
+		MultiplayerAPI::RPCMode rpc_mode = MultiplayerAPI::RPC_MODE_DISABLED;
 
 		VariableNode() {
 			type = VARIABLE;
@@ -736,6 +760,25 @@ private:
 	ClassNode *current_class = nullptr;
 	FunctionNode *current_function = nullptr;
 	SuiteNode *current_suite = nullptr;
+
+	typedef bool (GDScriptNewParser::*AnnotationAction)(const AnnotationNode *p_annotation, Node *p_target);
+	struct AnnotationInfo {
+		enum TargetKind {
+			SCRIPT = 1 << 0,
+			CLASS = 1 << 1,
+			VARIABLE = 1 << 2,
+			CONSTANT = 1 << 3,
+			SIGNAL = 1 << 4,
+			FUNCTION = 1 << 5,
+			STATEMENT = 1 << 6,
+			CLASS_LEVEL = CLASS | VARIABLE | FUNCTION,
+		};
+		uint32_t target_kind = 0; // Flags.
+		AnnotationAction apply = nullptr;
+		MethodInfo info;
+	};
+	HashMap<StringName, AnnotationInfo> valid_annotations;
+	List<AnnotationNode *> annotation_stack;
 
 	typedef ExpressionNode *(GDScriptNewParser::*ParseFunction)(ExpressionNode *p_previous_operand, bool p_can_assign);
 	// Higher value means higher precedence (i.e. is evaluated first).
@@ -792,10 +835,24 @@ private:
 	void parse_class_name();
 	void parse_extends();
 	void parse_class_body();
+	template <class T>
+	void parse_class_member(T *(GDScriptNewParser::*p_parse_function)(), AnnotationInfo::TargetKind p_target, const String &p_member_kind);
 	SignalNode *parse_signal();
 	ParameterNode *parse_parameter();
 	FunctionNode *parse_function();
 	SuiteNode *parse_suite(const String &p_context);
+	// Annotations
+	AnnotationNode *parse_annotation(uint32_t p_valid_targets);
+	bool register_annotation(const MethodInfo &p_info, uint32_t p_target_kinds, AnnotationAction p_apply, int p_optional_arguments = 0, bool p_is_vararg = false);
+	bool validate_annotation_arguments(AnnotationNode *p_annotation);
+	void clear_unused_annotations();
+	bool tool_annotation(const AnnotationNode *p_annotation, Node *p_target);
+	bool icon_annotation(const AnnotationNode *p_annotation, Node *p_target);
+	template <PropertyHint t_hint>
+	bool export_annotations(const AnnotationNode *p_annotation, Node *p_target);
+	bool warning_annotations(const AnnotationNode *p_annotation, Node *p_target);
+	template <MultiplayerAPI::RPCMode t_mode>
+	bool network_annotations(const AnnotationNode *p_annotation, Node *p_target);
 	// Statements.
 	Node *parse_statement();
 	VariableNode *parse_variable();
@@ -839,6 +896,7 @@ public:
 
 	const List<ParserError> &get_errors() const { return errors; }
 
+	GDScriptNewParser();
 	~GDScriptNewParser();
 
 #ifdef DEBUG_ENABLED
@@ -853,6 +911,7 @@ public:
 		void push_line(const String &p_line = String());
 		void push_text(const String &p_text);
 
+		void print_annotation(AnnotationNode *p_annotation);
 		void print_array(ArrayNode *p_array);
 		void print_assert(AssertNode *p_assert);
 		void print_assignment(AssignmentNode *p_assignment);

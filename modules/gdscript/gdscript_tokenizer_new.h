@@ -113,7 +113,6 @@ public:
 			SELF,
 			SIGNAL,
 			STATIC,
-			TOOL,
 			VAR,
 			VOID,
 			YIELD,
