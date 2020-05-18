@@ -35,6 +35,60 @@
 #include "core/string_builder.h"
 #endif // DEBUG_ENABLED
 
+static HashMap<StringName, Variant::Type> builtin_types;
+Variant::Type GDScriptNewParser::get_builtin_type(const StringName &p_type) {
+	if (builtin_types.empty()) {
+		builtin_types["bool"] = Variant::BOOL;
+		builtin_types["int"] = Variant::INT;
+		builtin_types["float"] = Variant::FLOAT;
+		builtin_types["String"] = Variant::STRING;
+		builtin_types["Vector2"] = Variant::VECTOR2;
+		builtin_types["Vector2i"] = Variant::VECTOR2I;
+		builtin_types["Rect2"] = Variant::RECT2;
+		builtin_types["Rect2i"] = Variant::RECT2I;
+		builtin_types["Transform2D"] = Variant::TRANSFORM2D;
+		builtin_types["Vector3"] = Variant::VECTOR3;
+		builtin_types["Vector3i"] = Variant::VECTOR3I;
+		builtin_types["AABB"] = Variant::AABB;
+		builtin_types["Plane"] = Variant::PLANE;
+		builtin_types["Quat"] = Variant::QUAT;
+		builtin_types["Basis"] = Variant::BASIS;
+		builtin_types["Transform"] = Variant::TRANSFORM;
+		builtin_types["Color"] = Variant::COLOR;
+		builtin_types["RID"] = Variant::_RID;
+		builtin_types["Object"] = Variant::OBJECT;
+		builtin_types["StringName"] = Variant::STRING_NAME;
+		builtin_types["NodePath"] = Variant::NODE_PATH;
+		builtin_types["Dictionary"] = Variant::DICTIONARY;
+		builtin_types["Callable"] = Variant::CALLABLE;
+		builtin_types["Signal"] = Variant::SIGNAL;
+		builtin_types["Array"] = Variant::ARRAY;
+		builtin_types["PackedByteArray"] = Variant::PACKED_BYTE_ARRAY;
+		builtin_types["PackedInt32Array"] = Variant::PACKED_INT32_ARRAY;
+		builtin_types["PackedInt64Array"] = Variant::PACKED_INT64_ARRAY;
+		builtin_types["PackedFloat32Array"] = Variant::PACKED_FLOAT32_ARRAY;
+		builtin_types["PackedFloat64Array"] = Variant::PACKED_FLOAT64_ARRAY;
+		builtin_types["PackedStringArray"] = Variant::PACKED_STRING_ARRAY;
+		builtin_types["PackedVector2Array"] = Variant::PACKED_VECTOR2_ARRAY;
+		builtin_types["PackedVector3Array"] = Variant::PACKED_VECTOR3_ARRAY;
+		builtin_types["PackedColorArray"] = Variant::PACKED_COLOR_ARRAY;
+	}
+
+	if (builtin_types.has(p_type)) {
+		return builtin_types[p_type];
+	}
+	return Variant::VARIANT_MAX;
+}
+
+GDScriptFunctions::Function GDScriptNewParser::get_builtin_function(const StringName &p_name) {
+	for (int i = 0; i < GDScriptFunctions::FUNC_MAX; i++) {
+		if (p_name == GDScriptFunctions::get_func_name(GDScriptFunctions::Function(i))) {
+			return GDScriptFunctions::Function(i);
+		}
+	}
+	return GDScriptFunctions::FUNC_MAX;
+}
+
 GDScriptNewParser::GDScriptNewParser() {
 	// Register valid annotations.
 	// TODO: Should this be static?
@@ -80,6 +134,12 @@ T *GDScriptNewParser::alloc_node() {
 
 	node->next = list;
 	list = node;
+
+	// TODO: Properly set positions for all nodes.
+	node->start_line = previous.start_line;
+	node->end_line = previous.end_line;
+	node->leftmost_column = previous.leftmost_column;
+	node->rightmost_column = previous.rightmost_column;
 
 	return node;
 }
@@ -285,6 +345,7 @@ GDScriptNewParser::ClassNode *GDScriptNewParser::parse_class() {
 
 	ClassNode *previous_class = current_class;
 	current_class = n_class;
+	n_class->outer = previous_class;
 
 	if (consume(GDScriptNewTokenizer::Token::IDENTIFIER, R"(Expected identifier for the class name after "class".)")) {
 		n_class->identifier = parse_identifier();
@@ -488,6 +549,11 @@ GDScriptNewParser::ConstantNode *GDScriptNewParser::parse_constant() {
 	if (consume(GDScriptNewTokenizer::Token::EQUAL, R"(Expected initializer after constant name.)")) {
 		// Initializer.
 		constant->initializer = parse_expression(false);
+
+		if (constant->initializer == nullptr) {
+			push_error(R"(Expected initializer expression for constant.)");
+			return nullptr;
+		}
 	}
 
 	end_statement("constant declaration");
@@ -616,10 +682,19 @@ GDScriptNewParser::FunctionNode *GDScriptNewParser::parse_function() {
 	consume(GDScriptNewTokenizer::Token::PARENTHESIS_OPEN, R"(Expected opening "(" after function name.)");
 
 	if (!check(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE) && !is_at_end()) {
+		bool default_used = false;
 		do {
 			ParameterNode *parameter = parse_parameter();
 			if (parameter == nullptr) {
 				break;
+			}
+			if (parameter->default_value != nullptr) {
+				default_used = true;
+			} else {
+				if (default_used) {
+					push_error("Cannot have a mandatory parameters after optional parameters.");
+					continue;
+				}
 			}
 			if (function->parameters_indices.has(parameter->identifier->name)) {
 				push_error(vformat(R"(Parameter with name "%s" was already declared for this function.)", parameter->identifier->name));
@@ -865,9 +940,22 @@ GDScriptNewParser::AssertNode *GDScriptNewParser::parse_assert() {
 	AssertNode *assert = alloc_node<AssertNode>();
 
 	consume(GDScriptNewTokenizer::Token::PARENTHESIS_OPEN, R"(Expected "(" after "assert".)");
-	assert->to_assert = parse_expression(false);
-	if (assert->to_assert == nullptr) {
+	assert->condition = parse_expression(false);
+	if (assert->condition == nullptr) {
 		push_error("Expected expression to assert.");
+		return nullptr;
+	}
+
+	if (match(GDScriptNewTokenizer::Token::COMMA)) {
+		// Error message.
+		if (consume(GDScriptNewTokenizer::Token::LITERAL, R"(Expected error message for assert after ",".)")) {
+			assert->message = parse_literal();
+			if (assert->message->value.get_type() != Variant::STRING) {
+				push_error(R"(Expected string for assert error message.)");
+			}
+		} else {
+			return nullptr;
+		}
 	}
 
 	consume(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE, R"*(Expected ")" after assert expression.)*");
@@ -923,20 +1011,24 @@ GDScriptNewParser::ForNode *GDScriptNewParser::parse_for() {
 	return n_for;
 }
 
-GDScriptNewParser::IfNode *GDScriptNewParser::parse_if() {
+GDScriptNewParser::IfNode *GDScriptNewParser::parse_if(const String &p_token) {
 	IfNode *n_if = alloc_node<IfNode>();
 
 	n_if->condition = parse_expression(false);
 	if (n_if->condition == nullptr) {
-		push_error(R"(Expected conditional expression after "if".)");
+		push_error(vformat(R"(Expected conditional expression after "%s".)", p_token));
 	}
 
-	consume(GDScriptNewTokenizer::Token::COLON, R"(Expected ":" after "if" condition.)");
+	consume(GDScriptNewTokenizer::Token::COLON, vformat(R"(Expected ":" after "%s" condition.)", p_token));
 
-	n_if->true_block = parse_suite(R"("if" block)");
+	n_if->true_block = parse_suite(vformat(R"("%s" block)", p_token));
 
 	if (match(GDScriptNewTokenizer::Token::ELIF)) {
-		n_if->elif = parse_if();
+		IfNode *elif = parse_if("elif");
+
+		SuiteNode *else_block = alloc_node<SuiteNode>();
+		else_block->statements.push_back(elif);
+		n_if->false_block = else_block;
 	} else if (match(GDScriptNewTokenizer::Token::ELSE)) {
 		consume(GDScriptNewTokenizer::Token::COLON, R"(Expected ":" after "else".)");
 		n_if->false_block = parse_suite(R"("else" block)");
@@ -1332,7 +1424,6 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_assignment(Expressio
 
 	switch (p_previous_operand->type) {
 		case Node::IDENTIFIER:
-		case Node::ATTRIBUTE:
 		case Node::SUBSCRIPT:
 			// Okay.
 			break;
@@ -1456,17 +1547,15 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_grouping(ExpressionN
 }
 
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_attribute(ExpressionNode *p_previous_operand, bool p_can_assign) {
-	AttributeNode *attribute = alloc_node<AttributeNode>();
+	SubscriptNode *attribute = alloc_node<SubscriptNode>();
 
+	attribute->is_attribute = true;
 	attribute->base = p_previous_operand;
 
-	do {
-		if (!consume(GDScriptNewTokenizer::Token::IDENTIFIER, R"(Expected identifier after "." for attribute access.)")) {
-			break;
-		}
-		IdentifierNode *identifier = parse_identifier();
-		attribute->attribute_chain.push_back(identifier);
-	} while (match(GDScriptNewTokenizer::Token::PERIOD));
+	if (!consume(GDScriptNewTokenizer::Token::IDENTIFIER, R"(Expected identifier after "." for attribute access.)")) {
+		return nullptr;
+	}
+	attribute->attribute = parse_identifier();
 
 	return attribute;
 }
@@ -1576,8 +1665,8 @@ GDScriptNewParser::TypeNode *GDScriptNewParser::parse_type(bool p_allow_void) {
 	IdentifierNode *type_base = parse_identifier();
 
 	if (match(GDScriptNewTokenizer::Token::PERIOD)) {
-		type->type_specifier = static_cast<AttributeNode *>(parse_attribute(type_base, false));
-		if (type->type_specifier->attribute_chain.size() == 0) {
+		type->type_specifier = static_cast<SubscriptNode *>(parse_attribute(type_base, false));
+		if (type->type_specifier->index == nullptr) {
 			return nullptr;
 		}
 	} else {
@@ -1954,15 +2043,12 @@ void GDScriptNewParser::TreePrinter::print_array(ArrayNode *p_array) {
 
 void GDScriptNewParser::TreePrinter::print_assert(AssertNode *p_assert) {
 	push_text("Assert ( ");
-	print_expression(p_assert->to_assert);
+	print_expression(p_assert->condition);
 	push_line(" )");
 }
 
 void GDScriptNewParser::TreePrinter::print_assignment(AssignmentNode *p_assignment) {
 	switch (p_assignment->assignee->type) {
-		case Node::ATTRIBUTE:
-			print_attribute(static_cast<AttributeNode *>(p_assignment->assignee));
-			break;
 		case Node::IDENTIFIER:
 			print_identifier(static_cast<IdentifierNode *>(p_assignment->assignee));
 			break;
@@ -2011,14 +2097,6 @@ void GDScriptNewParser::TreePrinter::print_assignment(AssignmentNode *p_assignme
 	push_text("= ");
 	print_expression(p_assignment->assigned_value);
 	push_line();
-}
-
-void GDScriptNewParser::TreePrinter::print_attribute(AttributeNode *p_attribute) {
-	print_expression(p_attribute->base);
-	for (int i = 0; i < p_attribute->attribute_chain.size(); i++) {
-		push_text(".");
-		print_identifier(p_attribute->attribute_chain[i]);
-	}
 }
 
 void GDScriptNewParser::TreePrinter::print_await(AwaitNode *p_await) {
@@ -2211,9 +2289,6 @@ void GDScriptNewParser::TreePrinter::print_expression(ExpressionNode *p_expressi
 		case Node::ASSIGNMENT:
 			print_assignment(static_cast<AssignmentNode *>(p_expression));
 			break;
-		case Node::ATTRIBUTE:
-			print_attribute(static_cast<AttributeNode *>(p_expression));
-			break;
 		case Node::AWAIT:
 			print_await(static_cast<AwaitNode *>(p_expression));
 			break;
@@ -2349,9 +2424,8 @@ void GDScriptNewParser::TreePrinter::print_if(IfNode *p_if, bool p_is_elif) {
 	print_suite(p_if->true_block);
 	decrease_indent();
 
-	if (p_if->elif != nullptr) {
-		print_if(p_if->elif, true);
-	} else if (p_if->false_block != nullptr) {
+	// FIXME: Properly detect "elif" blocks.
+	if (p_if->false_block != nullptr) {
 		push_line("Else :");
 		increase_indent();
 		print_suite(p_if->false_block);
@@ -2503,9 +2577,14 @@ void GDScriptNewParser::TreePrinter::print_signal(SignalNode *p_signal) {
 
 void GDScriptNewParser::TreePrinter::print_subscript(SubscriptNode *p_subscript) {
 	print_expression(p_subscript->base);
-	push_text("[ ");
-	print_expression(p_subscript->index);
-	push_text(" ]");
+	if (p_subscript->is_attribute) {
+		push_text(".");
+		print_identifier(p_subscript->attribute);
+	} else {
+		push_text("[ ");
+		print_expression(p_subscript->index);
+		push_text(" ]");
+	}
 }
 
 void GDScriptNewParser::TreePrinter::print_statement(Node *p_statement) {
@@ -2576,7 +2655,7 @@ void GDScriptNewParser::TreePrinter::print_ternary_op(TernaryOpNode *p_ternary_o
 
 void GDScriptNewParser::TreePrinter::print_type(TypeNode *p_type) {
 	if (p_type->type_specifier != nullptr) {
-		print_attribute(p_type->type_specifier);
+		print_subscript(p_type->type_specifier);
 	} else if (p_type->type_base != nullptr) {
 		print_identifier(p_type->type_base);
 	} else {

@@ -224,6 +224,7 @@ public:
 
 private:
 	friend class GDScriptCompiler;
+	friend class GDScriptNewCompiler;
 
 	StringName source;
 

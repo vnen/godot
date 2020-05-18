@@ -70,6 +70,7 @@ class GDScript : public Script {
 	friend class GDScriptInstance;
 	friend class GDScriptFunction;
 	friend class GDScriptCompiler;
+	friend class GDScriptNewCompiler;
 	friend class GDScriptFunctions;
 	friend class GDScriptLanguage;
 
@@ -244,6 +245,7 @@ class GDScriptInstance : public ScriptInstance {
 	friend class GDScriptFunction;
 	friend class GDScriptFunctions;
 	friend class GDScriptCompiler;
+	friend class GDScriptNewCompiler;
 
 	ObjectID owner_id;
 	Object *owner;

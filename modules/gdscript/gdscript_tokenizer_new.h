@@ -28,8 +28,8 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifndef GDSCRIPT_TOKENIZER_H
-#define GDSCRIPT_TOKENIZER_H
+#ifndef GDSCRIPT_TOKENIZER_NEW_H
+#define GDSCRIPT_TOKENIZER_NEW_H
 
 #include "core/list.h"
 #include "core/set.h"

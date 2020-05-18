@@ -34,6 +34,8 @@
 #include "core/global_constants.h"
 #include "core/os/file_access.h"
 #include "gdscript_compiler.h"
+#include "gdscript_compiler_new.h"
+#include "gdscript_parser_new.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/editor_file_system.h"
@@ -115,49 +117,50 @@ void GDScriptLanguage::make_template(const String &p_class_name, const String &p
 }
 
 bool GDScriptLanguage::validate(const String &p_script, int &r_line_error, int &r_col_error, String &r_test_error, const String &p_path, List<String> *r_functions, List<ScriptLanguage::Warning> *r_warnings, Set<int> *r_safe_lines) const {
-	GDScriptParser parser;
+	GDScriptNewParser parser;
 
-	Error err = parser.parse(p_script, p_path.get_base_dir(), true, p_path, false, r_safe_lines);
+	Error err = parser.parse(p_script, p_path, false);
 #ifdef DEBUG_ENABLED
-	if (r_warnings) {
-		for (const List<GDScriptWarning>::Element *E = parser.get_warnings().front(); E; E = E->next()) {
-			const GDScriptWarning &warn = E->get();
-			ScriptLanguage::Warning w;
-			w.line = warn.line;
-			w.code = (int)warn.code;
-			w.string_code = GDScriptWarning::get_name_from_code(warn.code);
-			w.message = warn.get_message();
-			r_warnings->push_back(w);
-		}
-	}
+	// FIXME: Warnings.
+	// if (r_warnings) {
+	// 	for (const List<GDScriptWarning>::Element *E = parser.get_warnings().front(); E; E = E->next()) {
+	// 		const GDScriptWarning &warn = E->get();
+	// 		ScriptLanguage::Warning w;
+	// 		w.line = warn.line;
+	// 		w.code = (int)warn.code;
+	// 		w.string_code = GDScriptWarning::get_name_from_code(warn.code);
+	// 		w.message = warn.get_message();
+	// 		r_warnings->push_back(w);
+	// 	}
+	// }
 #endif
 	if (err) {
-		r_line_error = parser.get_error_line();
-		r_col_error = parser.get_error_column();
-		r_test_error = parser.get_error();
+		GDScriptNewParser::ParserError parse_error = parser.get_errors().front()->get();
+		r_line_error = parse_error.line;
+		r_col_error = parse_error.column;
+		r_test_error = parse_error.message;
 		return false;
 	} else {
-		const GDScriptParser::Node *root = parser.get_parse_tree();
-		ERR_FAIL_COND_V(root->type != GDScriptParser::Node::TYPE_CLASS, false);
-
-		const GDScriptParser::ClassNode *cl = static_cast<const GDScriptParser::ClassNode *>(root);
+		const GDScriptNewParser::ClassNode *cl = parser.get_tree();
 		Map<int, String> funcs;
-		for (int i = 0; i < cl->functions.size(); i++) {
-			funcs[cl->functions[i]->line] = cl->functions[i]->name;
+
+		for (int i = 0; i < cl->members.size(); i++) {
+			if (cl->members[i].type != GDScriptNewParser::ClassNode::Member::FUNCTION) {
+				continue;
+			}
+			const GDScriptNewParser::FunctionNode *function = cl->members[i].function;
+			funcs[function->start_line] = function->identifier->name;
 		}
 
-		for (int i = 0; i < cl->static_functions.size(); i++) {
-			funcs[cl->static_functions[i]->line] = cl->static_functions[i]->name;
-		}
-
-		for (int i = 0; i < cl->subclasses.size(); i++) {
-			for (int j = 0; j < cl->subclasses[i]->functions.size(); j++) {
-				funcs[cl->subclasses[i]->functions[j]->line] = String(cl->subclasses[i]->name) + "." + cl->subclasses[i]->functions[j]->name;
-			}
-			for (int j = 0; j < cl->subclasses[i]->static_functions.size(); j++) {
-				funcs[cl->subclasses[i]->static_functions[j]->line] = String(cl->subclasses[i]->name) + "." + cl->subclasses[i]->static_functions[j]->name;
-			}
-		}
+		// TODO: Store functions in inner classes.
+		// for (int i = 0; i < cl->subclasses.size(); i++) {
+		// 	for (int j = 0; j < cl->subclasses[i]->functions.size(); j++) {
+		// 		funcs[cl->subclasses[i]->functions[j]->line] = String(cl->subclasses[i]->name) + "." + cl->subclasses[i]->functions[j]->name;
+		// 	}
+		// 	for (int j = 0; j < cl->subclasses[i]->static_functions.size(); j++) {
+		// 		funcs[cl->subclasses[i]->static_functions[j]->line] = String(cl->subclasses[i]->name) + "." + cl->subclasses[i]->static_functions[j]->name;
+		// 	}
+		// }
 
 		for (Map<int, String>::Element *E = funcs.front(); E; E = E->next()) {
 			r_functions->push_back(E->get() + ":" + itos(E->key()));

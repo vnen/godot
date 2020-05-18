@@ -28,8 +28,8 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifndef GDSCRIPT_PARSER_H
-#define GDSCRIPT_PARSER_H
+#ifndef GDSCRIPT_PARSER_NEW_H
+#define GDSCRIPT_PARSER_NEW_H
 
 #include "core/hash_map.h"
 #include "core/io/multiplayer_api.h"
@@ -41,6 +41,7 @@
 #include "core/ustring.h"
 #include "core/variant.h"
 #include "core/vector.h"
+#include "gdscript_functions.h"
 #include "gdscript_tokenizer_new.h"
 
 #include <initializer_list>
@@ -58,7 +59,6 @@ public:
 	struct ArrayNode;
 	struct AssertNode;
 	struct AssignmentNode;
-	struct AttributeNode;
 	struct AwaitNode;
 	struct BinaryOpNode;
 	struct BreakNode;
@@ -94,20 +94,22 @@ public:
 	struct WhileNode;
 
 	struct DataType {
-		enum {
+		enum Kind {
 			BUILTIN,
 			NATIVE,
 			SCRIPT,
 			GDSCRIPT, // Class
 			UNRESOLVED,
-		} kind = UNRESOLVED;
+		};
+		Kind kind = UNRESOLVED;
 
-		enum {
+		enum TypeSource {
 			UNDETECTED, // Can be any type.
 			INFERRED, // Has inferred type, but still dynamic.
 			ANNOTATED_EXPLICIT, // Has a specific type annotated.
 			ANNOTATED_INFERRED, // Has a static type but comes from the assigned value.
-		} type_source = UNDETECTED;
+		};
+		TypeSource type_source = UNDETECTED;
 
 		bool is_constant = false;
 		bool is_meta_type = false;
@@ -118,6 +120,7 @@ public:
 		Ref<Script> script_type;
 		ClassNode *gdscript_type = nullptr;
 
+		_FORCE_INLINE_ bool is_set() const { return type_source != UNDETECTED; }
 		String to_string() const;
 
 		bool operator==(const DataType &p_other) const {
@@ -171,7 +174,6 @@ public:
 			ARRAY,
 			ASSERT,
 			ASSIGNMENT,
-			ATTRIBUTE,
 			AWAIT,
 			BINARY_OPERATOR,
 			BREAK,
@@ -253,7 +255,8 @@ public:
 	};
 
 	struct AssertNode : public Node {
-		ExpressionNode *to_assert = nullptr;
+		ExpressionNode *condition = nullptr;
+		LiteralNode *message = nullptr;
 
 		AssertNode() {
 			type = ASSERT;
@@ -282,15 +285,6 @@ public:
 
 		AssignmentNode() {
 			type = ASSIGNMENT;
-		}
-	};
-
-	struct AttributeNode : public ExpressionNode {
-		ExpressionNode *base;
-		Vector<IdentifierNode *> attribute_chain;
-
-		AttributeNode() {
-			type = ATTRIBUTE;
 		}
 	};
 
@@ -444,6 +438,7 @@ public:
 		bool extends_used = false;
 		String extends_path;
 		Vector<StringName> extends; // List for indexing: extends A.B.C
+		DataType base_type;
 
 		Member get_member(const StringName &p_name) const {
 			return members[members_indices[p_name]];
@@ -452,6 +447,12 @@ public:
 		void add_member(T *p_member_node) {
 			members_indices[p_member_node->identifier->name] = members.size();
 			members.push_back(Member(p_member_node));
+		}
+		virtual DataType get_datatype() const {
+			return base_type;
+		}
+		virtual void set_datatype(const DataType &p_datatype) {
+			base_type = p_datatype;
 		}
 
 		ClassNode() {
@@ -546,7 +547,6 @@ public:
 		ExpressionNode *condition = nullptr;
 		SuiteNode *true_block = nullptr;
 		SuiteNode *false_block = nullptr;
-		IfNode *elif = nullptr;
 
 		IfNode() {
 			type = IF;
@@ -654,7 +654,12 @@ public:
 
 	struct SubscriptNode : public ExpressionNode {
 		ExpressionNode *base = nullptr;
-		ExpressionNode *index = nullptr;
+		union {
+			ExpressionNode *index = nullptr;
+			IdentifierNode *attribute;
+		};
+
+		bool is_attribute = false;
 
 		SubscriptNode() {
 			type = SUBSCRIPT;
@@ -716,7 +721,7 @@ public:
 
 	struct TypeNode : public Node {
 		IdentifierNode *type_base = nullptr;
-		AttributeNode *type_specifier = nullptr;
+		SubscriptNode *type_specifier = nullptr;
 
 		TypeNode() {
 			type = TYPE;
@@ -763,6 +768,8 @@ public:
 	};
 
 private:
+	friend class GDScriptAnalyzer;
+
 	bool _is_tool = false;
 	String script_path;
 	bool for_completion = false;
@@ -884,7 +891,7 @@ private:
 	BreakNode *parse_break();
 	ContinueNode *parse_continue();
 	ForNode *parse_for();
-	IfNode *parse_if();
+	IfNode *parse_if(const String &p_token = "if");
 	MatchNode *parse_match();
 	MatchBranchNode *parse_match_branch();
 	PatternNode *parse_match_pattern();
@@ -917,8 +924,14 @@ public:
 	Error parse(const String &p_source_code, const String &p_script_path, bool p_for_completion);
 	ClassNode *get_tree() const { return head; }
 	bool is_tool() const { return _is_tool; }
+	static Variant::Type get_builtin_type(const StringName &p_type);
+	static GDScriptFunctions::Function get_builtin_function(const StringName &p_name);
 
 	const List<ParserError> &get_errors() const { return errors; }
+	const List<String> get_dependencies() const {
+		// TODO: Keep track of deps.
+		return List<String>();
+	}
 
 	GDScriptNewParser();
 	~GDScriptNewParser();
@@ -939,7 +952,6 @@ public:
 		void print_array(ArrayNode *p_array);
 		void print_assert(AssertNode *p_assert);
 		void print_assignment(AssignmentNode *p_assignment);
-		void print_attribute(AttributeNode *p_attribute);
 		void print_await(AwaitNode *p_await);
 		void print_binary_op(BinaryOpNode *p_binary_op);
 		void print_call(CallNode *p_call);
