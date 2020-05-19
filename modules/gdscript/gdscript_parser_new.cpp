@@ -72,6 +72,10 @@ Variant::Type GDScriptNewParser::get_builtin_type(const StringName &p_type) {
 		builtin_types["PackedVector2Array"] = Variant::PACKED_VECTOR2_ARRAY;
 		builtin_types["PackedVector3Array"] = Variant::PACKED_VECTOR3_ARRAY;
 		builtin_types["PackedColorArray"] = Variant::PACKED_COLOR_ARRAY;
+		// NIL is not here, hence the -1.
+		if (builtin_types.size() != Variant::VARIANT_MAX - 1) {
+			ERR_PRINT("Outdated parser: amount of built-in types don't match the amount of types in Variant.");
+		}
 	}
 
 	if (builtin_types.has(p_type)) {
@@ -96,24 +100,24 @@ GDScriptNewParser::GDScriptNewParser() {
 	register_annotation(MethodInfo("@tool"), AnnotationInfo::SCRIPT, &GDScriptNewParser::tool_annotation);
 	register_annotation(MethodInfo("@icon", { Variant::STRING, "icon_path" }), AnnotationInfo::SCRIPT, &GDScriptNewParser::icon_annotation);
 	// Export annotations.
-	register_annotation(MethodInfo("@export"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_TYPE_STRING>);
-	register_annotation(MethodInfo("@export_enum", { Variant::STRING, "names" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_ENUM>, 0, true);
-	register_annotation(MethodInfo("@export_file", { Variant::STRING, "filter" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_FILE>, 1, true);
-	register_annotation(MethodInfo("@export_dir"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_DIR>);
-	register_annotation(MethodInfo("@export_global_file", { Variant::STRING, "filter" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_GLOBAL_FILE>, 1, true);
-	register_annotation(MethodInfo("@export_global_dir"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_GLOBAL_DIR>);
-	register_annotation(MethodInfo("@export_multiline"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_MULTILINE_TEXT>);
-	register_annotation(MethodInfo("@export_placeholder"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_PLACEHOLDER_TEXT>);
-	register_annotation(MethodInfo("@export_range", { Variant::FLOAT, "min" }, { Variant::FLOAT, "max" }, { Variant::FLOAT, "step" }, { Variant::STRING, "slider1" }, { Variant::STRING, "slider2" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_RANGE>, 3);
-	register_annotation(MethodInfo("@export_exp_range", { Variant::FLOAT, "min" }, { Variant::FLOAT, "max" }, { Variant::FLOAT, "step" }, { Variant::STRING, "slider1" }, { Variant::STRING, "slider2" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_EXP_RANGE>, 3);
-	register_annotation(MethodInfo("@export_exp_easing", { Variant::STRING, "hint1" }, { Variant::STRING, "hint2" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_EXP_EASING>, 2);
-	register_annotation(MethodInfo("@export_color_no_alpha"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_COLOR_NO_ALPHA>);
-	register_annotation(MethodInfo("@export_node_path", { Variant::STRING, "type" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_NODE_PATH_VALID_TYPES>, 1, true);
-	register_annotation(MethodInfo("@export_flags", { Variant::STRING, "names" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_FLAGS>, 0, true);
-	register_annotation(MethodInfo("@export_flags_2d_render"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_2D_RENDER>);
-	register_annotation(MethodInfo("@export_flags_2d_physics"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_2D_PHYSICS>);
-	register_annotation(MethodInfo("@export_flags_3d_render"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_3D_RENDER>);
-	register_annotation(MethodInfo("@export_flags_3d_physics"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_3D_PHYSICS>);
+	register_annotation(MethodInfo("@export"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_TYPE_STRING, Variant::NIL>);
+	register_annotation(MethodInfo("@export_enum", { Variant::STRING, "names" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_ENUM, Variant::INT>, 0, true);
+	register_annotation(MethodInfo("@export_file", { Variant::STRING, "filter" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_FILE, Variant::STRING>, 1, true);
+	register_annotation(MethodInfo("@export_dir"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_DIR, Variant::STRING>);
+	register_annotation(MethodInfo("@export_global_file", { Variant::STRING, "filter" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_GLOBAL_FILE, Variant::STRING>, 1, true);
+	register_annotation(MethodInfo("@export_global_dir"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_GLOBAL_DIR, Variant::STRING>);
+	register_annotation(MethodInfo("@export_multiline"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_MULTILINE_TEXT, Variant::STRING>);
+	register_annotation(MethodInfo("@export_placeholder"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_PLACEHOLDER_TEXT, Variant::STRING>);
+	register_annotation(MethodInfo("@export_range", { Variant::FLOAT, "min" }, { Variant::FLOAT, "max" }, { Variant::FLOAT, "step" }, { Variant::STRING, "slider1" }, { Variant::STRING, "slider2" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_RANGE, Variant::FLOAT>, 3);
+	register_annotation(MethodInfo("@export_exp_range", { Variant::FLOAT, "min" }, { Variant::FLOAT, "max" }, { Variant::FLOAT, "step" }, { Variant::STRING, "slider1" }, { Variant::STRING, "slider2" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_EXP_RANGE, Variant::FLOAT>, 3);
+	register_annotation(MethodInfo("@export_exp_easing", { Variant::STRING, "hint1" }, { Variant::STRING, "hint2" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_EXP_EASING, Variant::FLOAT>, 2);
+	register_annotation(MethodInfo("@export_color_no_alpha"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_COLOR_NO_ALPHA, Variant::COLOR>);
+	register_annotation(MethodInfo("@export_node_path", { Variant::STRING, "type" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_NODE_PATH_VALID_TYPES, Variant::NODE_PATH>, 1, true);
+	register_annotation(MethodInfo("@export_flags", { Variant::STRING, "names" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_FLAGS, Variant::INT>, 0, true);
+	register_annotation(MethodInfo("@export_flags_2d_render"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_2D_RENDER, Variant::INT>);
+	register_annotation(MethodInfo("@export_flags_2d_physics"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_2D_PHYSICS, Variant::INT>);
+	register_annotation(MethodInfo("@export_flags_3d_render"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_3D_RENDER, Variant::INT>);
+	register_annotation(MethodInfo("@export_flags_3d_physics"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_LAYERS_3D_PHYSICS, Variant::INT>);
 	// Networking.
 	register_annotation(MethodInfo("@remote"), AnnotationInfo::VARIABLE | AnnotationInfo::FUNCTION, &GDScriptNewParser::network_annotations<MultiplayerAPI::RPC_MODE_REMOTE>);
 	register_annotation(MethodInfo("@master"), AnnotationInfo::VARIABLE | AnnotationInfo::FUNCTION, &GDScriptNewParser::network_annotations<MultiplayerAPI::RPC_MODE_MASTER>);
@@ -158,12 +162,16 @@ void GDScriptNewParser::clear() {
 	errors.clear();
 }
 
-void GDScriptNewParser::push_error(const String &p_message) {
+void GDScriptNewParser::push_error(const String &p_message, const Node *p_origin) {
 	// TODO: Improve error reporting by pointing at source code.
 	// TODO: Errors might point at more than one place at once (e.g. show previous declaration).
 	panic_mode = true;
 	// TODO: Improve positional information.
-	errors.push_back({ p_message, current.start_line, current.start_column });
+	if (p_origin == nullptr) {
+		errors.push_back({ p_message, current.start_line, current.start_column });
+	} else {
+		errors.push_back({ p_message, p_origin->start_line, p_origin->leftmost_column });
+	}
 }
 
 Error GDScriptNewParser::parse(const String &p_source_code, const String &p_script_path, bool p_for_completion) {
@@ -445,6 +453,7 @@ void GDScriptNewParser::parse_class_member(T *(GDScriptNewParser::*p_parse_funct
 			return;
 		}
 	}
+	// TODO: Consider names in outer scope too, for constants and classes (and static functions?)
 	if (current_class->members_indices.has(member->identifier->name)) {
 		push_error(vformat(R"(%s "%s" has the same name as a previously declared %s.)", p_member_kind.capitalize(), member->identifier->name, current_class->get_member(member->identifier->name).get_type_name()));
 	} else {
@@ -524,6 +533,8 @@ GDScriptNewParser::VariableNode *GDScriptNewParser::parse_variable() {
 	}
 
 	end_statement("variable declaration");
+
+	variable->export_info.name = variable->identifier->name;
 
 	return variable;
 }
@@ -1664,6 +1675,8 @@ GDScriptNewParser::TypeNode *GDScriptNewParser::parse_type(bool p_allow_void) {
 	TypeNode *type = alloc_node<TypeNode>();
 	IdentifierNode *type_base = parse_identifier();
 
+	// FIXME: This is likely not working with multiple chained attributes (A.B.C.D...).
+	// FIXME: I probably should use a list for this, not an attribute (since those aren't chained anymore).
 	if (match(GDScriptNewTokenizer::Token::PERIOD)) {
 		type->type_specifier = static_cast<SubscriptNode *>(parse_attribute(type_base, false));
 		if (type->type_specifier->index == nullptr) {
@@ -1908,24 +1921,33 @@ bool GDScriptNewParser::icon_annotation(const AnnotationNode *p_annotation, Node
 	return true;
 }
 
-template <PropertyHint t_hint>
+template <PropertyHint t_hint, Variant::Type t_type>
 bool GDScriptNewParser::export_annotations(const AnnotationNode *p_annotation, Node *p_node) {
 	ERR_FAIL_COND_V_MSG(p_node->type != Node::VARIABLE, false, vformat(R"("%s" annotation can only be applied to variables.)", p_annotation->name));
 
 	VariableNode *variable = static_cast<VariableNode *>(p_node);
 	if (variable->exported) {
-		push_error(vformat(R"(Annotation "%s" cannot be used with another "@export" annotation.)", p_annotation->name));
+		push_error(vformat(R"(Annotation "%s" cannot be used with another "@export" annotation.)", p_annotation->name), p_annotation);
 		return false;
 	}
 
 	variable->exported = true;
+	// TODO: Improving setting type, especially for range hints, which can be int or float.
+	variable->export_info.type = t_type;
+	variable->export_info.hint = t_hint;
 
 	if (p_annotation->name == "@export") {
-		if (variable->datatype_specifier == nullptr && variable->initializer == nullptr) {
-			push_error(R"(Cannot use bare "@export" annotation with variable without type or initializer, since type can't be inferred.)");
-			return false;
-		}
-		// Actual type will be set by the analyzer, which can infer the proper type.
+		if (variable->datatype_specifier == nullptr) {
+			if (variable->initializer == nullptr) {
+				push_error(R"(Cannot use "@export" annotation with variable without type or initializer, since type can't be inferred.)", p_annotation);
+				return false;
+			}
+			if (variable->initializer->type != Node::LITERAL) {
+				push_error(R"(To use "@export" annotation with type-less variable, the default value must be a literal.)", p_annotation);
+				return false;
+			}
+			variable->export_info.type = static_cast<LiteralNode *>(variable->initializer)->value.get_type();
+		} // else: Actual type will be set by the analyzer, which can infer the proper type.
 	}
 
 	StringBuilder hint_string;
@@ -1936,7 +1958,6 @@ bool GDScriptNewParser::export_annotations(const AnnotationNode *p_annotation, N
 		hint_string += String(p_annotation->resolved_arguments[i]);
 	}
 
-	variable->export_info.hint = t_hint;
 	variable->export_info.hint_string = hint_string;
 
 	return true;
@@ -1954,7 +1975,7 @@ bool GDScriptNewParser::network_annotations(const AnnotationNode *p_annotation, 
 		case Node::VARIABLE: {
 			VariableNode *variable = static_cast<VariableNode *>(p_node);
 			if (variable->rpc_mode != MultiplayerAPI::RPC_MODE_DISABLED) {
-				push_error(R"(RPC annotations can only be used once per variable.)");
+				push_error(R"(RPC annotations can only be used once per variable.)", p_annotation);
 			}
 			variable->rpc_mode = t_mode;
 			break;
@@ -1962,7 +1983,7 @@ bool GDScriptNewParser::network_annotations(const AnnotationNode *p_annotation, 
 		case Node::FUNCTION: {
 			FunctionNode *function = static_cast<FunctionNode *>(p_node);
 			if (function->rpc_mode != MultiplayerAPI::RPC_MODE_DISABLED) {
-				push_error(R"(RPC annotations can only be used once per function.)");
+				push_error(R"(RPC annotations can only be used once per function.)", p_annotation);
 			}
 			function->rpc_mode = t_mode;
 			break;

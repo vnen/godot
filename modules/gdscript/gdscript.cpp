@@ -384,9 +384,10 @@ bool GDScript::_update_exports(bool *r_err, bool p_recursive_call) {
 		}
 
 		GDScriptNewParser parser;
+		GDScriptAnalyzer analyzer(&parser);
 		Error err = parser.parse(source, path, false);
 
-		if (err == OK) {
+		if (err == OK && analyzer.analyze() == OK) {
 			const GDScriptNewParser::ClassNode *c = parser.get_tree();
 
 			if (base_cache.is_valid()) {
@@ -437,7 +438,7 @@ bool GDScript::_update_exports(bool *r_err, bool p_recursive_call) {
 
 				switch (member.type) {
 					case GDScriptNewParser::ClassNode::Member::VARIABLE: {
-						if (member.variable->export_info.type == Variant::NIL) {
+						if (!member.variable->exported) {
 							continue;
 						}
 

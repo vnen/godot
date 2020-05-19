@@ -37,6 +37,10 @@ class GDScriptAnalyzer {
 	GDScriptNewParser *parser = nullptr;
 
 	Error resolve_inheritance(GDScriptNewParser::ClassNode *p_class, bool p_recursive = true);
+	GDScriptNewParser::DataType resolve_datatype(const GDScriptNewParser::TypeNode *p_type);
+
+	// This traverses the tree to resolve all TypeNodes.
+	Error resolve_datatypes(GDScriptNewParser::ClassNode *p_class);
 
 public:
 	Error resolve_inheritance();

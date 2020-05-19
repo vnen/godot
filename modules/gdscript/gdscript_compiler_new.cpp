@@ -1920,7 +1920,7 @@ Error GDScriptNewCompiler::_parse_class_level(GDScript *p_script, const GDScript
 			prop_info.name = name;
 			PropertyInfo export_info = variable->export_info;
 
-			if (export_info.type != Variant::NIL) {
+			if (variable->exported) {
 				if (!minfo.data_type.has_type) {
 					prop_info.type = export_info.type;
 					prop_info.class_name = export_info.class_name;

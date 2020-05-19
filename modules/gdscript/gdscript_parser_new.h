@@ -847,7 +847,7 @@ private:
 	template <class T>
 	T *alloc_node();
 	void clear();
-	void push_error(const String &p_message);
+	void push_error(const String &p_message, const Node *p_origin = nullptr);
 
 	GDScriptNewTokenizer::Token advance();
 	bool match(GDScriptNewTokenizer::Token::Type p_token_type);
@@ -878,7 +878,7 @@ private:
 	void clear_unused_annotations();
 	bool tool_annotation(const AnnotationNode *p_annotation, Node *p_target);
 	bool icon_annotation(const AnnotationNode *p_annotation, Node *p_target);
-	template <PropertyHint t_hint>
+	template <PropertyHint t_hint, Variant::Type t_type>
 	bool export_annotations(const AnnotationNode *p_annotation, Node *p_target);
 	bool warning_annotations(const AnnotationNode *p_annotation, Node *p_target);
 	template <MultiplayerAPI::RPCMode t_mode>
