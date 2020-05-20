@@ -1990,96 +1990,123 @@ Error GDScriptNewCompiler::_parse_class_level(GDScript *p_script, const GDScript
 
 	for (int i = 0; i < p_class->members.size(); i++) {
 		const GDScriptNewParser::ClassNode::Member &member = p_class->members[i];
-		if (member.type == member.VARIABLE) {
-			const GDScriptNewParser::VariableNode *variable = member.variable;
-			StringName name = variable->identifier->name;
+		switch (member.type) {
+			case GDScriptNewParser::ClassNode::Member::VARIABLE: {
+				const GDScriptNewParser::VariableNode *variable = member.variable;
+				StringName name = variable->identifier->name;
 
-			GDScript::MemberInfo minfo;
-			minfo.index = p_script->member_indices.size();
-			// FIXME: Getter and setter.
-			// minfo.setter = p_class->variables[i].setter;
-			// minfo.getter = p_class->variables[i].getter;
-			minfo.rpc_mode = variable->rpc_mode;
-			// FIXME: Types.
-			// minfo.data_type = _gdtype_from_datatype(p_class->variables[i].data_type);
+				GDScript::MemberInfo minfo;
+				minfo.index = p_script->member_indices.size();
+				// FIXME: Getter and setter.
+				// minfo.setter = p_class->variables[i].setter;
+				// minfo.getter = p_class->variables[i].getter;
+				minfo.rpc_mode = variable->rpc_mode;
+				// FIXME: Types.
+				// minfo.data_type = _gdtype_from_datatype(p_class->variables[i].data_type);
 
-			PropertyInfo prop_info = minfo.data_type;
-			prop_info.name = name;
-			PropertyInfo export_info = variable->export_info;
+				PropertyInfo prop_info = minfo.data_type;
+				prop_info.name = name;
+				PropertyInfo export_info = variable->export_info;
 
-			if (variable->exported) {
-				if (!minfo.data_type.has_type) {
-					prop_info.type = export_info.type;
-					prop_info.class_name = export_info.class_name;
-				}
-				prop_info.hint = export_info.hint;
-				prop_info.hint_string = export_info.hint_string;
-				prop_info.usage = export_info.usage;
+				if (variable->exported) {
+					if (!minfo.data_type.has_type) {
+						prop_info.type = export_info.type;
+						prop_info.class_name = export_info.class_name;
+					}
+					prop_info.hint = export_info.hint;
+					prop_info.hint_string = export_info.hint_string;
+					prop_info.usage = export_info.usage;
 #ifdef TOOLS_ENABLED
-				if (variable->initializer != nullptr && variable->initializer->type == GDScriptNewParser::Node::LITERAL) {
-					p_script->member_default_values[name] = static_cast<const GDScriptNewParser::LiteralNode *>(variable->initializer)->value;
-				}
+					if (variable->initializer != nullptr && variable->initializer->type == GDScriptNewParser::Node::LITERAL) {
+						p_script->member_default_values[name] = static_cast<const GDScriptNewParser::LiteralNode *>(variable->initializer)->value;
+					}
 #endif
-			} else {
-				prop_info.usage = PROPERTY_USAGE_SCRIPT_VARIABLE;
-			}
-
-			p_script->member_info[name] = prop_info;
-			p_script->member_indices[name] = minfo;
-			p_script->members.insert(name);
-
-#ifdef TOOLS_ENABLED
-			p_script->member_lines[name] = variable->start_line;
-#endif
-		}
-
-		if (member.type == member.CONSTANT) {
-			const GDScriptNewParser::ConstantNode *constant = member.constant;
-			StringName name = constant->identifier->name;
-
-			ERR_CONTINUE(constant->initializer->type != GDScriptNewParser::Node::LITERAL);
-
-			const GDScriptNewParser::LiteralNode *literal = static_cast<const GDScriptNewParser::LiteralNode *>(constant->initializer);
-
-			p_script->constants.insert(name, literal->value);
-#ifdef TOOLS_ENABLED
-
-			p_script->member_lines[name] = constant->start_line;
-#endif
-		}
-
-		if (member.type == member.SIGNAL) {
-			const GDScriptNewParser::SignalNode *signal = member.signal;
-			StringName name = signal->identifier->name;
-
-			GDScript *c = p_script;
-
-			while (c) {
-				if (c->_signals.has(name)) {
-					_set_error("Signal '" + name + "' redefined (in current or parent class)", p_class);
-					return ERR_ALREADY_EXISTS;
-				}
-
-				if (c->base.is_valid()) {
-					c = c->base.ptr();
 				} else {
-					c = nullptr;
+					prop_info.usage = PROPERTY_USAGE_SCRIPT_VARIABLE;
 				}
-			}
 
-			if (native.is_valid()) {
-				if (ClassDB::has_signal(native->get_name(), name)) {
-					_set_error("Signal '" + name + "' redefined (original in native class '" + String(native->get_name()) + "')", p_class);
-					return ERR_ALREADY_EXISTS;
+				p_script->member_info[name] = prop_info;
+				p_script->member_indices[name] = minfo;
+				p_script->members.insert(name);
+
+#ifdef TOOLS_ENABLED
+				p_script->member_lines[name] = variable->start_line;
+#endif
+			} break;
+
+			case GDScriptNewParser::ClassNode::Member::CONSTANT: {
+				const GDScriptNewParser::ConstantNode *constant = member.constant;
+				StringName name = constant->identifier->name;
+
+				ERR_CONTINUE(constant->initializer->type != GDScriptNewParser::Node::LITERAL);
+
+				const GDScriptNewParser::LiteralNode *literal = static_cast<const GDScriptNewParser::LiteralNode *>(constant->initializer);
+
+				p_script->constants.insert(name, literal->value);
+#ifdef TOOLS_ENABLED
+
+				p_script->member_lines[name] = constant->start_line;
+#endif
+			} break;
+
+			case GDScriptNewParser::ClassNode::Member::SIGNAL: {
+				const GDScriptNewParser::SignalNode *signal = member.signal;
+				StringName name = signal->identifier->name;
+
+				GDScript *c = p_script;
+
+				while (c) {
+					if (c->_signals.has(name)) {
+						_set_error("Signal '" + name + "' redefined (in current or parent class)", p_class);
+						return ERR_ALREADY_EXISTS;
+					}
+
+					if (c->base.is_valid()) {
+						c = c->base.ptr();
+					} else {
+						c = nullptr;
+					}
 				}
-			}
 
-			Vector<StringName> parameters_names;
-			parameters_names.resize(signal->parameters.size());
-			for (int j = 0; j < signal->parameters.size(); j++) {
-				parameters_names.write[j] = signal->parameters[j]->identifier->name;
-			}
-			p_script->_signals[name] = parameters_names;
+				if (native.is_valid()) {
+					if (ClassDB::has_signal(native->get_name(), name)) {
+						_set_error("Signal '" + name + "' redefined (original in native class '" + String(native->get_name()) + "')", p_class);
+						return ERR_ALREADY_EXISTS;
+					}
+				}
+
+				Vector<StringName> parameters_names;
+				parameters_names.resize(signal->parameters.size());
+				for (int j = 0; j < signal->parameters.size(); j++) {
+					parameters_names.write[j] = signal->parameters[j]->identifier->name;
+				}
+				p_script->_signals[name] = parameters_names;
+			} break;
+
+			case GDScriptNewParser::ClassNode::Member::ENUM: {
+				// TODO: Make enums not be just a dictionary?
+				const GDScriptNewParser::EnumNode *enum_n = member.m_enum;
+
+				Dictionary new_enum;
+				int next_value = 0;
+				for (int i = 0; i < enum_n->values.size(); i++) {
+					int value = next_value++;
+					if (enum_n->values[i].value != nullptr) {
+						value = enum_n->values[i].value->value;
+					}
+					// Needs to be string because Variant::get will convert to String.
+					new_enum[enum_n->values[i].name->name.operator String()] = value;
+					next_value = value + 1;
+				}
+
+				p_script->constants.insert(enum_n->identifier->name, new_enum);
+#ifdef TOOLS_ENABLED
+
+				p_script->member_lines[enum_n->identifier->name] = enum_n->start_line;
+#endif
+			} break;
+			default:
+				break; // Nothing to do here.
 		}
 	}
 
