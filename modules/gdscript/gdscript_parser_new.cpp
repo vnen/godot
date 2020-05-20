@@ -99,6 +99,7 @@ GDScriptNewParser::GDScriptNewParser() {
 	// TODO: Validate applicable types (e.g. a VARIABLE annotation that only applies to string variables).
 	register_annotation(MethodInfo("@tool"), AnnotationInfo::SCRIPT, &GDScriptNewParser::tool_annotation);
 	register_annotation(MethodInfo("@icon", { Variant::STRING, "icon_path" }), AnnotationInfo::SCRIPT, &GDScriptNewParser::icon_annotation);
+	register_annotation(MethodInfo("@onready"), AnnotationInfo::VARIABLE, &GDScriptNewParser::onready_annotation);
 	// Export annotations.
 	register_annotation(MethodInfo("@export"), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_TYPE_STRING, Variant::NIL>);
 	register_annotation(MethodInfo("@export_enum", { Variant::STRING, "names" }), AnnotationInfo::VARIABLE, &GDScriptNewParser::export_annotations<PROPERTY_HINT_ENUM, Variant::INT>, 0, true);
@@ -910,6 +911,7 @@ GDScriptNewParser::Node *GDScriptNewParser::parse_statement() {
 			if (!is_statement_end()) {
 				n_return->return_value = parse_expression(false);
 			}
+			result = n_return;
 			end_statement("return statement");
 			break;
 		}
@@ -1918,6 +1920,19 @@ bool GDScriptNewParser::icon_annotation(const AnnotationNode *p_annotation, Node
 	ERR_FAIL_COND_V_MSG(p_node->type != Node::CLASS, false, R"("@icon" annotation can only be applied to classes.)");
 	ClassNode *p_class = static_cast<ClassNode *>(p_node);
 	p_class->icon_path = p_annotation->resolved_arguments[0];
+	return true;
+}
+
+bool GDScriptNewParser::onready_annotation(const AnnotationNode *p_annotation, Node *p_node) {
+	ERR_FAIL_COND_V_MSG(p_node->type != Node::VARIABLE, false, R"("@onready" annotation can only be applied to class variables.)");
+
+	VariableNode *variable = static_cast<VariableNode *>(p_node);
+	if (variable->onready) {
+		push_error(R"("@onready" annotation can only be used once per variable.)");
+		return false;
+	}
+	variable->onready = true;
+	current_class->onready_used = true;
 	return true;
 }
 

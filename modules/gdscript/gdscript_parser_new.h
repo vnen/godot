@@ -436,6 +436,7 @@ public:
 		HashMap<StringName, int> members_indices;
 		ClassNode *outer = nullptr;
 		bool extends_used = false;
+		bool onready_used = false;
 		String extends_path;
 		Vector<StringName> extends; // List for indexing: extends A.B.C
 		DataType base_type;
@@ -750,6 +751,7 @@ public:
 		TypeNode *datatype_specifier = nullptr;
 		bool infer_datatype = false;
 		bool exported = false;
+		bool onready = false;
 		PropertyInfo export_info;
 		MultiplayerAPI::RPCMode rpc_mode = MultiplayerAPI::RPC_MODE_DISABLED;
 
@@ -878,6 +880,7 @@ private:
 	void clear_unused_annotations();
 	bool tool_annotation(const AnnotationNode *p_annotation, Node *p_target);
 	bool icon_annotation(const AnnotationNode *p_annotation, Node *p_target);
+	bool onready_annotation(const AnnotationNode *p_annotation, Node *p_target);
 	template <PropertyHint t_hint, Variant::Type t_type>
 	bool export_annotations(const AnnotationNode *p_annotation, Node *p_target);
 	bool warning_annotations(const AnnotationNode *p_annotation, Node *p_target);
