@@ -670,7 +670,7 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 					arguments.push_back(ret);
 				}
 
-				codegen.opcodes.push_back(p_root ? GDScriptFunction::OPCODE_CALL : GDScriptFunction::OPCODE_CALL_RETURN); // perform operator
+				codegen.opcodes.push_back(p_root ? GDScriptFunction::OPCODE_CALL : (within_await ? GDScriptFunction::OPCODE_CALL_ASYNC : GDScriptFunction::OPCODE_CALL_RETURN)); // perform operator
 				codegen.opcodes.push_back(call->arguments.size());
 				codegen.alloc_call(call->arguments.size());
 				for (int i = 0; i < arguments.size(); i++) {
@@ -704,31 +704,28 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 			codegen.opcodes.push_back(arg_address); // argument (NodePath).
 			OPERATOR_RETURN;
 		} break;
-		// TODO: Need to fix VM to support a signal type.
-		// case GDScriptNewParser::Node::AWAIT: {
-		// 	Vector<int> arguments;
-		// 	int slevel = p_stack_level;
-		// 	for (int i = 0; i < on->arguments.size(); i++) {
-		// 		int ret = _parse_expression(codegen, on->arguments[i], slevel);
-		// 		if (ret < 0) {
-		// 			return ret;
-		// 		}
-		// 		if ((ret >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
-		// 			slevel++;
-		// 			codegen.alloc_stack(slevel);
-		// 		}
-		// 		arguments.push_back(ret);
-		// 	}
+		case GDScriptNewParser::Node::AWAIT: {
+			const GDScriptNewParser::AwaitNode *await = static_cast<const GDScriptNewParser::AwaitNode *>(p_expression);
 
-		// 	//push call bytecode
-		// 	codegen.opcodes.push_back(arguments.size() == 0 ? GDScriptFunction::OPCODE_YIELD : GDScriptFunction::OPCODE_YIELD_SIGNAL); // basic type constructor
-		// 	for (int i = 0; i < arguments.size(); i++) {
-		// 		codegen.opcodes.push_back(arguments[i]); //arguments
-		// 	}
-		// 	codegen.opcodes.push_back(GDScriptFunction::OPCODE_YIELD_RESUME);
-		// 	//next will be where to place the result :)
+			int slevel = p_stack_level;
+			within_await = true;
+			int argument = _parse_expression(codegen, await->to_await, slevel);
+			within_await = false;
+			if (argument < 0) {
+				return argument;
+			}
+			if ((argument >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
+				slevel++;
+				codegen.alloc_stack(slevel);
+			}
+			//push call bytecode
+			codegen.opcodes.push_back(GDScriptFunction::OPCODE_AWAIT);
+			codegen.opcodes.push_back(argument);
+			codegen.opcodes.push_back(GDScriptFunction::OPCODE_AWAIT_RESUME);
+			//next will be where to place the result :)
 
-		// } break;
+			OPERATOR_RETURN;
+		} break;
 
 		//indexing operator
 		case GDScriptNewParser::Node::SUBSCRIPT: {

@@ -157,6 +157,7 @@ class GDScriptNewCompiler {
 	int err_column;
 	StringName source;
 	String error;
+	bool within_await = false;
 
 public:
 	Error compile(const GDScriptNewParser *p_parser, GDScript *p_script, bool p_keep_state = false);
