@@ -1316,16 +1316,14 @@ Error GDScriptNewCompiler::_parse_block(CodeGen &codegen, const GDScriptNewParse
 	for (int i = 0; i < p_block->statements.size(); i++) {
 		const GDScriptNewParser::Node *s = p_block->statements[i];
 
+#ifdef DEBUG_ENABLED
+		// Add a newline after each statement, since the debugger needs those.
+		codegen.opcodes.push_back(GDScriptFunction::OPCODE_LINE);
+		codegen.opcodes.push_back(s->start_line);
+		codegen.current_line = s->start_line;
+#endif
+
 		switch (s->type) {
-				// TODO: Fix newlines.
-				// 			case GDScriptNewParser::Node::TYPE_NEWLINE: {
-				// #ifdef DEBUG_ENABLED
-				// 				const GDScriptNewParser::NewLineNode *nl = static_cast<const GDScriptNewParser::NewLineNode *>(s);
-				// 				codegen.opcodes.push_back(GDScriptFunction::OPCODE_LINE);
-				// 				codegen.opcodes.push_back(nl->line);
-				// 				codegen.current_line = nl->line;
-				// #endif
-				// 			} break;
 				// FIXME: Implement match compiler.
 				// case GDScriptNewParser::Node::MATCH: {
 				// 	GDScriptNewParser::MatchNode *match = cf->match;
@@ -1624,6 +1622,7 @@ Error GDScriptNewCompiler::_parse_block(CodeGen &codegen, const GDScriptNewParse
 			} break;
 		}
 	}
+
 	codegen.pop_stack_identifiers();
 	return OK;
 }
