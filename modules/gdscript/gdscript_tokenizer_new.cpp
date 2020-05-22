@@ -110,6 +110,7 @@ static const char *token_names[] = {
 	"self", // SELF,
 	"signal", // SIGNAL,
 	"static", // STATIC,
+	"super", // SUPER,
 	"var", // VAR,
 	"void", // VOID,
 	"yield", // YIELD,
@@ -359,6 +360,7 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::potential_identifier() {
 	KEYWORD("self", Token::SELF)             \
 	KEYWORD("signal", Token::SIGNAL)         \
 	KEYWORD("static", Token::STATIC)         \
+	KEYWORD("super", Token::SUPER)           \
 	KEYWORD_GROUP('v')                       \
 	KEYWORD("var", Token::VAR)               \
 	KEYWORD("void", Token::VOID)             \

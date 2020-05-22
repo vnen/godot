@@ -520,39 +520,6 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 		} break;
 		//hell breaks loose
 
-		//call/constructor operator
-		// TODO: Support for super call.
-		//				case GDScriptNewParser::Node::SUPER_CALL: {
-		//					ERR_FAIL_COND_V(on->arguments.size() < 1, -1);
-
-		//					const GDScriptNewParser::IdentifierNode *in = (const GDScriptNewParser::IdentifierNode *)on->arguments[0];
-
-		//					Vector<int> arguments;
-		//					int slevel = p_stack_level;
-		//					for (int i = 1; i < on->arguments.size(); i++) {
-		//						int ret = _parse_expression(codegen, on->arguments[i], slevel);
-		//						if (ret < 0) {
-		//							return ret;
-		//						}
-		//						if ((ret >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
-		//							slevel++;
-		//							codegen.alloc_stack(slevel);
-		//						}
-		//						arguments.push_back(ret);
-		//					}
-
-		//					//push call bytecode
-		//					codegen.opcodes.push_back(GDScriptFunction::OPCODE_CALL_SELF_BASE); // basic type constructor
-
-		//					codegen.opcodes.push_back(codegen.get_name_map_pos(in->name)); //instance
-		//					codegen.opcodes.push_back(arguments.size()); //argument count
-		//					codegen.alloc_call(arguments.size());
-		//					for (int i = 0; i < arguments.size(); i++) {
-		//						codegen.opcodes.push_back(arguments[i]); //arguments
-		//					}
-
-		//				} break;
-
 #define OPERATOR_RETURN                                                                                  \
 	int dst_addr = (p_stack_level) | (GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS); \
 	codegen.opcodes.push_back(dst_addr);                                                                 \
@@ -562,7 +529,7 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 		case GDScriptNewParser::Node::CALL: {
 			const GDScriptNewParser::CallNode *call = static_cast<const GDScriptNewParser::CallNode *>(p_expression);
 			// FIXME: Make sure these calls are actually pushing the proper callee.
-			if (call->callee->type == GDScriptNewParser::Node::IDENTIFIER && GDScriptNewParser::get_builtin_type(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name) != Variant::VARIANT_MAX) {
+			if (!call->is_super && call->callee->type == GDScriptNewParser::Node::IDENTIFIER && GDScriptNewParser::get_builtin_type(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name) != Variant::VARIANT_MAX) {
 				//construct a basic type
 
 				Variant::Type vtype = GDScriptNewParser::get_builtin_type(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name);
@@ -590,7 +557,7 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 					codegen.opcodes.push_back(arguments[i]); //arguments
 				}
 
-			} else if (call->callee->type == GDScriptNewParser::Node::IDENTIFIER && GDScriptNewParser::get_builtin_function(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name) != GDScriptFunctions::FUNC_MAX) {
+			} else if (!call->is_super && call->callee->type == GDScriptNewParser::Node::IDENTIFIER && GDScriptNewParser::get_builtin_function(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name) != GDScriptFunctions::FUNC_MAX) {
 				//built in function
 
 				Vector<int> arguments;
@@ -627,35 +594,46 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 
 				// TODO: Use callables when possible if needed.
 				int ret = -1;
-				if (callee->type == GDScriptNewParser::Node::IDENTIFIER) {
-					// Self function call.
-					ret = (GDScriptFunction::ADDR_TYPE_SELF << GDScriptFunction::ADDR_BITS);
-					arguments.push_back(ret);
-					ret = codegen.get_name_map_pos(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name);
-					arguments.push_back(ret);
-				} else if (callee->type == GDScriptNewParser::Node::SUBSCRIPT) {
-					const GDScriptNewParser::SubscriptNode *subscript = static_cast<const GDScriptNewParser::SubscriptNode *>(call->callee);
-
-					if (subscript->is_attribute) {
-						ret = _parse_expression(codegen, subscript->base, slevel);
-						if (ret < 0) {
-							return ret;
-						}
-						if ((ret >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
-							slevel++;
-							codegen.alloc_stack(slevel);
-						}
-						arguments.push_back(ret);
-						arguments.push_back(codegen.get_name_map_pos(subscript->attribute->name));
+				int super_address = -1;
+				if (call->is_super) {
+					// Super call.
+					if (call->callee == nullptr) {
+						// Implicit super function call.
+						super_address = codegen.get_name_map_pos(codegen.function_node->identifier->name);
 					} else {
-						// TODO: Validate this at parse time.
-						// TODO: Though might not be the case if callables are a thing.
+						super_address = codegen.get_name_map_pos(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name);
+					}
+				} else {
+					if (callee->type == GDScriptNewParser::Node::IDENTIFIER) {
+						// Self function call.
+						ret = (GDScriptFunction::ADDR_TYPE_SELF << GDScriptFunction::ADDR_BITS);
+						arguments.push_back(ret);
+						ret = codegen.get_name_map_pos(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name);
+						arguments.push_back(ret);
+					} else if (callee->type == GDScriptNewParser::Node::SUBSCRIPT) {
+						const GDScriptNewParser::SubscriptNode *subscript = static_cast<const GDScriptNewParser::SubscriptNode *>(call->callee);
+
+						if (subscript->is_attribute) {
+							ret = _parse_expression(codegen, subscript->base, slevel);
+							if (ret < 0) {
+								return ret;
+							}
+							if ((ret >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
+								slevel++;
+								codegen.alloc_stack(slevel);
+							}
+							arguments.push_back(ret);
+							arguments.push_back(codegen.get_name_map_pos(subscript->attribute->name));
+						} else {
+							// TODO: Validate this at parse time.
+							// TODO: Though might not be the case if callables are a thing.
+							_set_error("Cannot call something that isn't a function.", call->callee);
+							return -1;
+						}
+					} else {
 						_set_error("Cannot call something that isn't a function.", call->callee);
 						return -1;
 					}
-				} else {
-					_set_error("Cannot call something that isn't a function.", call->callee);
-					return -1;
 				}
 
 				for (int i = 0; i < call->arguments.size(); i++) {
@@ -670,7 +648,19 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 					arguments.push_back(ret);
 				}
 
-				codegen.opcodes.push_back(p_root ? GDScriptFunction::OPCODE_CALL : (within_await ? GDScriptFunction::OPCODE_CALL_ASYNC : GDScriptFunction::OPCODE_CALL_RETURN)); // perform operator
+				int opcode = GDScriptFunction::OPCODE_CALL_RETURN;
+				if (call->is_super) {
+					opcode = GDScriptFunction::OPCODE_CALL_SELF_BASE;
+				} else if (within_await) {
+					opcode = GDScriptFunction::OPCODE_CALL_ASYNC;
+				} else if (p_root) {
+					opcode = GDScriptFunction::OPCODE_CALL;
+				}
+
+				codegen.opcodes.push_back(opcode); // perform operator
+				if (call->is_super) {
+					codegen.opcodes.push_back(super_address);
+				}
 				codegen.opcodes.push_back(call->arguments.size());
 				codegen.alloc_call(call->arguments.size());
 				for (int i = 0; i < arguments.size(); i++) {

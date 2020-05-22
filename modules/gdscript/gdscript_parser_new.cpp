@@ -30,6 +30,8 @@
 
 #include "gdscript_parser_new.h"
 
+#include "core/math/math_defs.h"
+
 #ifdef DEBUG_ENABLED
 #include "core/os/os.h"
 #include "core/string_builder.h"
@@ -1313,6 +1315,30 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_self(ExpressionNode 
 	return self;
 }
 
+GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_builtin_constant(ExpressionNode *p_previous_operand, bool p_can_assign) {
+	GDScriptNewTokenizer::Token::Type op_type = previous.type;
+	LiteralNode *constant = alloc_node<LiteralNode>();
+
+	switch (op_type) {
+		case GDScriptNewTokenizer::Token::CONST_PI:
+			constant->value = Math_PI;
+			break;
+		case GDScriptNewTokenizer::Token::CONST_TAU:
+			constant->value = Math_TAU;
+			break;
+		case GDScriptNewTokenizer::Token::CONST_INF:
+			constant->value = Math_INF;
+			break;
+		case GDScriptNewTokenizer::Token::CONST_NAN:
+			constant->value = Math_NAN;
+			break;
+		default:
+			return nullptr; // Unreachable.
+	}
+
+	return constant;
+}
+
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_unary_operator(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	GDScriptNewTokenizer::Token::Type op_type = previous.type;
 	UnaryOpNode *operation = alloc_node<UnaryOpNode>();
@@ -1342,14 +1368,18 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_unary_operator(Expre
 }
 
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_binary_operator(ExpressionNode *p_previous_operand, bool p_can_assign) {
-	GDScriptNewTokenizer::Token::Type op_type = previous.type;
+	GDScriptNewTokenizer::Token op = previous;
 	BinaryOpNode *operation = alloc_node<BinaryOpNode>();
 
-	Precedence precedence = (Precedence)(get_rule(op_type)->precedence + 1);
+	Precedence precedence = (Precedence)(get_rule(op.type)->precedence + 1);
 	operation->left_operand = p_previous_operand;
 	operation->right_operand = parse_precedence(precedence, false);
 
-	switch (op_type) {
+	if (operation->right_operand == nullptr) {
+		push_error(vformat(R"(Expected expression after "%s" operator.")", op.get_name()));
+	}
+
+	switch (op.type) {
 		case GDScriptNewTokenizer::Token::PLUS:
 			operation->operation = BinaryOpNode::OP_ADDITION;
 			break;
@@ -1601,7 +1631,26 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_cast(ExpressionNode 
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_call(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	CallNode *call = alloc_node<CallNode>();
 
-	call->callee = p_previous_operand;
+	if (previous.type == GDScriptNewTokenizer::Token::SUPER) {
+		// Super call.
+		call->is_super = true;
+		if (match(GDScriptNewTokenizer::Token::PARENTHESIS_OPEN)) {
+			// Implicit call to the parent method of the same name.
+			if (current_function == nullptr) {
+				push_error(R"(Cannot use implicit "super" call outside of a function.)");
+				return nullptr;
+			}
+		} else {
+			consume(GDScriptNewTokenizer::Token::PERIOD, R"(Expected "." or "(" after "super".)");
+			if (!consume(GDScriptNewTokenizer::Token::IDENTIFIER, R"(Expected function name after ".".)")) {
+				return nullptr;
+			}
+			call->callee = parse_identifier();
+			consume(GDScriptNewTokenizer::Token::PARENTHESIS_OPEN, R"(Expected "(" after function name.)");
+		}
+	} else {
+		call->callee = p_previous_operand;
+	}
 
 	if (!check(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE)) {
 		// Arguments.
@@ -1770,6 +1819,7 @@ GDScriptNewParser::ParseRule *GDScriptNewParser::get_rule(GDScriptNewTokenizer::
 		{ &GDScriptNewParser::parse_self,                   nullptr,                                        PREC_NONE }, // SELF,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // SIGNAL,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // STATIC,
+		{ &GDScriptNewParser::parse_call,					nullptr,                                        PREC_NONE }, // SUPER,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // VAR,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // VOID,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // YIELD,
@@ -1793,10 +1843,10 @@ GDScriptNewParser::ParseRule *GDScriptNewParser::get_rule(GDScriptNewTokenizer::
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // INDENT,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // DEDENT,
 		// Constants
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // CONST_PI,
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // CONST_TAU,
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // CONST_INF,
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // CONST_NAN,
+		{ &GDScriptNewParser::parse_builtin_constant,		nullptr,                                        PREC_NONE }, // CONST_PI,
+		{ &GDScriptNewParser::parse_builtin_constant,		nullptr,                                        PREC_NONE }, // CONST_TAU,
+		{ &GDScriptNewParser::parse_builtin_constant,		nullptr,                                        PREC_NONE }, // CONST_INF,
+		{ &GDScriptNewParser::parse_builtin_constant,		nullptr,                                        PREC_NONE }, // CONST_NAN,
 		// Error message improvement
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // VCS_CONFLICT_MARKER,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // BACKTICK,
@@ -2208,7 +2258,15 @@ void GDScriptNewParser::TreePrinter::print_binary_op(BinaryOpNode *p_binary_op) 
 }
 
 void GDScriptNewParser::TreePrinter::print_call(CallNode *p_call) {
-	print_expression(p_call->callee);
+	if (p_call->is_super) {
+		push_text("super");
+		if (p_call->callee != nullptr) {
+			push_text(".");
+			print_expression(p_call->callee);
+		}
+	} else {
+		print_expression(p_call->callee);
+	}
 	push_text("( ");
 	for (int i = 0; i < p_call->arguments.size(); i++) {
 		if (i > 0) {

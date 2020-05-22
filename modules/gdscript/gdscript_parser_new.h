@@ -344,6 +344,7 @@ public:
 	struct CallNode : public ExpressionNode {
 		ExpressionNode *callee = nullptr;
 		Vector<ExpressionNode *> arguments;
+		bool is_super = false;
 
 		CallNode() {
 			type = CALL;
@@ -907,6 +908,7 @@ private:
 	ExpressionNode *parse_self(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_identifier(ExpressionNode *p_previous_operand, bool p_can_assign);
 	IdentifierNode *parse_identifier();
+	ExpressionNode *parse_builtin_constant(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_unary_operator(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_binary_operator(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_ternary_operator(ExpressionNode *p_previous_operand, bool p_can_assign);
