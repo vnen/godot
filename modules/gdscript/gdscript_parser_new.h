@@ -486,6 +486,12 @@ public:
 		};
 		Vector<Pair> elements;
 
+		enum Style {
+			LUA_TABLE,
+			PYTHON_DICT,
+		};
+		Style style = PYTHON_DICT;
+
 		DictionaryNode() {
 			type = DICTIONARY;
 		}
@@ -901,8 +907,8 @@ private:
 	PatternNode *parse_match_pattern();
 	WhileNode *parse_while();
 	// Expressions.
-	ExpressionNode *parse_expression(bool p_can_assign);
-	ExpressionNode *parse_precedence(Precedence p_precedence, bool p_can_assign);
+	ExpressionNode *parse_expression(bool p_can_assign, bool p_stop_on_assign = false);
+	ExpressionNode *parse_precedence(Precedence p_precedence, bool p_can_assign, bool p_stop_on_assign = false);
 	ExpressionNode *parse_literal(ExpressionNode *p_previous_operand, bool p_can_assign);
 	LiteralNode *parse_literal();
 	ExpressionNode *parse_self(ExpressionNode *p_previous_operand, bool p_can_assign);

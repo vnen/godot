@@ -1256,7 +1256,7 @@ GDScriptNewParser::WhileNode *GDScriptNewParser::parse_while() {
 	return n_while;
 }
 
-GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_precedence(Precedence p_precedence, bool p_can_assign) {
+GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_precedence(Precedence p_precedence, bool p_can_assign, bool p_stop_on_assign) {
 	GDScriptNewTokenizer::Token token = advance();
 	ParseFunction prefix_rule = get_rule(token.type)->prefix;
 
@@ -1268,6 +1268,9 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_precedence(Precedenc
 	ExpressionNode *previous_operand = (this->*prefix_rule)(nullptr, p_can_assign);
 
 	while (p_precedence <= get_rule(current.type)->precedence) {
+		if (p_stop_on_assign && current.type == GDScriptNewTokenizer::Token::EQUAL) {
+			return previous_operand;
+		}
 		token = advance();
 		ParseFunction infix_rule = get_rule(token.type)->infix;
 		previous_operand = (this->*infix_rule)(previous_operand, p_can_assign);
@@ -1276,8 +1279,8 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_precedence(Precedenc
 	return previous_operand;
 }
 
-GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_expression(bool p_can_assign) {
-	return parse_precedence(PREC_ASSIGNMENT, p_can_assign);
+GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_expression(bool p_can_assign, bool p_stop_on_assign) {
+	return parse_precedence(PREC_ASSIGNMENT, p_can_assign, p_stop_on_assign);
 }
 
 GDScriptNewParser::IdentifierNode *GDScriptNewParser::parse_identifier() {
@@ -1552,6 +1555,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_array(ExpressionNode
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_dictionary(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	DictionaryNode *dictionary = alloc_node<DictionaryNode>();
 
+	bool decided_style = false;
 	if (!check(GDScriptNewTokenizer::Token::BRACE_CLOSE)) {
 		do {
 			if (check(GDScriptNewTokenizer::Token::BRACE_CLOSE)) {
@@ -1560,16 +1564,56 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_dictionary(Expressio
 			}
 
 			// Key.
-			ExpressionNode *key = parse_expression(false);
+			ExpressionNode *key = parse_expression(false, true); // Stop on "=" so we can check for Lua table style.
+
 			if (key == nullptr) {
 				push_error(R"(Expected expression as dictionary key.)");
 			}
 
-			consume(GDScriptNewTokenizer::Token::COLON, R"(Expected ":" after dictionary key.)");
+			if (!decided_style) {
+				switch (current.type) {
+					case GDScriptNewTokenizer::Token::COLON:
+						dictionary->style = DictionaryNode::PYTHON_DICT;
+						break;
+					case GDScriptNewTokenizer::Token::EQUAL:
+						dictionary->style = DictionaryNode::LUA_TABLE;
+						break;
+					default:
+						push_error(R"(Expected ":" or "=" after dictionary key.)");
+						break;
+				}
+				decided_style = true;
+			}
+
+			switch (dictionary->style) {
+				case DictionaryNode::LUA_TABLE:
+					if (key != nullptr && key->type != Node::IDENTIFIER) {
+						push_error("Expected identifier as dictionary key.");
+					}
+					if (!match(GDScriptNewTokenizer::Token::EQUAL)) {
+						if (match(GDScriptNewTokenizer::Token::COLON)) {
+							push_error(R"(Expected "=" after dictionary key. Mixing dictionary styles is not allowed.)");
+							advance(); // Consume wrong separator anyway.
+						} else {
+							push_error(R"(Expected "=" after dictionary key.)");
+						}
+					}
+					break;
+				case DictionaryNode::PYTHON_DICT:
+					if (!match(GDScriptNewTokenizer::Token::COLON)) {
+						if (match(GDScriptNewTokenizer::Token::EQUAL)) {
+							push_error(R"(Expected ":" after dictionary key. Mixing dictionary styles is not allowed.)");
+							advance(); // Consume wrong separator anyway.
+						} else {
+							push_error(R"(Expected ":" after dictionary key.)");
+						}
+					}
+					break;
+			}
 
 			// Value.
 			ExpressionNode *value = parse_expression(false);
-			if (key == nullptr) {
+			if (value == nullptr) {
 				push_error(R"(Expected expression as dictionary value.)");
 			}
 
@@ -2365,7 +2409,11 @@ void GDScriptNewParser::TreePrinter::print_dictionary(DictionaryNode *p_dictiona
 	increase_indent();
 	for (int i = 0; i < p_dictionary->elements.size(); i++) {
 		print_expression(p_dictionary->elements[i].key);
-		push_text(" : ");
+		if (p_dictionary->style == DictionaryNode::PYTHON_DICT) {
+			push_text(" : ");
+		} else {
+			push_text(" = ");
+		}
 		print_expression(p_dictionary->elements[i].value);
 		push_line(" ,");
 	}

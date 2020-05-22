@@ -423,21 +423,34 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 		} break;
 		case GDScriptNewParser::Node::DICTIONARY: {
 			const GDScriptNewParser::DictionaryNode *dn = static_cast<const GDScriptNewParser::DictionaryNode *>(p_expression);
-			Vector<int> values;
+			Vector<int> elements;
 
 			int slevel = p_stack_level;
 
 			for (int i = 0; i < dn->elements.size(); i++) {
-				int ret = _parse_expression(codegen, dn->elements[i].key, slevel);
-				if (ret < 0) {
-					return ret;
-				}
-				if ((ret >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
-					slevel++;
-					codegen.alloc_stack(slevel);
+				// Key.
+				int ret = -1;
+				switch (dn->style) {
+					case GDScriptNewParser::DictionaryNode::PYTHON_DICT:
+						// Python-style: key is any expression.
+						ret = _parse_expression(codegen, dn->elements[i].key, slevel);
+						if (ret < 0) {
+							return ret;
+						}
+						if ((ret >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
+							slevel++;
+							codegen.alloc_stack(slevel);
+						}
+						break;
+					case GDScriptNewParser::DictionaryNode::LUA_TABLE:
+						// Lua-style: key is an identifier interpreted as string.
+						String key = static_cast<const GDScriptNewParser::IdentifierNode *>(dn->elements[i].key)->name;
+						ret = codegen.get_constant_pos(key);
+						ret |= GDScriptFunction::ADDR_TYPE_LOCAL_CONSTANT << GDScriptFunction::ADDR_BITS;
+						break;
 				}
 
-				values.push_back(ret);
+				elements.push_back(ret);
 
 				ret = _parse_expression(codegen, dn->elements[i].value, slevel);
 				if (ret < 0) {
@@ -448,13 +461,13 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 					codegen.alloc_stack(slevel);
 				}
 
-				values.push_back(ret);
+				elements.push_back(ret);
 			}
 
 			codegen.opcodes.push_back(GDScriptFunction::OPCODE_CONSTRUCT_DICTIONARY);
 			codegen.opcodes.push_back(dn->elements.size());
-			for (int i = 0; i < values.size(); i++) {
-				codegen.opcodes.push_back(values[i]);
+			for (int i = 0; i < elements.size(); i++) {
+				codegen.opcodes.push_back(elements[i]);
 			}
 
 			int dst_addr = (p_stack_level) | (GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS);
