@@ -2032,7 +2032,7 @@ GDScriptLanguage::GDScriptLanguage() {
 	calls = 0;
 	ERR_FAIL_COND(singleton);
 	singleton = this;
-	strings._init = StaticCString::create("_init");
+	strings._new = StaticCString::create("new");
 	strings._notification = StaticCString::create("_notification");
 	strings._set = StaticCString::create("_set");
 	strings._get = StaticCString::create("_get");

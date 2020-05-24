@@ -2027,12 +2027,12 @@ Error GDScriptNewCompiler::_parse_function(GDScript *p_script, const GDScriptNew
 
 	bool is_initializer = !p_for_ready && !p_func;
 
-	if (is_initializer || (p_func && String(p_func->identifier->name) == "_init")) {
+	if (is_initializer || (p_func && String(p_func->identifier->name) == "new")) {
 		//parse initializer for class members
 		if (!p_func && p_class->extends_used && p_script->native.is_null()) {
 			//call implicit parent constructor
 			codegen.opcodes.push_back(GDScriptFunction::OPCODE_CALL_SELF_BASE);
-			codegen.opcodes.push_back(codegen.get_name_map_pos("_init"));
+			codegen.opcodes.push_back(codegen.get_name_map_pos("new"));
 			codegen.opcodes.push_back(0);
 			codegen.opcodes.push_back((GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS) | 0);
 		}
@@ -2118,7 +2118,7 @@ Error GDScriptNewCompiler::_parse_function(GDScript *p_script, const GDScriptNew
 		if (p_for_ready) {
 			func_name = "_ready";
 		} else {
-			func_name = "_init";
+			func_name = "new";
 		}
 	}
 
@@ -2513,7 +2513,7 @@ Error GDScriptNewCompiler::_parse_class_blocks(GDScript *p_script, const GDScrip
 			continue;
 		}
 		const GDScriptNewParser::FunctionNode *function = member.function;
-		if (!has_initializer && function->identifier->name == "_init") {
+		if (!has_initializer && function->identifier->name == "new") {
 			has_initializer = true;
 		}
 		if (!has_ready && function->identifier->name == "_ready") {

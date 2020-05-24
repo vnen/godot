@@ -3492,7 +3492,6 @@ void BindingsGenerator::_populate_global_constants() {
 void BindingsGenerator::_initialize_blacklisted_methods() {
 	blacklisted_methods["Object"].push_back("to_string"); // there is already ToString
 	blacklisted_methods["Object"].push_back("_to_string"); // override ToString instead
-	blacklisted_methods["Object"].push_back("_init"); // never called in C# (TODO: implement it)
 }
 
 void BindingsGenerator::_log(const char *p_format, ...) {

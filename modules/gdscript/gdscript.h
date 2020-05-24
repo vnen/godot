@@ -105,7 +105,7 @@ class GDScript : public Script {
 #endif
 	Map<StringName, PropertyInfo> member_info;
 
-	GDScriptFunction *initializer; //direct pointer to _init , faster to locate
+	GDScriptFunction *initializer; //direct pointer to new , faster to locate
 
 	int subclass_count;
 	Set<Object *> instances;
@@ -457,7 +457,7 @@ public:
 	}
 
 	struct {
-		StringName _init;
+		StringName _new;
 		StringName _notification;
 		StringName _set;
 		StringName _get;
