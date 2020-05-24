@@ -1083,13 +1083,21 @@ GDScriptNewParser::MatchNode *GDScriptNewParser::parse_match() {
 GDScriptNewParser::MatchBranchNode *GDScriptNewParser::parse_match_branch() {
 	MatchBranchNode *branch = alloc_node<MatchBranchNode>();
 
+	bool has_bind = false;
+
 	do {
 		PatternNode *pattern = parse_match_pattern();
 		if (pattern == nullptr) {
 			continue;
 		}
-		if (branch->patterns.size() > 1 && pattern->pattern_type == PatternNode::PT_BIND) {
+		if (pattern->pattern_type == PatternNode::PT_BIND) {
+			has_bind = true;
+		}
+		if (branch->patterns.size() > 0 && has_bind) {
 			push_error(R"(Cannot use a variable bind with multiple patterns.)");
+		}
+		if (pattern->pattern_type == PatternNode::PT_REST) {
+			push_error(R"(Rest pattern can only be used inside array and dictionary patterns.)");
 		}
 		branch->patterns.push_back(pattern);
 	} while (match(GDScriptNewTokenizer::Token::COMMA));
@@ -1150,17 +1158,16 @@ GDScriptNewParser::PatternNode *GDScriptNewParser::parse_match_pattern() {
 			advance();
 			pattern->pattern_type = PatternNode::PT_ARRAY;
 
-			bool has_rest = false;
 			if (!check(GDScriptNewTokenizer::Token::BRACKET_CLOSE)) {
 				do {
 					PatternNode *sub_pattern = parse_match_pattern();
 					if (sub_pattern == nullptr) {
 						continue;
 					}
-					if (has_rest) {
+					if (pattern->rest_used) {
 						push_error(R"(The ".." pattern must be the last element in the pattern array.)");
 					} else if (sub_pattern->pattern_type == PatternNode::PT_REST) {
-						has_rest = true;
+						pattern->rest_used = true;
 					}
 					pattern->array.push_back(sub_pattern);
 				} while (match(GDScriptNewTokenizer::Token::COMMA));
@@ -1173,33 +1180,30 @@ GDScriptNewParser::PatternNode *GDScriptNewParser::parse_match_pattern() {
 			advance();
 			pattern->pattern_type = PatternNode::PT_DICTIONARY;
 
-			bool has_rest = false;
 			if (!check(GDScriptNewTokenizer::Token::BRACE_CLOSE) && !is_at_end()) {
 				do {
 					if (match(GDScriptNewTokenizer::Token::PERIOD_PERIOD)) {
 						// Rest.
-						if (has_rest) {
+						if (pattern->rest_used) {
 							push_error(R"(The ".." pattern must be the last element in the pattern dictionary.)");
 						} else {
 							PatternNode *sub_pattern = alloc_node<PatternNode>();
 							sub_pattern->pattern_type = PatternNode::PT_REST;
 							pattern->dictionary.push_back({ nullptr, sub_pattern });
-							has_rest = true;
+							pattern->rest_used = true;
 						}
-					} else if (consume(GDScriptNewTokenizer::Token::LITERAL, R"(Expected key for dictionary pattern.)")) {
-						LiteralNode *key = parse_literal();
+					} else {
+						ExpressionNode *key = parse_expression(false);
 						if (key == nullptr) {
-							push_error(R"(Expected literal as key for dictionary pattern.)");
-							continue;
+							push_error(R"(Expected expression as key for dictionary pattern.)");
 						}
-						PatternNode *sub_pattern = nullptr;
 						if (consume(GDScriptNewTokenizer::Token::COLON, R"(Expected ":" after dictionary pattern key)")) {
 							// Value pattern.
-							sub_pattern = parse_match_pattern();
+							PatternNode *sub_pattern = parse_match_pattern();
 							if (sub_pattern == nullptr) {
 								continue;
 							}
-							if (has_rest) {
+							if (pattern->rest_used) {
 								push_error(R"(The ".." pattern must be the last element in the pattern dictionary.)");
 							} else if (sub_pattern->pattern_type == PatternNode::PT_REST) {
 								push_error(R"(The ".." pattern cannot be used as a value.)");
@@ -2666,7 +2670,7 @@ void GDScriptNewParser::TreePrinter::print_match_pattern(PatternNode *p_match_pa
 				}
 				if (p_match_pattern->dictionary[i].key != nullptr) {
 					// Key can be null for rest pattern.
-					print_literal(p_match_pattern->dictionary[i].key);
+					print_expression(p_match_pattern->dictionary[i].key);
 					push_text(" : ");
 				}
 				print_match_pattern(p_match_pattern->dictionary[i].value_pattern);

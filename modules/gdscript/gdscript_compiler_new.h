@@ -33,6 +33,7 @@
 
 #include "core/set.h"
 #include "gdscript.h"
+#include "gdscript_function.h"
 #include "gdscript_parser_new.h"
 
 class GDScriptNewCompiler {
@@ -111,11 +112,11 @@ class GDScriptNewCompiler {
 
 		int get_constant_pos(const Variant &p_constant) {
 			if (constant_map.has(p_constant)) {
-				return constant_map[p_constant];
+				return constant_map[p_constant] | (GDScriptFunction::ADDR_TYPE_LOCAL_CONSTANT << GDScriptFunction::ADDR_BITS);
 			}
 			int pos = constant_map.size();
 			constant_map[p_constant] = pos;
-			return pos;
+			return pos | (GDScriptFunction::ADDR_TYPE_LOCAL_CONSTANT << GDScriptFunction::ADDR_BITS);
 		}
 
 		Vector<int> opcodes;
@@ -148,6 +149,7 @@ class GDScriptNewCompiler {
 
 	int _parse_assign_right_expression(CodeGen &codegen, const GDScriptNewParser::AssignmentNode *p_assignment, int p_stack_level, int p_index_addr = 0);
 	int _parse_expression(CodeGen &codegen, const GDScriptNewParser::ExpressionNode *p_expression, int p_stack_level, bool p_root = false, bool p_initializer = false, int p_index_addr = 0);
+	Error _parse_match_pattern(CodeGen &codegen, const GDScriptNewParser::PatternNode *p_pattern, int p_stack_level, int p_value_addr, int p_type_addr, int &r_bound_variables, Vector<int> &r_patch_addresses, Vector<int> &r_block_patch_address);
 	Error _parse_block(CodeGen &codegen, const GDScriptNewParser::SuiteNode *p_block, int p_stack_level = 0, int p_break_addr = -1, int p_continue_addr = -1);
 	Error _parse_function(GDScript *p_script, const GDScriptNewParser::ClassNode *p_class, const GDScriptNewParser::FunctionNode *p_func, bool p_for_ready = false);
 	Error _parse_class_level(GDScript *p_script, const GDScriptNewParser::ClassNode *p_class, bool p_keep_state);

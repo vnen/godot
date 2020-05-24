@@ -622,9 +622,10 @@ public:
 			ExpressionNode *expression;
 		};
 		Vector<PatternNode *> array;
+		bool rest_used = false; // For array/dict patterns.
 
 		struct Pair {
-			LiteralNode *key = nullptr;
+			ExpressionNode *key = nullptr;
 			PatternNode *value_pattern = nullptr;
 		};
 		Vector<Pair> dictionary;
