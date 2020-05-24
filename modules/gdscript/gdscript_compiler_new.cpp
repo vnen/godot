@@ -539,7 +539,6 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 
 		case GDScriptNewParser::Node::CALL: {
 			const GDScriptNewParser::CallNode *call = static_cast<const GDScriptNewParser::CallNode *>(p_expression);
-			// FIXME: Make sure these calls are actually pushing the proper callee.
 			if (!call->is_super && call->callee->type == GDScriptNewParser::Node::IDENTIFIER && GDScriptNewParser::get_builtin_type(static_cast<GDScriptNewParser::IdentifierNode *>(call->callee)->name) != Variant::VARIANT_MAX) {
 				//construct a basic type
 
@@ -738,6 +737,7 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 				return from;
 			}
 
+			bool named = subscript->is_attribute;
 			int index;
 			if (p_index_addr != 0) {
 				index = p_index_addr;
@@ -767,6 +767,7 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 					//also, somehow, named (speed up anyway)
 					StringName name = static_cast<const GDScriptNewParser::LiteralNode *>(subscript->index)->value;
 					index = codegen.get_name_map_pos(name);
+					named = true;
 
 				} else {
 					//regular indexing
@@ -782,7 +783,7 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 				}
 			}
 
-			codegen.opcodes.push_back(subscript->is_attribute ? GDScriptFunction::OPCODE_GET_NAMED : GDScriptFunction::OPCODE_GET); // perform operator
+			codegen.opcodes.push_back(named ? GDScriptFunction::OPCODE_GET_NAMED : GDScriptFunction::OPCODE_GET); // perform operator
 			codegen.opcodes.push_back(from); // argument 1
 			codegen.opcodes.push_back(index); // argument 2 (unary only takes one parameter)
 			OPERATOR_RETURN;
@@ -1226,7 +1227,6 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 
 				int slevel = p_stack_level;
 
-				// TODO: Add initialization assignment back somewhere;
 				int dst_address_a = _parse_expression(codegen, assignment->assignee, slevel);
 				if (dst_address_a < 0) {
 					return -1;
