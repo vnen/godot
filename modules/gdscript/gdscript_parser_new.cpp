@@ -625,9 +625,8 @@ GDScriptNewParser::SignalNode *GDScriptNewParser::parse_signal() {
 				signal->parameters.push_back(parameter);
 			}
 		}
+		consume(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE, R"*(Expected closing ")" after signal parameters.)*");
 	}
-
-	consume(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE, R"*(Expected closing ")" after signal parameters.)*");
 
 	end_statement("signal declaration");
 

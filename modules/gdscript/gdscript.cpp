@@ -1182,6 +1182,32 @@ bool GDScriptInstance::get(const StringName &p_name, Variant &r_ret) const {
 		}
 
 		{
+			// Signals.
+			const GDScript *sl = sptr;
+			while (sl) {
+				const Map<StringName, Vector<StringName>>::Element *E = sl->_signals.find(p_name);
+				if (E) {
+					r_ret = Signal(this->owner, E->key());
+					return true; //index found
+				}
+				sl = sl->_base;
+			}
+		}
+
+		{
+			// Methods.
+			const GDScript *sl = sptr;
+			while (sl) {
+				const Map<StringName, GDScriptFunction *>::Element *E = sl->member_functions.find(p_name);
+				if (E) {
+					r_ret = Callable(this->owner, E->key());
+					return true; //index found
+				}
+				sl = sl->_base;
+			}
+		}
+
+		{
 			const Map<StringName, GDScriptFunction *>::Element *E = sptr->member_functions.find(GDScriptLanguage::get_singleton()->strings._get);
 			if (E) {
 				Variant name = p_name;

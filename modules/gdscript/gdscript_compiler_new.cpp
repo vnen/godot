@@ -309,6 +309,21 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 				owner = owner->_owner;
 			}
 
+			// TRY SIGNALS AND METHODS (can be made callables)
+			if (codegen.class_node->members_indices.has(identifier)) {
+				const GDScriptNewParser::ClassNode::Member &member = codegen.class_node->members[codegen.class_node->members_indices[identifier]];
+				if (member.type == GDScriptNewParser::ClassNode::Member::FUNCTION || member.type == GDScriptNewParser::ClassNode::Member::SIGNAL) {
+					// Get like it was a property.
+					codegen.opcodes.push_back(GDScriptFunction::OPCODE_GET_NAMED); // perform operator
+					codegen.opcodes.push_back(GDScriptFunction::ADDR_TYPE_SELF << GDScriptFunction::ADDR_BITS); // Self.
+					codegen.opcodes.push_back(codegen.get_name_map_pos(identifier)); // argument 2 (unary only takes one parameter)
+					int dst_addr = (p_stack_level) | (GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS);
+					codegen.opcodes.push_back(dst_addr); // append the stack level as destination address of the opcode
+					codegen.alloc_stack(p_stack_level);
+					return dst_addr;
+				}
+			}
+
 			if (GDScriptLanguage::get_singleton()->get_global_map().has(identifier)) {
 				int idx = GDScriptLanguage::get_singleton()->get_global_map()[identifier];
 				return idx | (GDScriptFunction::ADDR_TYPE_GLOBAL << GDScriptFunction::ADDR_BITS); //argument (stack root)
