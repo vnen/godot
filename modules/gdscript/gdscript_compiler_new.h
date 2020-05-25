@@ -53,6 +53,7 @@ class GDScriptNewCompiler {
 		List<GDScriptFunction::StackDebug> stack_debug;
 		List<Map<StringName, int>> block_identifier_stack;
 		Map<StringName, int> block_identifiers;
+		Map<StringName, int> local_named_constants;
 
 		void add_stack_identifier(const StringName &p_id, int p_stackpos) {
 			stack_identifiers[p_id] = p_stackpos;

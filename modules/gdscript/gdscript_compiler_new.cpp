@@ -246,6 +246,11 @@ int GDScriptNewCompiler::_parse_expression(CodeGen &codegen, const GDScriptNewPa
 				return pos | (GDScriptFunction::ADDR_TYPE_STACK_VARIABLE << GDScriptFunction::ADDR_BITS);
 			}
 
+			// TRY LOCAL CONSTANTS!
+			if (codegen.local_named_constants.has(identifier)) {
+				return codegen.local_named_constants[identifier] | (GDScriptFunction::ADDR_TYPE_LOCAL_CONSTANT << GDScriptFunction::ADDR_BITS);
+			}
+
 			// TRY CLASS MEMBER
 			if (_is_class_member_property(codegen, identifier)) {
 				//get property
@@ -1978,6 +1983,16 @@ Error GDScriptNewCompiler::_parse_block(CodeGen &codegen, const GDScriptNewParse
 					codegen.opcodes.push_back(dst_address);
 					codegen.opcodes.push_back(src_address);
 				}
+			} break;
+			case GDScriptNewParser::Node::CONSTANT: {
+				// Local constants.
+				const GDScriptNewParser::ConstantNode *lc = static_cast<const GDScriptNewParser::ConstantNode *>(s);
+				// FIXME: Need to properly reduce expressions to avoid limiting this so much.
+				if (lc->initializer->type != GDScriptNewParser::Node::LITERAL) {
+					_set_error("Local constant must have a literal as initializer.", lc->initializer);
+					return ERR_PARSE_ERROR;
+				}
+				codegen.local_named_constants[lc->identifier->name] = codegen.get_constant_pos(static_cast<const GDScriptNewParser::LiteralNode *>(lc->initializer)->value);
 			} break;
 			case GDScriptNewParser::Node::PASS:
 				// Nothing to do.
