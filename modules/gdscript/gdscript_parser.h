@@ -360,6 +360,20 @@ public:
 		}
 	};
 
+	struct EnumNode : public Node {
+		struct Value {
+			IdentifierNode *identifier = nullptr;
+			LiteralNode *custom_value = nullptr;
+			int value = 0;
+		};
+		IdentifierNode *identifier = nullptr;
+		Vector<Value> values;
+
+		EnumNode() {
+			type = ENUM;
+		}
+	};
+
 	struct ClassNode : public Node {
 		struct Member {
 			enum Type {
@@ -370,6 +384,7 @@ public:
 				SIGNAL,
 				VARIABLE,
 				ENUM,
+				ENUM_VALUE, // For unnamed enums.
 			};
 
 			Type type = UNDEFINED;
@@ -382,6 +397,7 @@ public:
 				VariableNode *variable;
 				EnumNode *m_enum;
 			};
+			EnumNode::Value enum_value;
 
 			String get_type_name() const {
 				switch (type) {
@@ -399,6 +415,8 @@ public:
 						return "variable";
 					case ENUM:
 						return "enum";
+					case ENUM_VALUE:
+						return "enum value";
 				}
 				return "";
 			}
@@ -429,6 +447,10 @@ public:
 				type = ENUM;
 				m_enum = p_enum;
 			}
+			Member(const EnumNode::Value &p_enum_value) {
+				type = ENUM_VALUE;
+				enum_value = p_enum_value;
+			}
 		};
 
 		IdentifierNode *identifier = nullptr;
@@ -449,6 +471,10 @@ public:
 		void add_member(T *p_member_node) {
 			members_indices[p_member_node->identifier->name] = members.size();
 			members.push_back(Member(p_member_node));
+		}
+		void add_member(const EnumNode::Value &p_enum_value) {
+			members_indices[p_enum_value.identifier->name] = members.size();
+			members.push_back(Member(p_enum_value));
 		}
 		virtual DataType get_datatype() const {
 			return base_type;
@@ -494,19 +520,6 @@ public:
 
 		DictionaryNode() {
 			type = DICTIONARY;
-		}
-	};
-
-	struct EnumNode : public Node {
-		struct Value {
-			IdentifierNode *name = nullptr;
-			LiteralNode *value = nullptr;
-		};
-		IdentifierNode *identifier = nullptr;
-		Vector<Value> values;
-
-		EnumNode() {
-			type = ENUM;
 		}
 	};
 

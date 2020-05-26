@@ -2436,6 +2436,16 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 #endif
 			} break;
 
+			case GDScriptParser::ClassNode::Member::ENUM_VALUE: {
+				const GDScriptParser::EnumNode::Value &enum_value = member.enum_value;
+				StringName name = enum_value.identifier->name;
+
+				p_script->constants.insert(name, enum_value.value);
+#ifdef TOOLS_ENABLED
+				p_script->member_lines[name] = enum_value.identifier->start_line;
+#endif
+			} break;
+
 			case GDScriptParser::ClassNode::Member::SIGNAL: {
 				const GDScriptParser::SignalNode *signal = member.signal;
 				StringName name = signal->identifier->name;
@@ -2471,24 +2481,18 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 			} break;
 
 			case GDScriptParser::ClassNode::Member::ENUM: {
-				// TODO: Make enums not be just a dictionary?
 				const GDScriptParser::EnumNode *enum_n = member.m_enum;
 
+				// TODO: Make enums not be just a dictionary?
 				Dictionary new_enum;
-				int next_value = 0;
 				for (int i = 0; i < enum_n->values.size(); i++) {
-					int value = next_value++;
-					if (enum_n->values[i].value != nullptr) {
-						value = enum_n->values[i].value->value;
-					}
+					int value = enum_n->values[i].value;
 					// Needs to be string because Variant::get will convert to String.
-					new_enum[enum_n->values[i].name->name.operator String()] = value;
-					next_value = value + 1;
+					new_enum[String(enum_n->values[i].identifier->name)] = value;
 				}
 
 				p_script->constants.insert(enum_n->identifier->name, new_enum);
 #ifdef TOOLS_ENABLED
-
 				p_script->member_lines[enum_n->identifier->name] = enum_n->start_line;
 #endif
 			} break;

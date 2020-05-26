@@ -492,11 +492,14 @@ void GDScriptParser::parse_class_member(T *(GDScriptParser::*p_parse_function)()
 			return;
 		}
 	}
-	// TODO: Consider names in outer scope too, for constants and classes (and static functions?)
-	if (current_class->members_indices.has(member->identifier->name)) {
-		push_error(vformat(R"(%s "%s" has the same name as a previously declared %s.)", p_member_kind.capitalize(), member->identifier->name, current_class->get_member(member->identifier->name).get_type_name()));
-	} else {
-		current_class->add_member(member);
+	if (member->identifier != nullptr) {
+		// Enums may be unnamed.
+		// TODO: Consider names in outer scope too, for constants and classes (and static functions?)
+		if (current_class->members_indices.has(member->identifier->name)) {
+			push_error(vformat(R"(%s "%s" has the same name as a previously declared %s.)", p_member_kind.capitalize(), member->identifier->name, current_class->get_member(member->identifier->name).get_type_name()));
+		} else {
+			current_class->add_member(member);
+		}
 	}
 }
 
@@ -671,35 +674,63 @@ GDScriptParser::SignalNode *GDScriptParser::parse_signal() {
 
 GDScriptParser::EnumNode *GDScriptParser::parse_enum() {
 	EnumNode *enum_node = alloc_node<EnumNode>();
-	if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected identifier as enum name after "enum".)")) {
-		return nullptr;
+	bool named = false;
+
+	if (check(GDScriptTokenizer::Token::IDENTIFIER)) {
+		advance();
+		enum_node->identifier = parse_identifier();
+		named = true;
 	}
 
-	enum_node->identifier = parse_identifier();
+	push_multiline(true);
+	consume(GDScriptTokenizer::Token::BRACE_OPEN, vformat(R"(Expected "{" after %s.)", named ? "enum name" : R"("enum")"));
 
-	consume(GDScriptTokenizer::Token::BRACE_OPEN, R"(Expected "{" after "enum".)");
+	int current_value = 0;
 
 	do {
+		if (check(GDScriptTokenizer::Token::BRACE_CLOSE)) {
+			break; // Allow trailing comma.
+		}
 		if (consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected identifer for enum key.)")) {
 			EnumNode::Value item;
-			item.name = parse_identifier();
+			item.identifier = parse_identifier();
+			bool found = false;
+
+			if (!named) {
+				// TODO: Abstract this recursive member check.
+				ClassNode *parent = current_class;
+				while (parent != nullptr) {
+					if (parent->members_indices.has(item.identifier->name)) {
+						push_error(vformat(R"(Name "%s" is already used as a class %s.)", item.identifier->name, parent->get_member(item.identifier->name).get_type_name()));
+						found = true;
+						break;
+					}
+					parent = parent->outer;
+				}
+			}
 
 			if (match(GDScriptTokenizer::Token::EQUAL)) {
 				if (consume(GDScriptTokenizer::Token::LITERAL, R"(Expected integer value after "=".)")) {
-					item.value = parse_literal();
+					item.custom_value = parse_literal();
 
-					if (item.value->value.get_type() != Variant::INT) {
+					if (item.custom_value->value.get_type() != Variant::INT) {
 						push_error(R"(Expected integer value after "=".)");
-						item.value = nullptr;
+						item.custom_value = nullptr;
+					} else {
+						current_value = item.custom_value->value;
 					}
 				}
 			}
+			item.value = current_value++;
 			enum_node->values.push_back(item);
+			if (!found) {
+				// Add as member of current class.
+				current_class->add_member(item);
+			}
 		}
 	} while (match(GDScriptTokenizer::Token::COMMA));
 
-	match(GDScriptTokenizer::Token::COMMA); // Allow trailing comma.
-
+	pop_multiline();
 	consume(GDScriptTokenizer::Token::BRACE_CLOSE, R"(Expected closing "}" for enum.)");
 
 	end_statement("enum");
@@ -2469,6 +2500,8 @@ void GDScriptParser::TreePrinter::print_class(ClassNode *p_class) {
 			case ClassNode::Member::ENUM:
 				print_enum(m.m_enum);
 				break;
+			case ClassNode::Member::ENUM_VALUE:
+				break; // Nothing. Will be printed by enum.
 			case ClassNode::Member::UNDEFINED:
 				push_line("<unknown member>");
 				break;
@@ -2576,17 +2609,11 @@ void GDScriptParser::TreePrinter::print_enum(EnumNode *p_enum) {
 
 	push_line(" {");
 	increase_indent();
-	int last_value = 0;
 	for (int i = 0; i < p_enum->values.size(); i++) {
 		const EnumNode::Value &item = p_enum->values[i];
-		print_identifier(item.name);
+		print_identifier(item.identifier);
 		push_text(" = ");
-		if (item.value != nullptr) {
-			print_literal(item.value);
-			last_value = item.value->value;
-		} else {
-			push_text(itos(last_value++));
-		}
+		push_text(itos(item.value));
 		push_line(" ,");
 	}
 	decrease_indent();
