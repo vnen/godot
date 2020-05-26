@@ -36,6 +36,7 @@
 #include "core/list.h"
 #include "core/map.h"
 #include "core/reference.h"
+#include "core/resource.h"
 #include "core/script_language.h"
 #include "core/string_name.h"
 #include "core/ustring.h"
@@ -43,8 +44,6 @@
 #include "core/vector.h"
 #include "gdscript_functions.h"
 #include "gdscript_tokenizer.h"
-
-#include <initializer_list>
 
 #ifdef DEBUG_ENABLED
 #include "core/string_builder.h"
@@ -82,6 +81,7 @@ public:
 	struct ParameterNode;
 	struct PassNode;
 	struct PatternNode;
+	struct PreloadNode;
 	struct ReturnNode;
 	struct SelfNode;
 	struct SignalNode;
@@ -196,6 +196,7 @@ public:
 			PARAMETER,
 			PASS,
 			PATTERN,
+			PRELOAD,
 			RETURN,
 			SELF,
 			SIGNAL,
@@ -647,6 +648,15 @@ public:
 			type = PATTERN;
 		}
 	};
+	struct PreloadNode : public ExpressionNode {
+		ExpressionNode *path = nullptr;
+		String resolved_path;
+		Ref<Resource> resource;
+
+		PreloadNode() {
+			type = PRELOAD;
+		}
+	};
 
 	struct ReturnNode : public Node {
 		ExpressionNode *return_value = nullptr;
@@ -940,6 +950,7 @@ private:
 	ExpressionNode *parse_dictionary(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_call(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_get_node(ExpressionNode *p_previous_operand, bool p_can_assign);
+	ExpressionNode *parse_preload(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_grouping(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_cast(ExpressionNode *p_previous_operand, bool p_can_assign);
 	ExpressionNode *parse_await(ExpressionNode *p_previous_operand, bool p_can_assign);
@@ -999,6 +1010,7 @@ public:
 		void print_match_branch(MatchBranchNode *p_match_branch);
 		void print_match_pattern(PatternNode *p_match_pattern);
 		void print_parameter(ParameterNode *p_parameter);
+		void print_preload(PreloadNode *p_preload);
 		void print_return(ReturnNode *p_return);
 		void print_self(SelfNode *p_self);
 		void print_signal(SignalNode *p_signal);

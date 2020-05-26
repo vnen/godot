@@ -30,6 +30,7 @@
 
 #include "gdscript_parser.h"
 
+#include "core/io/resource_loader.h"
 #include "core/math/math_defs.h"
 
 #ifdef DEBUG_ENABLED
@@ -1860,6 +1861,48 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_get_node(ExpressionNode *p
 	}
 }
 
+GDScriptParser::ExpressionNode *GDScriptParser::parse_preload(ExpressionNode *p_previous_operand, bool p_can_assign) {
+	PreloadNode *preload = alloc_node<PreloadNode>();
+	preload->resolved_path = "<missing path>";
+
+	push_multiline(true);
+	consume(GDScriptTokenizer::Token::PARENTHESIS_OPEN, R"(Expected "(" after "preload".)");
+
+	preload->path = parse_expression(false);
+
+	if (preload->path == nullptr) {
+		push_error(R"(Expected resource path after "(".)");
+	} else if (preload->path->type != Node::LITERAL) {
+		push_error("Preloaded path must be a constant string.");
+	} else {
+		LiteralNode *path = static_cast<LiteralNode *>(preload->path);
+		if (path->value.get_type() != Variant::STRING) {
+			push_error("Preloaded path must be a constant string.");
+		} else {
+			preload->resolved_path = path->value;
+			// TODO: Save this as script dependency.
+			if (preload->resolved_path.is_rel_path()) {
+				preload->resolved_path = script_path.get_base_dir().plus_file(preload->resolved_path);
+			}
+			preload->resolved_path = preload->resolved_path.simplify_path();
+			if (!FileAccess::exists(preload->resolved_path)) {
+				push_error(vformat(R"(Preload file "%s" does not exist.)", preload->resolved_path));
+			} else {
+				// TODO: Don't load if validating: use completion cache.
+				preload->resource = ResourceLoader::load(preload->resolved_path);
+				if (preload->resource.is_null()) {
+					push_error(vformat(R"(Could not preload resource file "%s".)", preload->resolved_path));
+				}
+			}
+		}
+	}
+
+	pop_multiline();
+	consume(GDScriptTokenizer::Token::PARENTHESIS_CLOSE, R"*(Expected ")" after preload path.)*");
+
+	return preload;
+}
+
 GDScriptParser::ExpressionNode *GDScriptParser::parse_invalid_token(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	// Just for better error messages.
 	GDScriptTokenizer::Token::Type invalid = previous.type;
@@ -1981,7 +2024,7 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		{ nullptr,                                          &GDScriptParser::parse_binary_operator,      	PREC_CONTENT_TEST }, // IN,
 		{ nullptr,                                          &GDScriptParser::parse_binary_operator,      	PREC_TYPE_TEST }, // IS,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // NAMESPACE,
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // PRELOAD,
+		{ &GDScriptParser::parse_preload,					nullptr,                                        PREC_NONE }, // PRELOAD,
 		{ &GDScriptParser::parse_self,                   	nullptr,                                        PREC_NONE }, // SELF,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // SIGNAL,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // STATIC,
@@ -2579,6 +2622,9 @@ void GDScriptParser::TreePrinter::print_expression(ExpressionNode *p_expression)
 		case Node::LITERAL:
 			print_literal(static_cast<LiteralNode *>(p_expression));
 			break;
+		case Node::PRELOAD:
+			print_preload(static_cast<PreloadNode *>(p_expression));
+			break;
 		case Node::SELF:
 			print_self(static_cast<SelfNode *>(p_expression));
 			break;
@@ -2804,6 +2850,12 @@ void GDScriptParser::TreePrinter::print_parameter(ParameterNode *p_parameter) {
 		push_text(" = ");
 		print_expression(p_parameter->default_value);
 	}
+}
+
+void GDScriptParser::TreePrinter::print_preload(PreloadNode *p_preload) {
+	push_text(R"(Preload ( ")");
+	push_text(p_preload->resolved_path);
+	push_text(R"(" )");
 }
 
 void GDScriptParser::TreePrinter::print_return(ReturnNode *p_return) {

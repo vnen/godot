@@ -723,6 +723,12 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 			codegen.opcodes.push_back(arg_address); // argument (NodePath).
 			OPERATOR_RETURN;
 		} break;
+		case GDScriptParser::Node::PRELOAD: {
+			const GDScriptParser::PreloadNode *preload = static_cast<const GDScriptParser::PreloadNode *>(p_expression);
+
+			// Add resource as constant.
+			return codegen.get_constant_pos(preload->resource);
+		} break;
 		case GDScriptParser::Node::AWAIT: {
 			const GDScriptParser::AwaitNode *await = static_cast<const GDScriptParser::AwaitNode *>(p_expression);
 
