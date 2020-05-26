@@ -786,6 +786,7 @@ private:
 	bool panic_mode = false;
 	bool can_break = false;
 	bool can_continue = false;
+	List<bool> multiline_stack;
 
 	ClassNode *head = nullptr;
 	Node *list = nullptr;
@@ -867,6 +868,8 @@ private:
 	bool is_statement_end();
 	void end_statement(const String &p_context);
 	void synchronize();
+	void push_multiline(bool p_state);
+	void pop_multiline();
 
 	// Main blocks.
 	void parse_program();

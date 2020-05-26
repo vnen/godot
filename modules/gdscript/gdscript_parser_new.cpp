@@ -163,6 +163,7 @@ void GDScriptNewParser::clear() {
 	_is_tool = false;
 	for_completion = false;
 	errors.clear();
+	multiline_stack.clear();
 }
 
 void GDScriptNewParser::push_error(const String &p_message, const Node *p_origin) {
@@ -182,7 +183,15 @@ Error GDScriptNewParser::parse(const String &p_source_code, const String &p_scri
 	tokenizer.set_source_code(p_source_code);
 	current = tokenizer.scan();
 
+	push_multiline(false); // Keep one for the whole parsing.
 	parse_program();
+	pop_multiline();
+
+#ifdef DEBUG_ENABLED
+	if (multiline_stack.size() > 0) {
+		ERR_PRINT("Parser bug: Imbalanced multiline stack.");
+	}
+#endif
 
 	if (errors.empty()) {
 		return OK;
@@ -258,6 +267,23 @@ void GDScriptNewParser::synchronize() {
 
 		advance();
 	}
+}
+
+void GDScriptNewParser::push_multiline(bool p_state) {
+	multiline_stack.push_back(p_state);
+	tokenizer.set_multiline_mode(p_state);
+	if (p_state) {
+		// Consume potential whitespace tokens already waiting in line.
+		while (current.type == GDScriptNewTokenizer::Token::NEWLINE || current.type == GDScriptNewTokenizer::Token::INDENT || current.type == GDScriptNewTokenizer::Token::DEDENT) {
+			current = tokenizer.scan(); // Don't call advance() here, as we don't want to change the previous token.
+		}
+	}
+}
+
+void GDScriptNewParser::pop_multiline() {
+	ERR_FAIL_COND_MSG(multiline_stack.size() == 0, "Parser bug: trying to pop from multiline stack without available value.");
+	multiline_stack.pop_back();
+	tokenizer.set_multiline_mode(multiline_stack.size() > 0 ? multiline_stack.back()->get() : false);
 }
 
 bool GDScriptNewParser::is_statement_end() {
@@ -698,11 +724,16 @@ GDScriptNewParser::FunctionNode *GDScriptNewParser::parse_function() {
 	function->identifier = parse_identifier();
 	function->is_static = _static;
 
+	push_multiline(true);
 	consume(GDScriptNewTokenizer::Token::PARENTHESIS_OPEN, R"(Expected opening "(" after function name.)");
 
 	if (!check(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE) && !is_at_end()) {
 		bool default_used = false;
 		do {
+			if (check(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE)) {
+				// Allow for trailing comma.
+				break;
+			}
 			ParameterNode *parameter = parse_parameter();
 			if (parameter == nullptr) {
 				break;
@@ -724,6 +755,7 @@ GDScriptNewParser::FunctionNode *GDScriptNewParser::parse_function() {
 		} while (match(GDScriptNewTokenizer::Token::COMMA));
 	}
 
+	pop_multiline();
 	consume(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE, R"*(Expected closing ")" after function parameters.)*");
 
 	if (match(GDScriptNewTokenizer::Token::FORWARD_ARROW)) {
@@ -1266,6 +1298,18 @@ GDScriptNewParser::WhileNode *GDScriptNewParser::parse_while() {
 }
 
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_precedence(Precedence p_precedence, bool p_can_assign, bool p_stop_on_assign) {
+	// Switch multiline mode on for grouping tokens.
+	// Do this early to avoid the tokenizer generating whitespace tokens.
+	switch (current.type) {
+		case GDScriptNewTokenizer::Token::PARENTHESIS_OPEN:
+		case GDScriptNewTokenizer::Token::BRACE_OPEN:
+		case GDScriptNewTokenizer::Token::BRACKET_OPEN:
+			push_multiline(true);
+			break;
+		default:
+			break; // Nothing to do.
+	}
+
 	GDScriptNewTokenizer::Token token = advance();
 	ParseFunction prefix_rule = get_rule(token.type)->prefix;
 
@@ -1279,6 +1323,16 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_precedence(Precedenc
 	while (p_precedence <= get_rule(current.type)->precedence) {
 		if (p_stop_on_assign && current.type == GDScriptNewTokenizer::Token::EQUAL) {
 			return previous_operand;
+		}
+		// Also switch multiline mode on here for infix operators.
+		switch (current.type) {
+			// case GDScriptNewTokenizer::Token::BRACE_OPEN: // Not an infix operator.
+			case GDScriptNewTokenizer::Token::PARENTHESIS_OPEN:
+			case GDScriptNewTokenizer::Token::BRACKET_OPEN:
+				push_multiline(true);
+				break;
+			default:
+				break; // Nothing to do.
 		}
 		token = advance();
 		ParseFunction infix_rule = get_rule(token.type)->infix;
@@ -1369,6 +1423,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_unary_operator(Expre
 			operation->operand = parse_precedence(PREC_BIT_NOT, false);
 			break;
 		case GDScriptNewTokenizer::Token::NOT:
+		case GDScriptNewTokenizer::Token::BANG:
 			operation->operation = UnaryOpNode::OP_LOGIC_NOT;
 			operation->operand = parse_precedence(PREC_LOGIC_NOT, false);
 			break;
@@ -1423,9 +1478,11 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_binary_operator(Expr
 			operation->operation = BinaryOpNode::OP_BIT_XOR;
 			break;
 		case GDScriptNewTokenizer::Token::AND:
+		case GDScriptNewTokenizer::Token::AMPERSAND_AMPERSAND:
 			operation->operation = BinaryOpNode::OP_LOGIC_AND;
 			break;
 		case GDScriptNewTokenizer::Token::OR:
+		case GDScriptNewTokenizer::Token::PIPE_PIPE:
 			operation->operation = BinaryOpNode::OP_LOGIC_OR;
 			break;
 		case GDScriptNewTokenizer::Token::IS:
@@ -1556,6 +1613,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_array(ExpressionNode
 			}
 		} while (match(GDScriptNewTokenizer::Token::COMMA) && !is_at_end());
 	}
+	pop_multiline();
 	consume(GDScriptNewTokenizer::Token::BRACKET_CLOSE, R"(Expected closing "]" after array elements.)");
 
 	return array;
@@ -1631,6 +1689,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_dictionary(Expressio
 			}
 		} while (match(GDScriptNewTokenizer::Token::COMMA) && !is_at_end());
 	}
+	pop_multiline();
 	consume(GDScriptNewTokenizer::Token::BRACE_CLOSE, R"(Expected closing "}" after dictionary elements.)");
 
 	return dictionary;
@@ -1638,6 +1697,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_dictionary(Expressio
 
 GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_grouping(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	ExpressionNode *grouped = parse_expression(false);
+	pop_multiline();
 	consume(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE, R"*(Expected closing ")" after grouping expression.)*");
 	return grouped;
 }
@@ -1662,6 +1722,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_subscript(Expression
 	subscript->base = p_previous_operand;
 	subscript->index = parse_expression(false);
 
+	pop_multiline();
 	consume(GDScriptNewTokenizer::Token::BRACKET_CLOSE, R"(Expected "]" after subscription index.)");
 
 	return subscript;
@@ -1687,15 +1748,18 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_call(ExpressionNode 
 	if (previous.type == GDScriptNewTokenizer::Token::SUPER) {
 		// Super call.
 		call->is_super = true;
+		push_multiline(true);
 		if (match(GDScriptNewTokenizer::Token::PARENTHESIS_OPEN)) {
 			// Implicit call to the parent method of the same name.
 			if (current_function == nullptr) {
 				push_error(R"(Cannot use implicit "super" call outside of a function.)");
+				pop_multiline();
 				return nullptr;
 			}
 		} else {
 			consume(GDScriptNewTokenizer::Token::PERIOD, R"(Expected "." or "(" after "super".)");
 			if (!consume(GDScriptNewTokenizer::Token::IDENTIFIER, R"(Expected function name after ".".)")) {
+				pop_multiline();
 				return nullptr;
 			}
 			call->callee = parse_identifier();
@@ -1708,6 +1772,10 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_call(ExpressionNode 
 	if (!check(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE)) {
 		// Arguments.
 		do {
+			if (check(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE)) {
+				// Allow for trailing comma.
+				break;
+			}
 			ExpressionNode *argument = parse_expression(false);
 			if (argument == nullptr) {
 				push_error(R"(Expected expression as the function argument.)");
@@ -1717,6 +1785,7 @@ GDScriptNewParser::ExpressionNode *GDScriptNewParser::parse_call(ExpressionNode 
 		} while (match(GDScriptNewTokenizer::Token::COMMA));
 	}
 
+	pop_multiline();
 	consume(GDScriptNewTokenizer::Token::PARENTHESIS_CLOSE, R"*(Expected closing ")" after call arguments.)*");
 
 	return call;
@@ -1813,11 +1882,11 @@ GDScriptNewParser::ParseRule *GDScriptNewParser::get_rule(GDScriptNewTokenizer::
 		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,      PREC_COMPARISON }, // BANG_EQUAL,
 		// Logical
 		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,      PREC_LOGIC_AND }, // AND,
-		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,      PREC_LOGIC_NOT }, // OR,
+		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,      PREC_LOGIC_OR }, // OR,
 		{ &GDScriptNewParser::parse_unary_operator,         nullptr,                                        PREC_NONE }, // NOT,
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // AMPERSAND_AMPERSAND,
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // PIPE_PIPE,
-		{ nullptr,                                          nullptr,                                        PREC_NONE }, // BANG,
+		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,		PREC_LOGIC_AND }, // AMPERSAND_AMPERSAND,
+		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,		PREC_LOGIC_OR }, // PIPE_PIPE,
+		{ &GDScriptNewParser::parse_unary_operator,			nullptr,                                        PREC_NONE }, // BANG,
 		// Bitwise
 		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,      PREC_BIT_AND }, // AMPERSAND,
 		{ nullptr,                                          &GDScriptNewParser::parse_binary_operator,      PREC_BIT_OR }, // PIPE,

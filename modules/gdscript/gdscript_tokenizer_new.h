@@ -185,6 +185,7 @@ private:
 
 	// Info cache.
 	bool line_continuation = false; // Whether this line is a continuation of the previous, like when using '\'.
+	bool multiline_mode = false;
 	List<Token> error_stack;
 	bool pending_newline = false;
 	Token last_newline;
@@ -228,8 +229,8 @@ public:
 
 	int get_cursor_line() const;
 	int get_cursor_column() const;
-
 	void set_cursor_position(int p_line, int p_column);
+	void set_multiline_mode(bool p_state);
 
 	GDScriptNewTokenizer();
 };

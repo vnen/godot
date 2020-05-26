@@ -174,6 +174,10 @@ void GDScriptNewTokenizer::set_cursor_position(int p_line, int p_column) {
 	cursor_column = p_column;
 }
 
+void GDScriptNewTokenizer::set_multiline_mode(bool p_state) {
+	multiline_mode = p_state;
+}
+
 int GDScriptNewTokenizer::get_cursor_line() const {
 	return cursor_line;
 }
@@ -784,8 +788,8 @@ void GDScriptNewTokenizer::check_indent() {
 
 		if (current_indent_char != ' ' && current_indent_char != '\t' && current_indent_char != '\r' && current_indent_char != '\n') {
 			// First character of the line is not whitespace, so we clear all indentation levels.
-			// Unless we are in a continuation.
-			if (line_continuation) {
+			// Unless we are in a continuation or in multiline mode (inside expression).
+			if (line_continuation || multiline_mode) {
 				return;
 			}
 			pending_indents -= indent_level();
@@ -867,9 +871,9 @@ void GDScriptNewTokenizer::check_indent() {
 			continue;
 		}
 
-		if (line_continuation) {
+		if (line_continuation || multiline_mode) {
 			// We cleared up all the whitespace at the beginning of the line.
-			// But if this is a continuation we don't want any indentation change.
+			// But if this is a continuation or multiline mode and we don't want any indentation change.
 			return;
 		}
 
@@ -991,7 +995,10 @@ GDScriptNewTokenizer::Token GDScriptNewTokenizer::scan() {
 
 	if (pending_newline) {
 		pending_newline = false;
-		return last_newline;
+		if (!multiline_mode) {
+			// Don't return newline tokens on multine mode.
+			return last_newline;
+		}
 	}
 
 	// Check for potential errors after skipping whitespace().
