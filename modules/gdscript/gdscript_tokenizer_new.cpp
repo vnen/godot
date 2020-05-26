@@ -192,6 +192,12 @@ CharType GDScriptNewTokenizer::_advance() {
 	if (column > rightmost_column) {
 		rightmost_column = column;
 	}
+	if (unlikely(_is_at_end())) {
+		// Add extra newline even if it's not there, to satisfy the parser.
+		newline(true);
+		// Also add needed unindent.
+		check_indent();
+	}
 	return _peek(-1);
 }
 

@@ -116,6 +116,18 @@ void GDScriptLanguage::make_template(const String &p_class_name, const String &p
 	p_script->set_source_code(_template);
 }
 
+static void get_function_names_recursively(const GDScriptNewParser::ClassNode *p_class, const String &p_prefix, Map<int, String> &r_funcs) {
+	for (int i = 0; i < p_class->members.size(); i++) {
+		if (p_class->members[i].type == GDScriptNewParser::ClassNode::Member::FUNCTION) {
+			const GDScriptNewParser::FunctionNode *function = p_class->members[i].function;
+			r_funcs[function->start_line] = p_prefix.empty() ? String(function->identifier->name) : p_prefix + "." + String(function->identifier->name);
+		} else if (p_class->members[i].type == GDScriptNewParser::ClassNode::Member::CLASS) {
+			String new_prefix = p_class->members[i].m_class->identifier->name;
+			get_function_names_recursively(p_class->members[i].m_class, p_prefix.empty() ? new_prefix : p_prefix + "." + new_prefix, r_funcs);
+		}
+	}
+}
+
 bool GDScriptLanguage::validate(const String &p_script, int &r_line_error, int &r_col_error, String &r_test_error, const String &p_path, List<String> *r_functions, List<ScriptLanguage::Warning> *r_warnings, Set<int> *r_safe_lines) const {
 	GDScriptNewParser parser;
 
@@ -144,23 +156,7 @@ bool GDScriptLanguage::validate(const String &p_script, int &r_line_error, int &
 		const GDScriptNewParser::ClassNode *cl = parser.get_tree();
 		Map<int, String> funcs;
 
-		for (int i = 0; i < cl->members.size(); i++) {
-			if (cl->members[i].type != GDScriptNewParser::ClassNode::Member::FUNCTION) {
-				continue;
-			}
-			const GDScriptNewParser::FunctionNode *function = cl->members[i].function;
-			funcs[function->start_line] = function->identifier->name;
-		}
-
-		// TODO: Store functions in inner classes.
-		// for (int i = 0; i < cl->subclasses.size(); i++) {
-		// 	for (int j = 0; j < cl->subclasses[i]->functions.size(); j++) {
-		// 		funcs[cl->subclasses[i]->functions[j]->line] = String(cl->subclasses[i]->name) + "." + cl->subclasses[i]->functions[j]->name;
-		// 	}
-		// 	for (int j = 0; j < cl->subclasses[i]->static_functions.size(); j++) {
-		// 		funcs[cl->subclasses[i]->static_functions[j]->line] = String(cl->subclasses[i]->name) + "." + cl->subclasses[i]->static_functions[j]->name;
-		// 	}
-		// }
+		get_function_names_recursively(cl, "", funcs);
 
 		for (Map<int, String>::Element *E = funcs.front(); E; E = E->next()) {
 			r_functions->push_back(E->get() + ":" + itos(E->key()));

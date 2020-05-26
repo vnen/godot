@@ -197,6 +197,10 @@ GDScriptNewTokenizer::Token GDScriptNewParser::advance() {
 	}
 	previous = current;
 	current = tokenizer.scan();
+	while (current.type == GDScriptNewTokenizer::Token::ERROR) {
+		push_error(current.literal);
+		current = tokenizer.scan();
+	}
 	return previous;
 }
 
@@ -238,11 +242,13 @@ void GDScriptNewParser::synchronize() {
 			case GDScriptNewTokenizer::Token::CLASS:
 			case GDScriptNewTokenizer::Token::FUNC:
 			case GDScriptNewTokenizer::Token::VAR:
-			case GDScriptNewTokenizer::Token::FOR:
-			case GDScriptNewTokenizer::Token::WHILE:
-			case GDScriptNewTokenizer::Token::RETURN:
 			case GDScriptNewTokenizer::Token::CONST:
 			case GDScriptNewTokenizer::Token::SIGNAL:
+			case GDScriptNewTokenizer::Token::IF:
+			case GDScriptNewTokenizer::Token::FOR:
+			case GDScriptNewTokenizer::Token::WHILE:
+			case GDScriptNewTokenizer::Token::MATCH:
+			case GDScriptNewTokenizer::Token::RETURN:
 			case GDScriptNewTokenizer::Token::ANNOTATION:
 				return;
 			default:

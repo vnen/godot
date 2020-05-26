@@ -443,8 +443,12 @@ bool GDScript::_update_exports(bool *r_err, bool p_recursive_call) {
 						}
 
 						members_cache.push_back(member.variable->export_info);
-						// FIXME: Actually get variable's default value.
-						member_default_values_cache[member.variable->identifier->name] = Variant();
+						// FIXME: Get variable's default value in non-literal cases.
+						Variant default_value;
+						if (member.variable->initializer != nullptr && member.variable->initializer->type == GDScriptNewParser::Node::LITERAL) {
+							default_value = static_cast<const GDScriptNewParser::LiteralNode *>(member.variable->initializer)->value;
+						}
+						member_default_values_cache[member.variable->identifier->name] = default_value;
 					} break;
 					case GDScriptNewParser::ClassNode::Member::SIGNAL: {
 						// TODO: Cache this in parser to avoid loops like this.
@@ -1359,6 +1363,7 @@ void GDScriptInstance::call_multilevel(const StringName &p_method, const Variant
 		Map<StringName, GDScriptFunction *>::Element *E = sptr->member_functions.find(p_method);
 		if (E) {
 			E->get()->call(this, p_args, p_argcount, ce);
+			return;
 		}
 		sptr = sptr->_base;
 	}
