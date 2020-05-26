@@ -38,8 +38,8 @@
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_GDSCRIPT_ENABLED
 
-#include "modules/gdscript/gdscript_parser_new.h"
-#include "modules/gdscript/gdscript_tokenizer_new.h"
+#include "modules/gdscript/gdscript_parser.h"
+#include "modules/gdscript/gdscript_tokenizer.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/editor_settings.h"
@@ -48,7 +48,7 @@
 namespace TestGDScript {
 
 static void test_tokenizer(const String &p_code, const Vector<String> &p_lines) {
-	GDScriptNewTokenizer tokenizer;
+	GDScriptTokenizer tokenizer;
 	tokenizer.set_source_code(p_code);
 
 	int tab_size = 4;
@@ -59,8 +59,8 @@ static void test_tokenizer(const String &p_code, const Vector<String> &p_lines) 
 #endif // TOOLS_ENABLED
 	String tab = String(" ").repeat(tab_size);
 
-	GDScriptNewTokenizer::Token current = tokenizer.scan();
-	while (current.type != GDScriptNewTokenizer::Token::TK_EOF) {
+	GDScriptTokenizer::Token current = tokenizer.scan();
+	while (current.type != GDScriptTokenizer::Token::TK_EOF) {
 		StringBuilder token;
 		token += " --> "; // Padding for line number.
 
@@ -88,7 +88,7 @@ static void test_tokenizer(const String &p_code, const Vector<String> &p_lines) 
 
 		token += current.get_name();
 
-		if (current.type == GDScriptNewTokenizer::Token::ERROR || current.type == GDScriptNewTokenizer::Token::LITERAL || current.type == GDScriptNewTokenizer::Token::IDENTIFIER || current.type == GDScriptNewTokenizer::Token::ANNOTATION) {
+		if (current.type == GDScriptTokenizer::Token::ERROR || current.type == GDScriptTokenizer::Token::LITERAL || current.type == GDScriptTokenizer::Token::IDENTIFIER || current.type == GDScriptTokenizer::Token::ANNOTATION) {
 			token += "(";
 			token += Variant::get_type_name(current.literal.get_type());
 			token += ") ";
@@ -106,19 +106,18 @@ static void test_tokenizer(const String &p_code, const Vector<String> &p_lines) 
 }
 
 static void test_parser(const String &p_code, const String &p_script_path, const Vector<String> &p_lines) {
-
-	GDScriptNewParser parser;
+	GDScriptParser parser;
 	Error err = parser.parse(p_code, p_script_path, false);
 
 	if (err != OK) {
-		const List<GDScriptNewParser::ParserError> &errors = parser.get_errors();
-		for (const List<GDScriptNewParser::ParserError>::Element *E = errors.front(); E != nullptr; E = E->next()) {
-			const GDScriptNewParser::ParserError &error = E->get();
+		const List<GDScriptParser::ParserError> &errors = parser.get_errors();
+		for (const List<GDScriptParser::ParserError>::Element *E = errors.front(); E != nullptr; E = E->next()) {
+			const GDScriptParser::ParserError &error = E->get();
 			print_line(vformat("%02d:%02d: %s", error.line, error.column, error.message));
 		}
 	}
 
-	GDScriptNewParser::TreePrinter printer;
+	GDScriptParser::TreePrinter printer;
 
 	printer.print_tree(parser);
 }

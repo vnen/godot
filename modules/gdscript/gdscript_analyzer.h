@@ -31,22 +31,22 @@
 #ifndef GDSCRIPT_ANALYZER_H
 #define GDSCRIPT_ANALYZER_H
 
-#include "gdscript_parser_new.h"
+#include "gdscript_parser.h"
 
 class GDScriptAnalyzer {
-	GDScriptNewParser *parser = nullptr;
+	GDScriptParser *parser = nullptr;
 
-	Error resolve_inheritance(GDScriptNewParser::ClassNode *p_class, bool p_recursive = true);
-	GDScriptNewParser::DataType resolve_datatype(const GDScriptNewParser::TypeNode *p_type);
+	Error resolve_inheritance(GDScriptParser::ClassNode *p_class, bool p_recursive = true);
+	GDScriptParser::DataType resolve_datatype(const GDScriptParser::TypeNode *p_type);
 
 	// This traverses the tree to resolve all TypeNodes.
-	Error resolve_datatypes(GDScriptNewParser::ClassNode *p_class);
+	Error resolve_datatypes(GDScriptParser::ClassNode *p_class);
 
 public:
 	Error resolve_inheritance();
 	Error analyze();
 
-	GDScriptAnalyzer(GDScriptNewParser *p_parser);
+	GDScriptAnalyzer(GDScriptParser *p_parser);
 };
 
 #endif // GDSCRIPT_ANALYZER_H

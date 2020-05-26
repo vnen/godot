@@ -35,8 +35,8 @@
 #include "core/io/resource_loader.h"
 #include "core/script_language.h"
 
-Error GDScriptAnalyzer::resolve_inheritance(GDScriptNewParser::ClassNode *p_class, bool p_recursive) {
-	GDScriptNewParser::DataType result;
+Error GDScriptAnalyzer::resolve_inheritance(GDScriptParser::ClassNode *p_class, bool p_recursive) {
+	GDScriptParser::DataType result;
 
 	if (p_class->base_type.is_set()) {
 		// Already resolved
@@ -44,42 +44,42 @@ Error GDScriptAnalyzer::resolve_inheritance(GDScriptNewParser::ClassNode *p_clas
 	}
 
 	if (!p_class->extends_used) {
-		result.type_source = GDScriptNewParser::DataType::ANNOTATED_INFERRED;
-		result.kind = GDScriptNewParser::DataType::NATIVE;
+		result.type_source = GDScriptParser::DataType::ANNOTATED_INFERRED;
+		result.kind = GDScriptParser::DataType::NATIVE;
 		result.native_type = "Reference";
 	} else {
-		result.type_source = GDScriptNewParser::DataType::ANNOTATED_EXPLICIT;
+		result.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 
-		GDScriptNewParser::DataType base;
+		GDScriptParser::DataType base;
 
 		if (!p_class->extends_path.empty()) {
-			base.type_source = GDScriptNewParser::DataType::ANNOTATED_EXPLICIT;
-			base.kind = GDScriptNewParser::DataType::GDSCRIPT;
+			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
+			base.kind = GDScriptParser::DataType::GDSCRIPT;
 			// TODO: Get this from cache singleton.
 			base.gdscript_type = nullptr;
 		} else {
 			const StringName &name = p_class->extends[0];
-			base.type_source = GDScriptNewParser::DataType::ANNOTATED_EXPLICIT;
+			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 
 			if (ScriptServer::is_global_class(name)) {
-				base.kind = GDScriptNewParser::DataType::GDSCRIPT;
+				base.kind = GDScriptParser::DataType::GDSCRIPT;
 				// TODO: Get this from cache singleton.
 				base.gdscript_type = nullptr;
 				// TODO: Try singletons (create main unified source for those).
 			} else if (p_class->members_indices.has(name)) {
-				GDScriptNewParser::ClassNode::Member member = p_class->get_member(name);
+				GDScriptParser::ClassNode::Member member = p_class->get_member(name);
 
 				if (member.type == member.CLASS) {
-					base.kind = GDScriptNewParser::DataType::GDSCRIPT;
+					base.kind = GDScriptParser::DataType::GDSCRIPT;
 					base.gdscript_type = member.m_class;
 				} else if (member.type == member.CONSTANT) {
 					// FIXME: This could also be a native type or preloaded GDScript.
-					base.kind = GDScriptNewParser::DataType::GDSCRIPT;
+					base.kind = GDScriptParser::DataType::GDSCRIPT;
 					base.gdscript_type = nullptr;
 				}
 			} else {
 				if (ClassDB::class_exists(name)) {
-					base.kind = GDScriptNewParser::DataType::NATIVE;
+					base.kind = GDScriptParser::DataType::NATIVE;
 					base.native_type = name;
 				}
 			}
@@ -99,7 +99,7 @@ Error GDScriptAnalyzer::resolve_inheritance(GDScriptNewParser::ClassNode *p_clas
 
 	if (p_recursive) {
 		for (int i = 0; i < p_class->members.size(); i++) {
-			if (p_class->members[i].type == GDScriptNewParser::ClassNode::Member::CLASS) {
+			if (p_class->members[i].type == GDScriptParser::ClassNode::Member::CLASS) {
 				resolve_inheritance(p_class->members[i].m_class, true);
 			}
 		}
@@ -146,8 +146,8 @@ static StringName get_real_class_name(const StringName &p_source) {
 	return p_source;
 }
 
-GDScriptNewParser::DataType GDScriptAnalyzer::resolve_datatype(const GDScriptNewParser::TypeNode *p_type) {
-	GDScriptNewParser::DataType result;
+GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(const GDScriptParser::TypeNode *p_type) {
+	GDScriptParser::DataType result;
 
 	if (p_type == nullptr) {
 		return result;
@@ -156,89 +156,89 @@ GDScriptNewParser::DataType GDScriptAnalyzer::resolve_datatype(const GDScriptNew
 	result.type_source = result.ANNOTATED_EXPLICIT;
 	if (p_type->type_base == nullptr) {
 		// void.
-		result.kind = GDScriptNewParser::DataType::BUILTIN;
+		result.kind = GDScriptParser::DataType::BUILTIN;
 		result.builtin_type = Variant::NIL;
 		return result;
 	}
 
 	StringName first = p_type->type_base->name;
 
-	if (GDScriptNewParser::get_builtin_type(first) != Variant::NIL) {
+	if (GDScriptParser::get_builtin_type(first) != Variant::NIL) {
 		// Built-in types.
 		// FIXME: I'm probably using this wrong here (well, I'm not really using it). Specifier *includes* the base the type.
 		if (p_type->type_specifier != nullptr) {
 			parser->push_error(R"(Built-in types don't contain subtypes.)", p_type->type_specifier);
-			return GDScriptNewParser::DataType();
+			return GDScriptParser::DataType();
 		}
-		result.kind = GDScriptNewParser::DataType::BUILTIN;
-		result.builtin_type = GDScriptNewParser::get_builtin_type(first);
+		result.kind = GDScriptParser::DataType::BUILTIN;
+		result.builtin_type = GDScriptParser::get_builtin_type(first);
 	} else if (ClassDB::class_exists(get_real_class_name(first))) {
 		// Native engine classes.
 		if (p_type->type_specifier != nullptr) {
 			parser->push_error(R"(Engine classes don't contain subtypes.)", p_type->type_specifier);
-			return GDScriptNewParser::DataType();
+			return GDScriptParser::DataType();
 		}
-		result.kind = GDScriptNewParser::DataType::NATIVE;
+		result.kind = GDScriptParser::DataType::NATIVE;
 		result.native_type = first;
 	} else if (ScriptServer::is_global_class(first)) {
 		// Global class_named classes.
 		// TODO: Global classes and singletons.
 		parser->push_error("GDScript analyzer: global class type not implemented.", p_type);
-		ERR_FAIL_V_MSG(GDScriptNewParser::DataType(), "GDScript analyzer: global class type not implemented.");
+		ERR_FAIL_V_MSG(GDScriptParser::DataType(), "GDScript analyzer: global class type not implemented.");
 	} else {
 		// Classes in current scope.
-		GDScriptNewParser::ClassNode *script_class = parser->current_class;
+		GDScriptParser::ClassNode *script_class = parser->current_class;
 		bool found = false;
 		while (!found && script_class != nullptr) {
 			if (script_class->members_indices.has(first)) {
-				GDScriptNewParser::ClassNode::Member member = script_class->members[script_class->members_indices[first]];
+				GDScriptParser::ClassNode::Member member = script_class->members[script_class->members_indices[first]];
 				switch (member.type) {
-					case GDScriptNewParser::ClassNode::Member::CLASS:
-						result.kind = GDScriptNewParser::DataType::GDSCRIPT;
+					case GDScriptParser::ClassNode::Member::CLASS:
+						result.kind = GDScriptParser::DataType::GDSCRIPT;
 						result.gdscript_type = member.m_class;
 						found = true;
 						break;
 					default:
 						// TODO: Get constants as types, disallow others explicitly.
 						parser->push_error(vformat(R"("%s" is a %s but does not contain a type.)", first, member.get_type_name()), p_type);
-						return GDScriptNewParser::DataType();
+						return GDScriptParser::DataType();
 				}
 			}
 			script_class = script_class->outer;
 		}
 
 		parser->push_error(vformat(R"("%s" is not a valid type.)", first), p_type);
-		return GDScriptNewParser::DataType();
+		return GDScriptParser::DataType();
 	}
 
 	// TODO: Allow subtypes.
 	if (p_type->type_specifier != nullptr) {
 		parser->push_error(R"(Subtypes are not yet supported.)", p_type->type_specifier);
-		return GDScriptNewParser::DataType();
+		return GDScriptParser::DataType();
 	}
 
 	return result;
 }
 
-Error GDScriptAnalyzer::resolve_datatypes(GDScriptNewParser::ClassNode *p_class) {
-	GDScriptNewParser::ClassNode *previous_class = parser->current_class;
+Error GDScriptAnalyzer::resolve_datatypes(GDScriptParser::ClassNode *p_class) {
+	GDScriptParser::ClassNode *previous_class = parser->current_class;
 	parser->current_class = p_class;
 
 	for (int i = 0; i < p_class->members.size(); i++) {
-		GDScriptNewParser::ClassNode::Member member = p_class->members[i];
+		GDScriptParser::ClassNode::Member member = p_class->members[i];
 
 		switch (member.type) {
-			case GDScriptNewParser::ClassNode::Member::VARIABLE: {
-				GDScriptNewParser::DataType datatype = resolve_datatype(member.variable->datatype_specifier);
+			case GDScriptParser::ClassNode::Member::VARIABLE: {
+				GDScriptParser::DataType datatype = resolve_datatype(member.variable->datatype_specifier);
 				if (datatype.is_set()) {
 					member.variable->set_datatype(datatype);
 					if (member.variable->export_info.hint == PROPERTY_HINT_TYPE_STRING) {
 						// @export annotation.
 						switch (datatype.kind) {
-							case GDScriptNewParser::DataType::BUILTIN:
+							case GDScriptParser::DataType::BUILTIN:
 								member.variable->export_info.hint_string = Variant::get_type_name(datatype.builtin_type);
 								break;
-							case GDScriptNewParser::DataType::NATIVE:
+							case GDScriptParser::DataType::NATIVE:
 								if (ClassDB::is_parent_class(get_real_class_name(datatype.native_type), "Resource")) {
 									member.variable->export_info.hint_string = get_real_class_name(datatype.native_type);
 								} else {
@@ -273,6 +273,6 @@ Error GDScriptAnalyzer::analyze() {
 	return resolve_datatypes(parser->head);
 }
 
-GDScriptAnalyzer::GDScriptAnalyzer(GDScriptNewParser *p_parser) {
+GDScriptAnalyzer::GDScriptAnalyzer(GDScriptParser *p_parser) {
 	parser = p_parser;
 }
