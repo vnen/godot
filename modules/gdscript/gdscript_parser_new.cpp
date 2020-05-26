@@ -291,9 +291,13 @@ bool GDScriptNewParser::is_statement_end() {
 }
 
 void GDScriptNewParser::end_statement(const String &p_context) {
-	if (is_statement_end()) {
+	bool found = false;
+	while (is_statement_end()) {
+		// Remove sequential newlines/semicolons.
+		found = true;
 		advance();
-	} else {
+	}
+	if (!found) {
 		push_error(vformat(R"(Expected end of statement after %s, found "%s" instead.)", p_context, current.get_name()));
 	}
 }
@@ -845,12 +849,19 @@ GDScriptNewParser::SuiteNode *GDScriptNewParser::parse_suite(const String &p_con
 	suite->parent_block = current_suite;
 	current_suite = suite;
 
-	// TODO: Allow single-line suites.
-	consume(GDScriptNewTokenizer::Token::NEWLINE, vformat(R"(Expected newline after %s.)", p_context));
+	bool multiline = false;
 
-	if (!consume(GDScriptNewTokenizer::Token::INDENT, vformat(R"(Expected indented block after %s.)", p_context))) {
-		current_suite = suite->parent_block;
-		return suite;
+	if (check(GDScriptNewTokenizer::Token::NEWLINE)) {
+		multiline = true;
+	}
+
+	if (multiline) {
+		consume(GDScriptNewTokenizer::Token::NEWLINE, vformat(R"(Expected newline after %s.)", p_context));
+
+		if (!consume(GDScriptNewTokenizer::Token::INDENT, vformat(R"(Expected indented block after %s.)", p_context))) {
+			current_suite = suite->parent_block;
+			return suite;
+		}
 	}
 
 	do {
@@ -896,9 +907,11 @@ GDScriptNewParser::SuiteNode *GDScriptNewParser::parse_suite(const String &p_con
 				break;
 		}
 
-	} while (!check(GDScriptNewTokenizer::Token::DEDENT) && !is_at_end());
+	} while (multiline && !check(GDScriptNewTokenizer::Token::DEDENT) && !is_at_end());
 
-	consume(GDScriptNewTokenizer::Token::DEDENT, vformat(R"(Missing unindent at the end of %s.)", p_context));
+	if (multiline) {
+		consume(GDScriptNewTokenizer::Token::DEDENT, vformat(R"(Missing unindent at the end of %s.)", p_context));
+	}
 
 	current_suite = suite->parent_block;
 	return suite;
@@ -974,7 +987,7 @@ GDScriptNewParser::Node *GDScriptNewParser::parse_statement() {
 		default: {
 			// Expression statement.
 			ExpressionNode *expression = parse_expression(true); // Allow assignment here.
-			end_statement("expression statement");
+			end_statement("expression");
 			result = expression;
 			break;
 		}
