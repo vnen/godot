@@ -138,26 +138,32 @@ GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::D
 		case GDScriptParser::DataType::GDSCRIPT: {
 			// Locate class by constructing the path to it and following that path
 			GDScriptParser::ClassNode *class_type = p_datatype.gdscript_type;
-			List<StringName> names;
-			while (class_type->outer) {
-				names.push_back(class_type->identifier->name);
-				class_type = class_type->outer;
-			}
-
-			Ref<GDScript> script = Ref<GDScript>(main_script);
-			while (names.back()) {
-				if (!script->subclasses.has(names.back()->get())) {
-					ERR_PRINT("Parser bug: Cannot locate datatype class.");
-					result.has_type = false;
-					return GDScriptDataType();
+			if (class_type) {
+				List<StringName> names;
+				while (class_type->outer) {
+					names.push_back(class_type->identifier->name);
+					class_type = class_type->outer;
 				}
-				script = script->subclasses[names.back()->get()];
-				names.pop_back();
+
+				Ref<GDScript> script = Ref<GDScript>(main_script);
+				while (names.back()) {
+					if (!script->subclasses.has(names.back()->get())) {
+						ERR_PRINT("Parser bug: Cannot locate datatype class.");
+						result.has_type = false;
+						return GDScriptDataType();
+					}
+					script = script->subclasses[names.back()->get()];
+					names.pop_back();
+				}
+				result.kind = GDScriptDataType::GDSCRIPT;
+				result.script_type = script;
+				result.native_type = script->get_instance_base_type();
+			} else {
+				result.kind = GDScriptDataType::GDSCRIPT;
+				result.script_type = p_datatype.script_type;
+				result.native_type = result.script_type->get_instance_base_type();
 			}
 
-			result.kind = GDScriptDataType::GDSCRIPT;
-			result.script_type = script;
-			result.native_type = script->get_instance_base_type();
 		} break;
 		default: {
 			ERR_PRINT("Parser bug: converting unresolved type.");
@@ -2361,7 +2367,7 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 			p_script->_base = base.ptr();
 			p_script->member_indices = base->member_indices;
 
-			if (p_class->base_type.kind == GDScriptParser::DataType::GDSCRIPT) {
+			if (p_class->base_type.kind == GDScriptParser::DataType::GDSCRIPT && p_class->base_type.gdscript_type != nullptr) {
 				if (!parsed_classes.has(p_script->_base)) {
 					if (parsing_classes.has(p_script->_base)) {
 						String class_name = p_class->identifier ? p_class->identifier->name : "<main>";

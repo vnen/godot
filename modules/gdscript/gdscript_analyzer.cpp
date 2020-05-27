@@ -55,6 +55,11 @@ Error GDScriptAnalyzer::resolve_inheritance(GDScriptParser::ClassNode *p_class, 
 		if (!p_class->extends_path.empty()) {
 			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 			base.kind = GDScriptParser::DataType::GDSCRIPT;
+			// TODO: Don't load the script here to avoid the issue with cycles.
+			base.script_type = ResourceLoader::load(p_class->extends_path);
+			if (base.script_type.is_null() || !base.script_type->is_valid()) {
+				parser->push_error(vformat(R"(Could not load the parent script at "%s".)", p_class->extends_path));
+			}
 			// TODO: Get this from cache singleton.
 			base.gdscript_type = nullptr;
 		} else {
