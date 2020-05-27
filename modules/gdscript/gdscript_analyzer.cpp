@@ -54,7 +54,7 @@ Error GDScriptAnalyzer::resolve_inheritance(GDScriptParser::ClassNode *p_class, 
 
 		if (!p_class->extends_path.empty()) {
 			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
-			base.kind = GDScriptParser::DataType::GDSCRIPT;
+			base.kind = GDScriptParser::DataType::CLASS;
 			// TODO: Don't load the script here to avoid the issue with cycles.
 			base.script_type = ResourceLoader::load(p_class->extends_path);
 			if (base.script_type.is_null() || !base.script_type->is_valid()) {
@@ -67,7 +67,7 @@ Error GDScriptAnalyzer::resolve_inheritance(GDScriptParser::ClassNode *p_class, 
 			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 
 			if (ScriptServer::is_global_class(name)) {
-				base.kind = GDScriptParser::DataType::GDSCRIPT;
+				base.kind = GDScriptParser::DataType::CLASS;
 				// TODO: Get this from cache singleton.
 				base.gdscript_type = nullptr;
 				// TODO: Try singletons (create main unified source for those).
@@ -75,11 +75,11 @@ Error GDScriptAnalyzer::resolve_inheritance(GDScriptParser::ClassNode *p_class, 
 				GDScriptParser::ClassNode::Member member = p_class->get_member(name);
 
 				if (member.type == member.CLASS) {
-					base.kind = GDScriptParser::DataType::GDSCRIPT;
+					base.kind = GDScriptParser::DataType::CLASS;
 					base.gdscript_type = member.m_class;
 				} else if (member.type == member.CONSTANT) {
 					// FIXME: This could also be a native type or preloaded GDScript.
-					base.kind = GDScriptParser::DataType::GDSCRIPT;
+					base.kind = GDScriptParser::DataType::CLASS;
 					base.gdscript_type = nullptr;
 				}
 			} else {
@@ -199,7 +199,7 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(const GDScriptParser
 				GDScriptParser::ClassNode::Member member = script_class->members[script_class->members_indices[first]];
 				switch (member.type) {
 					case GDScriptParser::ClassNode::Member::CLASS:
-						result.kind = GDScriptParser::DataType::GDSCRIPT;
+						result.kind = GDScriptParser::DataType::CLASS;
 						result.gdscript_type = member.m_class;
 						found = true;
 						break;

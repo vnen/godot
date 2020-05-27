@@ -98,7 +98,7 @@ public:
 			BUILTIN,
 			NATIVE,
 			SCRIPT,
-			GDSCRIPT, // Class
+			CLASS, // GDScript.
 			UNRESOLVED,
 		};
 		Kind kind = UNRESOLVED;
@@ -143,7 +143,7 @@ public:
 					return native_type == p_other.native_type;
 				case SCRIPT:
 					return script_type == p_other.script_type;
-				case GDSCRIPT:
+				case CLASS:
 					return gdscript_type == p_other.gdscript_type;
 				case UNRESOLVED:
 					break;
