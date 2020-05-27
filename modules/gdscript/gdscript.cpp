@@ -81,6 +81,17 @@ Object *GDScriptNativeClass::instance() {
 	return ClassDB::instance(name);
 }
 
+void GDScript::_super_implicit_constructor(GDScript *p_script, GDScriptInstance *p_instance, Callable::CallError &r_error) {
+	GDScript *base = p_script->_base;
+	if (base != nullptr) {
+		_super_implicit_constructor(base, p_instance, r_error);
+		if (r_error.error != Callable::CallError::CALL_OK) {
+			return;
+		}
+	}
+	p_script->implicit_initializer->call(p_instance, nullptr, 0, r_error);
+}
+
 GDScriptInstance *GDScript::_create_instance(const Variant **p_args, int p_argcount, Object *p_owner, bool p_isref, Callable::CallError &r_error) {
 	/* STEP 1, CREATE */
 
@@ -103,18 +114,34 @@ GDScriptInstance *GDScript::_create_instance(const Variant **p_args, int p_argco
 		MutexLock lock(GDScriptLanguage::singleton->lock);
 		instances.insert(instance->owner);
 	}
+
+	if (_base != nullptr) {
+		_super_implicit_constructor(_base, instance, r_error);
+		if (r_error.error != Callable::CallError::CALL_OK) {
+			instance->script = Ref<GDScript>();
+			instance->owner->set_script_instance(nullptr);
+			{
+				MutexLock lock(GDScriptLanguage::singleton->lock);
+				instances.erase(p_owner);
+			}
+			ERR_FAIL_V_MSG(nullptr, "Error constructing a GDScriptInstance.");
+		}
+	}
+
 	if (p_argcount < 0) {
 		return instance;
 	}
-	initializer->call(instance, p_args, p_argcount, r_error);
-	if (r_error.error != Callable::CallError::CALL_OK) {
-		instance->script = Ref<GDScript>();
-		instance->owner->set_script_instance(nullptr);
-		{
-			MutexLock lock(GDScriptLanguage::singleton->lock);
-			instances.erase(p_owner);
+	if (initializer != nullptr) {
+		initializer->call(instance, p_args, p_argcount, r_error);
+		if (r_error.error != Callable::CallError::CALL_OK) {
+			instance->script = Ref<GDScript>();
+			instance->owner->set_script_instance(nullptr);
+			{
+				MutexLock lock(GDScriptLanguage::singleton->lock);
+				instances.erase(p_owner);
+			}
+			ERR_FAIL_V_MSG(nullptr, "Error constructing a GDScriptInstance.");
 		}
-		ERR_FAIL_V_MSG(nullptr, "Error constructing a GDScriptInstance.");
 	}
 	//@TODO make thread safe
 	return instance;

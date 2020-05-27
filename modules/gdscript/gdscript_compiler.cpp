@@ -2067,18 +2067,10 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 
 	/* Parse initializer -if applies- */
 
-	bool is_initializer = !p_for_ready && !p_func;
+	bool is_implicit_initializer = !p_for_ready && !p_func;
+	bool is_initializer = p_func && String(p_func->identifier->name) == "new";
 
-	if (is_initializer || (p_func && String(p_func->identifier->name) == "new")) {
-		//parse initializer for class members
-		if (!p_func && p_class->extends_used && p_script->native.is_null()) {
-			//call implicit parent constructor
-			codegen.opcodes.push_back(GDScriptFunction::OPCODE_CALL_SELF_BASE);
-			codegen.opcodes.push_back(codegen.get_name_map_pos("new"));
-			codegen.opcodes.push_back(0);
-			codegen.opcodes.push_back((GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS) | 0);
-		}
-
+	if (is_implicit_initializer) {
 		// Initialize class fields.
 		for (int i = 0; i < p_class->members.size(); i++) {
 			if (p_class->members[i].type != GDScriptParser::ClassNode::Member::VARIABLE) {
@@ -2103,8 +2095,6 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 				codegen.opcodes.push_back(src_address);
 			}
 		}
-
-		is_initializer = true;
 	}
 
 	if (p_for_ready || (p_func && String(p_func->identifier->name) == "_ready")) {
@@ -2160,7 +2150,7 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 		if (p_for_ready) {
 			func_name = "_ready";
 		} else {
-			func_name = "new";
+			func_name = "@implicit_new";
 		}
 	}
 
@@ -2311,6 +2301,9 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 
 	if (is_initializer) {
 		p_script->initializer = gdfunc;
+	}
+	if (is_implicit_initializer) {
+		p_script->implicit_initializer = gdfunc;
 	}
 
 	return OK;
@@ -2550,7 +2543,6 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 Error GDScriptCompiler::_parse_class_blocks(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state) {
 	//parse methods
 
-	bool has_initializer = false;
 	bool has_ready = false;
 
 	for (int i = 0; i < p_class->members.size(); i++) {
@@ -2559,9 +2551,6 @@ Error GDScriptCompiler::_parse_class_blocks(GDScript *p_script, const GDScriptPa
 			continue;
 		}
 		const GDScriptParser::FunctionNode *function = member.function;
-		if (!has_initializer && function->identifier->name == "new") {
-			has_initializer = true;
-		}
 		if (!has_ready && function->identifier->name == "_ready") {
 			has_ready = true;
 		}
@@ -2571,12 +2560,10 @@ Error GDScriptCompiler::_parse_class_blocks(GDScript *p_script, const GDScriptPa
 		}
 	}
 
-	if (!has_initializer) {
-		//create a constructor
-		Error err = _parse_function(p_script, p_class, nullptr);
-		if (err) {
-			return err;
-		}
+	// Create an implicit constructor in any case.
+	Error err = _parse_function(p_script, p_class, nullptr);
+	if (err) {
+		return err;
 	}
 
 	if (!has_ready && p_class->onready_used) {
