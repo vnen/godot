@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  gdscript_warnings.cpp                                                */
+/*  gdscript_warning.cpp                                                 */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -33,7 +33,6 @@
 #ifdef DEBUG_ENABLED
 
 String GDScriptWarning::get_message() const {
-
 #define CHECK_SYMBOLS(m_amount) ERR_FAIL_COND_V(symbols.size() < m_amount, String());
 
 	switch (code) {
@@ -140,7 +139,8 @@ String GDScriptWarning::get_message() const {
 		case STANDALONE_TERNARY: {
 			return "Standalone ternary conditional operator: the return value is being discarded.";
 		}
-		case WARNING_MAX: break; // Can't happen, but silences warning
+		case WARNING_MAX:
+			break; // Can't happen, but silences warning
 	}
 	ERR_FAIL_V_MSG(String(), "Invalid GDScript warning code: " + get_name_from_code(code) + ".");
 

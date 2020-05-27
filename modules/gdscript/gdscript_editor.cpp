@@ -182,7 +182,7 @@ int GDScriptLanguage::find_function(const String &p_function, const String &p_co
 	while (current.type != GDScriptTokenizer::Token::TK_EOF && current.type != GDScriptTokenizer::Token::ERROR) {
 		if (current.type == GDScriptTokenizer::Token::INDENT) {
 			indent++;
-		} else if (current.type == GDScriptTokenizer::Token::INDENT) {
+		} else if (current.type == GDScriptTokenizer::Token::DEDENT) {
 			indent--;
 		}
 		if (indent == 0 && current.type == GDScriptTokenizer::Token::FUNC) {
@@ -398,16 +398,6 @@ void GDScriptLanguage::get_public_functions(List<MethodInfo> *p_functions) const
 		mi.name = "preload";
 		mi.arguments.push_back(PropertyInfo(Variant::STRING, "path"));
 		mi.return_val = PropertyInfo(Variant::OBJECT, "", PROPERTY_HINT_RESOURCE_TYPE, "Resource");
-		p_functions->push_back(mi);
-	}
-	{
-		MethodInfo mi;
-		mi.name = "yield";
-		mi.arguments.push_back(PropertyInfo(Variant::OBJECT, "object"));
-		mi.arguments.push_back(PropertyInfo(Variant::STRING, "signal"));
-		mi.default_arguments.push_back(Variant());
-		mi.default_arguments.push_back(String());
-		mi.return_val = PropertyInfo(Variant::OBJECT, "", PROPERTY_HINT_RESOURCE_TYPE, "GDScriptFunctionState");
 		p_functions->push_back(mi);
 	}
 	{

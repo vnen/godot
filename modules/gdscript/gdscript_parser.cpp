@@ -32,6 +32,7 @@
 
 #include "core/io/resource_loader.h"
 #include "core/math/math_defs.h"
+#include "core/os/file_access.h"
 
 #ifdef DEBUG_ENABLED
 #include "core/os/os.h"
@@ -2224,7 +2225,7 @@ bool GDScriptParser::export_annotations(const AnnotationNode *p_annotation, Node
 		} // else: Actual type will be set by the analyzer, which can infer the proper type.
 	}
 
-	StringBuilder hint_string;
+	String hint_string;
 	for (int i = 0; i < p_annotation->resolved_arguments.size(); i++) {
 		if (i > 0) {
 			hint_string += ",";

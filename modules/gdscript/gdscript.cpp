@@ -1841,6 +1841,7 @@ void GDScriptLanguage::frame() {
 
 /* EDITOR FUNCTIONS */
 void GDScriptLanguage::get_reserved_words(List<String> *p_words) const {
+	// TODO: Add annotations here?
 	static const char *_reserved_words[] = {
 		// operators
 		"and",
@@ -1863,6 +1864,7 @@ void GDScriptLanguage::get_reserved_words(List<String> *p_words) const {
 		// functions
 		"as",
 		"assert",
+		"await",
 		"breakpoint",
 		"class",
 		"class_name",
@@ -1870,15 +1872,11 @@ void GDScriptLanguage::get_reserved_words(List<String> *p_words) const {
 		"is",
 		"func",
 		"preload",
-		"setget",
 		"signal",
-		"tool",
 		"yield",
 		// var
 		"const",
 		"enum",
-		"export",
-		"onready",
 		"static",
 		"var",
 		// control flow
@@ -1892,12 +1890,6 @@ void GDScriptLanguage::get_reserved_words(List<String> *p_words) const {
 		"return",
 		"match",
 		"while",
-		"remote",
-		"master",
-		"puppet",
-		"remotesync",
-		"mastersync",
-		"puppetsync",
 		nullptr
 	};
 

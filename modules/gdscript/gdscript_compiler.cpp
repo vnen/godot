@@ -708,9 +708,9 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 		case GDScriptParser::Node::GET_NODE: {
 			const GDScriptParser::GetNodeNode *get_node = static_cast<const GDScriptParser::GetNodeNode *>(p_expression);
 
-			StringBuilder node_name;
+			String node_name;
 			if (get_node->string != nullptr) {
-				node_name += get_node->string->value;
+				node_name += String(get_node->string->value);
 			} else {
 				for (int i = 0; i < get_node->chain.size(); i++) {
 					if (i > 0) {
@@ -720,7 +720,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 				}
 			}
 
-			int arg_address = codegen.get_constant_pos(NodePath(node_name.as_string()));
+			int arg_address = codegen.get_constant_pos(NodePath(node_name));
 
 			codegen.opcodes.push_back(p_root ? GDScriptFunction::OPCODE_CALL : GDScriptFunction::OPCODE_CALL_RETURN);
 			codegen.opcodes.push_back(1); // number of arguments.
@@ -1159,11 +1159,11 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 						break;
 					}
 
-					const GDScriptParser::SubscriptNode *subscript = E->get();
+					const GDScriptParser::SubscriptNode *subscript_elem = E->get();
 					int key_idx;
 
-					if (subscript->is_attribute) {
-						key_idx = codegen.get_name_map_pos(subscript->attribute->name);
+					if (subscript_elem->is_attribute) {
+						key_idx = codegen.get_name_map_pos(subscript_elem->attribute->name);
 						//printf("named key %x\n",key_idx);
 
 					} else {
@@ -1172,7 +1172,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 							codegen.alloc_stack(slevel);
 						}
 
-						GDScriptParser::ExpressionNode *key = subscript->index;
+						GDScriptParser::ExpressionNode *key = subscript_elem->index;
 						key_idx = _parse_expression(codegen, key, slevel);
 						//printf("expr key %x\n",key_idx);
 
@@ -1183,7 +1183,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 						return key_idx;
 					}
 
-					codegen.opcodes.push_back(subscript->is_attribute ? GDScriptFunction::OPCODE_GET_NAMED : GDScriptFunction::OPCODE_GET);
+					codegen.opcodes.push_back(subscript_elem->is_attribute ? GDScriptFunction::OPCODE_GET_NAMED : GDScriptFunction::OPCODE_GET);
 					codegen.opcodes.push_back(prev_pos);
 					codegen.opcodes.push_back(key_idx);
 					slevel++;
@@ -1197,7 +1197,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 					setchain.push_back(dst_pos);
 					setchain.push_back(key_idx);
 					setchain.push_back(prev_pos);
-					setchain.push_back(subscript->is_attribute ? GDScriptFunction::OPCODE_SET_NAMED : GDScriptFunction::OPCODE_SET);
+					setchain.push_back(subscript_elem->is_attribute ? GDScriptFunction::OPCODE_SET_NAMED : GDScriptFunction::OPCODE_SET);
 
 					prev_pos = dst_pos;
 				}
@@ -1507,23 +1507,23 @@ Error GDScriptCompiler::_parse_match_pattern(CodeGen &codegen, const GDScriptPar
 					break;
 				}
 
-				int slevel = p_stack_level;
+				int stlevel = p_stack_level;
 				Vector<int> element_block_patches; // I want to internal patterns try the next element instead of going to the block.
 				// Add index to constant map.
 				int index_addr = codegen.get_constant_pos(i);
 
 				// Get the actual element from the user-sent array.
-				int element_addr = slevel++;
-				codegen.alloc_stack(slevel);
+				int element_addr = stlevel++;
+				codegen.alloc_stack(stlevel);
 				codegen.opcodes.push_back(GDScriptFunction::OPCODE_GET);
 				codegen.opcodes.push_back(p_value_addr); // Source.
 				codegen.opcodes.push_back(index_addr); // Index.
 				codegen.opcodes.push_back(element_addr); // Destination.
 
 				// Also get type of element.
-				int element_type_addr = slevel++;
+				int element_type_addr = stlevel++;
 				element_type_addr |= GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS;
-				codegen.alloc_stack(slevel);
+				codegen.alloc_stack(stlevel);
 				codegen.opcodes.push_back(GDScriptFunction::OPCODE_CALL_BUILT_IN);
 				codegen.opcodes.push_back(GDScriptFunctions::TYPE_OF);
 				codegen.opcodes.push_back(1); // One argument.
@@ -1531,7 +1531,7 @@ Error GDScriptCompiler::_parse_match_pattern(CodeGen &codegen, const GDScriptPar
 				codegen.opcodes.push_back(element_type_addr); // Address to result.
 
 				// Try the pattern inside the element.
-				Error err = _parse_match_pattern(codegen, p_pattern->array[i], slevel, element_addr, element_type_addr, r_bound_variables, r_patch_addresses, element_block_patches);
+				Error err = _parse_match_pattern(codegen, p_pattern->array[i], stlevel, element_addr, element_type_addr, r_bound_variables, r_patch_addresses, element_block_patches);
 				if (err != OK) {
 					return err;
 				}
@@ -1602,23 +1602,23 @@ Error GDScriptCompiler::_parse_match_pattern(CodeGen &codegen, const GDScriptPar
 					// Ignore rest pattern.
 					continue;
 				}
-				int slevel = p_stack_level;
+				int stlevel = p_stack_level;
 				Vector<int> element_block_patches; // I want to internal patterns try the next element instead of going to the block.
 
 				// Get the pattern key.
-				int pattern_key_addr = _parse_expression(codegen, element.key, slevel);
+				int pattern_key_addr = _parse_expression(codegen, element.key, stlevel);
 				if (pattern_key_addr < 0) {
 					return ERR_PARSE_ERROR;
 				}
 				if ((pattern_key_addr >> GDScriptFunction::ADDR_BITS & GDScriptFunction::ADDR_TYPE_STACK) == GDScriptFunction::ADDR_TYPE_STACK) {
-					slevel++;
-					codegen.alloc_stack(slevel);
+					stlevel++;
+					codegen.alloc_stack(stlevel);
 				}
 
 				// Create stack slot for test result.
-				int test_result = slevel++;
+				int test_result = stlevel++;
 				test_result |= GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS;
-				codegen.alloc_stack(slevel);
+				codegen.alloc_stack(stlevel);
 
 				// Check if pattern key exists in user's dictionary.
 				codegen.opcodes.push_back(GDScriptFunction::OPCODE_CALL_RETURN);
@@ -1635,17 +1635,17 @@ Error GDScriptCompiler::_parse_match_pattern(CodeGen &codegen, const GDScriptPar
 				codegen.opcodes.push_back(0); // Will be replaced.
 
 				// Get actual value from user dictionary.
-				int value_addr = slevel++;
-				codegen.alloc_stack(slevel);
+				int value_addr = stlevel++;
+				codegen.alloc_stack(stlevel);
 				codegen.opcodes.push_back(GDScriptFunction::OPCODE_GET);
 				codegen.opcodes.push_back(p_value_addr); // Source.
 				codegen.opcodes.push_back(pattern_key_addr); // Index.
 				codegen.opcodes.push_back(value_addr); // Destination.
 
 				// Also get type of value.
-				int value_type_addr = slevel++;
+				int value_type_addr = stlevel++;
 				value_type_addr |= GDScriptFunction::ADDR_TYPE_STACK << GDScriptFunction::ADDR_BITS;
-				codegen.alloc_stack(slevel);
+				codegen.alloc_stack(stlevel);
 				codegen.opcodes.push_back(GDScriptFunction::OPCODE_CALL_BUILT_IN);
 				codegen.opcodes.push_back(GDScriptFunctions::TYPE_OF);
 				codegen.opcodes.push_back(1); // One argument.
@@ -1653,7 +1653,7 @@ Error GDScriptCompiler::_parse_match_pattern(CodeGen &codegen, const GDScriptPar
 				codegen.opcodes.push_back(value_type_addr); // Address to result.
 
 				// Try the pattern inside the value.
-				Error err = _parse_match_pattern(codegen, element.value_pattern, slevel, value_addr, value_type_addr, r_bound_variables, r_patch_addresses, element_block_patches);
+				Error err = _parse_match_pattern(codegen, element.value_pattern, stlevel, value_addr, value_type_addr, r_bound_variables, r_patch_addresses, element_block_patches);
 				if (err != OK) {
 					return err;
 				}
@@ -1728,8 +1728,8 @@ Error GDScriptCompiler::_parse_block(CodeGen &codegen, const GDScriptParser::Sui
 
 				// Now we can actually start testing.
 				// For each branch.
-				for (int i = 0; i < match->branches.size(); i++) {
-					const GDScriptParser::MatchBranchNode *branch = match->branches[i];
+				for (int j = 0; j < match->branches.size(); j++) {
+					const GDScriptParser::MatchBranchNode *branch = match->branches[j];
 
 					int bound_variables = 0;
 					codegen.push_stack_identifiers(); // Create an extra block around for binds.
@@ -1744,22 +1744,22 @@ Error GDScriptCompiler::_parse_block(CodeGen &codegen, const GDScriptParser::Sui
 					Vector<int> block_patch_addrs; // Will patch with start of block to jump.
 
 					// For each pattern in branch.
-					for (int j = 0; j < branch->patterns.size(); j++) {
-						if (j > 0) {
+					for (int k = 0; k < branch->patterns.size(); k++) {
+						if (k > 0) {
 							// Patch jumps per pattern to allow for multipattern. If a pattern fails it just tries the next.
-							for (int k = 0; k < patch_addrs.size(); k++) {
-								codegen.opcodes.write[patch_addrs[k]] = codegen.opcodes.size();
+							for (int l = 0; l < patch_addrs.size(); l++) {
+								codegen.opcodes.write[patch_addrs[l]] = codegen.opcodes.size();
 							}
 							patch_addrs.clear();
 						}
-						Error err = _parse_match_pattern(codegen, branch->patterns[j], slevel, temp_addr, type_addr, bound_variables, patch_addrs, block_patch_addrs);
+						Error err = _parse_match_pattern(codegen, branch->patterns[k], slevel, temp_addr, type_addr, bound_variables, patch_addrs, block_patch_addrs);
 						if (err != OK) {
 							return err;
 						}
 					}
 					// Patch jumps to the block.
-					for (int j = 0; j < block_patch_addrs.size(); j++) {
-						codegen.opcodes.write[block_patch_addrs[j]] = codegen.opcodes.size();
+					for (int k = 0; k < block_patch_addrs.size(); k++) {
+						codegen.opcodes.write[block_patch_addrs[k]] = codegen.opcodes.size();
 					}
 
 					// Leave space for bound variables.
@@ -1775,15 +1775,15 @@ Error GDScriptCompiler::_parse_block(CodeGen &codegen, const GDScriptParser::Sui
 					codegen.opcodes.push_back(0); // Will be patched.
 
 					// Patch the addresses of last pattern to jump to the end of the branch, into the next one.
-					for (int j = 0; j < patch_addrs.size(); j++) {
-						codegen.opcodes.write[patch_addrs[j]] = codegen.opcodes.size();
+					for (int k = 0; k < patch_addrs.size(); k++) {
+						codegen.opcodes.write[patch_addrs[k]] = codegen.opcodes.size();
 					}
 
 					codegen.pop_stack_identifiers(); // Get out of extra block.
 				}
 				// Patch the addresses to jump to the end of the match statement.
-				for (int i = 0; i < patch_match_end.size(); i++) {
-					codegen.opcodes.write[patch_match_end[i]] = codegen.opcodes.size();
+				for (int j = 0; j < patch_match_end.size(); j++) {
+					codegen.opcodes.write[patch_match_end[j]] = codegen.opcodes.size();
 				}
 			} break;
 
@@ -2490,10 +2490,10 @@ Error GDScriptCompiler::_parse_class_level(GDScript *p_script, const GDScriptPar
 
 				// TODO: Make enums not be just a dictionary?
 				Dictionary new_enum;
-				for (int i = 0; i < enum_n->values.size(); i++) {
-					int value = enum_n->values[i].value;
+				for (int j = 0; j < enum_n->values.size(); j++) {
+					int value = enum_n->values[j].value;
 					// Needs to be string because Variant::get will convert to String.
-					new_enum[String(enum_n->values[i].identifier->name)] = value;
+					new_enum[String(enum_n->values[j].identifier->name)] = value;
 				}
 
 				p_script->constants.insert(enum_n->identifier->name, new_enum);
@@ -2560,10 +2560,12 @@ Error GDScriptCompiler::_parse_class_blocks(GDScript *p_script, const GDScriptPa
 		}
 	}
 
-	// Create an implicit constructor in any case.
-	Error err = _parse_function(p_script, p_class, nullptr);
-	if (err) {
-		return err;
+	{
+		// Create an implicit constructor in any case.
+		Error err = _parse_function(p_script, p_class, nullptr);
+		if (err) {
+			return err;
+		}
 	}
 
 	if (!has_ready && p_class->onready_used) {

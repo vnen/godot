@@ -214,9 +214,6 @@ String GDScriptFunction::_get_call_error(const Callable::CallError &p_err, const
 		&&OPCODE_CALL_BUILT_IN,               \
 		&&OPCODE_CALL_SELF,                   \
 		&&OPCODE_CALL_SELF_BASE,              \
-		&&OPCODE_YIELD,                       \
-		&&OPCODE_YIELD_SIGNAL,                \
-		&&OPCODE_YIELD_RESUME,                \
 		&&OPCODE_AWAIT,                       \
 		&&OPCODE_AWAIT_RESUME,                \
 		&&OPCODE_JUMP,                        \
@@ -284,7 +281,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 	int line = _initial_line;
 
 	if (p_state) {
-		//use existing (supplied) state (yielded)
+		//use existing (supplied) state (awaited)
 		stack = (Variant *)p_state->stack.ptr();
 		call_args = (Variant **)&p_state->stack.ptr()[sizeof(Variant) * p_state->stack_size]; //ptr() to avoid bounds check
 		line = p_state->line;
@@ -413,7 +410,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 		profile.frame_call_count++;
 	}
 	bool exit_ok = false;
-	bool yielded = false;
+	bool awaited = false;
 #endif
 
 #ifdef DEBUG_ENABLED
@@ -1214,8 +1211,6 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 			}
 			DISPATCH_OPCODE;
 
-			OPCODE(OPCODE_YIELD)
-			OPCODE(OPCODE_YIELD_SIGNAL)
 			OPCODE(OPCODE_AWAIT) {
 				int ipofs = 2;
 				CHECK_SPACE(3);
@@ -1240,7 +1235,6 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 						// Is this even possible to be null at this point?
 						if (obj) {
-							Object *obj = *argobj;
 							if (obj->is_class_ptr(GDScriptFunctionState::get_class_ptr_static())) {
 								static StringName completed = _scs_create("completed");
 								result = Signal(obj, completed);
@@ -1299,14 +1293,13 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 #ifdef DEBUG_ENABLED
 					exit_ok = true;
-					yielded = true;
+					awaited = true;
 #endif
 					OPCODE_BREAK;
 				}
 			}
 			DISPATCH_OPCODE; // Needed for synchronous calls (when result is immediately available).
 
-			OPCODE(OPCODE_YIELD_RESUME)
 			OPCODE(OPCODE_AWAIT_RESUME) {
 				CHECK_SPACE(2);
 #ifdef DEBUG_ENABLED
@@ -1573,11 +1566,11 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 		GDScriptLanguage::get_singleton()->script_frame_time += time_taken - function_call_time;
 	}
 
-	// Check if this is the last time the function is resuming from yield
-	// Will be true if never yielded as well
+	// Check if this is the last time the function is resuming from await
+	// Will be true if never awaited as well
 	// When it's the last resume it will postpone the exit from stack,
 	// so the debugger knows which function triggered the resume of the next function (if any)
-	if (!p_state || yielded) {
+	if (!p_state || awaited) {
 		if (EngineDebugger::is_active()) {
 			GDScriptLanguage::get_singleton()->exit_function();
 		}
@@ -1803,14 +1796,14 @@ Variant GDScriptFunctionState::resume(const Variant &p_arg) {
 
 		if (!scripts_list.in_list()) {
 #ifdef DEBUG_ENABLED
-			ERR_FAIL_V_MSG(Variant(), "Resumed function '" + state.function_name + "()' after yield, but script is gone. At script: " + state.script_path + ":" + itos(state.line));
+			ERR_FAIL_V_MSG(Variant(), "Resumed function '" + state.function_name + "()' after await, but script is gone. At script: " + state.script_path + ":" + itos(state.line));
 #else
 			return Variant();
 #endif
 		}
 		if (state.instance && !instances_list.in_list()) {
 #ifdef DEBUG_ENABLED
-			ERR_FAIL_V_MSG(Variant(), "Resumed function '" + state.function_name + "()' after yield, but class instance is gone. At script: " + state.script_path + ":" + itos(state.line));
+			ERR_FAIL_V_MSG(Variant(), "Resumed function '" + state.function_name + "()' after await, but class instance is gone. At script: " + state.script_path + ":" + itos(state.line));
 #else
 			return Variant();
 #endif
@@ -1827,7 +1820,7 @@ Variant GDScriptFunctionState::resume(const Variant &p_arg) {
 	bool completed = true;
 
 	// If the return value is a GDScriptFunctionState reference,
-	// then the function did yield again after resuming.
+	// then the function did awaited again after resuming.
 	if (ret.is_ref()) {
 		GDScriptFunctionState *gdfs = Object::cast_to<GDScriptFunctionState>(ret);
 		if (gdfs && gdfs->function == function) {

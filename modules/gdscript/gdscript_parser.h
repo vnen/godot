@@ -28,8 +28,8 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifndef GDSCRIPT_PARSER_NEW_H
-#define GDSCRIPT_PARSER_NEW_H
+#ifndef GDSCRIPT_PARSER_H
+#define GDSCRIPT_PARSER_H
 
 #include "core/hash_map.h"
 #include "core/io/multiplayer_api.h"
