@@ -642,7 +642,11 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 				} else {
 					if (callee->type == GDScriptParser::Node::IDENTIFIER) {
 						// Self function call.
-						ret = (GDScriptFunction::ADDR_TYPE_SELF << GDScriptFunction::ADDR_BITS);
+						if (codegen.function_node && codegen.function_node->is_static) {
+							ret = (GDScriptFunction::ADDR_TYPE_CLASS << GDScriptFunction::ADDR_BITS);
+						} else {
+							ret = (GDScriptFunction::ADDR_TYPE_SELF << GDScriptFunction::ADDR_BITS);
+						}
 						arguments.push_back(ret);
 						ret = codegen.get_name_map_pos(static_cast<GDScriptParser::IdentifierNode *>(call->callee)->name);
 						arguments.push_back(ret);
