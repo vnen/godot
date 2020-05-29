@@ -457,7 +457,7 @@ public:
 	}
 
 	struct {
-		StringName _new;
+		StringName _init;
 		StringName _notification;
 		StringName _set;
 		StringName _get;

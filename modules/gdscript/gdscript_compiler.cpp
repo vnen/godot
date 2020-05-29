@@ -2068,7 +2068,7 @@ Error GDScriptCompiler::_parse_function(GDScript *p_script, const GDScriptParser
 	/* Parse initializer -if applies- */
 
 	bool is_implicit_initializer = !p_for_ready && !p_func;
-	bool is_initializer = p_func && String(p_func->identifier->name) == "new";
+	bool is_initializer = p_func && String(p_func->identifier->name) == GDScriptLanguage::get_singleton()->strings._init;
 
 	if (is_implicit_initializer) {
 		// Initialize class fields.
