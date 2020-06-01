@@ -728,6 +728,7 @@ int GDScriptCompiler::_parse_expression(CodeGen &codegen, const GDScriptParser::
 
 			codegen.opcodes.push_back(p_root ? GDScriptFunction::OPCODE_CALL : GDScriptFunction::OPCODE_CALL_RETURN);
 			codegen.opcodes.push_back(1); // number of arguments.
+			codegen.alloc_call(1);
 			codegen.opcodes.push_back(GDScriptFunction::ADDR_TYPE_SELF << GDScriptFunction::ADDR_BITS); // self.
 			codegen.opcodes.push_back(codegen.get_name_map_pos("get_node")); // function.
 			codegen.opcodes.push_back(arg_address); // argument (NodePath).
