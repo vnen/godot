@@ -252,10 +252,11 @@ void GDScriptParser::synchronize() {
 		switch (current.type) {
 			case GDScriptTokenizer::Token::CLASS:
 			case GDScriptTokenizer::Token::FUNC:
+			case GDScriptTokenizer::Token::STATIC:
 			case GDScriptTokenizer::Token::VAR:
 			case GDScriptTokenizer::Token::CONST:
 			case GDScriptTokenizer::Token::SIGNAL:
-			case GDScriptTokenizer::Token::IF:
+			//case GDScriptTokenizer::Token::IF: // Can also be inside expressions.
 			case GDScriptTokenizer::Token::FOR:
 			case GDScriptTokenizer::Token::WHILE:
 			case GDScriptTokenizer::Token::MATCH:
@@ -2401,6 +2402,8 @@ void GDScriptParser::TreePrinter::print_await(AwaitNode *p_await) {
 }
 
 void GDScriptParser::TreePrinter::print_binary_op(BinaryOpNode *p_binary_op) {
+	// Surround in parenthesis for disambiguation.
+	push_text("(");
 	print_expression(p_binary_op->left_operand);
 	switch (p_binary_op->operation) {
 		case BinaryOpNode::OP_ADDITION:
@@ -2465,6 +2468,8 @@ void GDScriptParser::TreePrinter::print_binary_op(BinaryOpNode *p_binary_op) {
 			break;
 	}
 	print_expression(p_binary_op->right_operand);
+	// Surround in parenthesis for disambiguation.
+	push_text(")");
 }
 
 void GDScriptParser::TreePrinter::print_call(CallNode *p_call) {
@@ -2590,8 +2595,6 @@ void GDScriptParser::TreePrinter::print_dictionary(DictionaryNode *p_dictionary)
 }
 
 void GDScriptParser::TreePrinter::print_expression(ExpressionNode *p_expression) {
-	// Surround in parenthesis for disambiguation.
-	push_text("(");
 	switch (p_expression->type) {
 		case Node::ARRAY:
 			print_array(static_cast<ArrayNode *>(p_expression));
@@ -2642,8 +2645,6 @@ void GDScriptParser::TreePrinter::print_expression(ExpressionNode *p_expression)
 			push_text(vformat("<unknown expression %d>", p_expression->type));
 			break;
 	}
-	// Surround in parenthesis for disambiguation.
-	push_text(")");
 }
 
 void GDScriptParser::TreePrinter::print_enum(EnumNode *p_enum) {
@@ -2959,11 +2960,14 @@ void GDScriptParser::TreePrinter::print_suite(SuiteNode *p_suite) {
 }
 
 void GDScriptParser::TreePrinter::print_ternary_op(TernaryOpNode *p_ternary_op) {
+	// Surround in parenthesis for disambiguation.
+	push_text("(");
 	print_expression(p_ternary_op->true_expr);
-	push_text("IF ");
+	push_text(") IF (");
 	print_expression(p_ternary_op->condition);
-	push_text(" ELSE ");
+	push_text(") ELSE (");
 	print_expression(p_ternary_op->false_expr);
+	push_text(")");
 }
 
 void GDScriptParser::TreePrinter::print_type(TypeNode *p_type) {
@@ -2977,6 +2981,8 @@ void GDScriptParser::TreePrinter::print_type(TypeNode *p_type) {
 }
 
 void GDScriptParser::TreePrinter::print_unary_op(UnaryOpNode *p_unary_op) {
+	// Surround in parenthesis for disambiguation.
+	push_text("(");
 	switch (p_unary_op->operation) {
 		case UnaryOpNode::OP_POSITIVE:
 			push_text("+");
@@ -2992,6 +2998,8 @@ void GDScriptParser::TreePrinter::print_unary_op(UnaryOpNode *p_unary_op) {
 			break;
 	}
 	print_expression(p_unary_op->operand);
+	// Surround in parenthesis for disambiguation.
+	push_text(")");
 }
 
 void GDScriptParser::TreePrinter::print_variable(VariableNode *p_variable) {
