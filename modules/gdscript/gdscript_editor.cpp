@@ -171,6 +171,7 @@ bool GDScriptLanguage::validate(const String &p_script, int &r_line_error, int &
 		}
 	}
 
+#ifdef DEBUG_ENABLED
 	if (r_safe_lines) {
 		const Set<int> &unsafe_lines = parser.get_unsafe_lines();
 		for (int i = 1; i <= parser.get_last_line_number(); i++) {
@@ -179,6 +180,7 @@ bool GDScriptLanguage::validate(const String &p_script, int &r_line_error, int &
 			}
 		}
 	}
+#endif
 
 	return true;
 }
