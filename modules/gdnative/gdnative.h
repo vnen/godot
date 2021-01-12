@@ -37,7 +37,7 @@
 #include "core/os/thread_safe.h"
 
 #include "gdnative/gdnative.h"
-#include "gdnative_api_struct.gen.h"
+#include "include/gdnative_api_struct.gen.h"
 
 #include "core/io/config_file.h"
 
