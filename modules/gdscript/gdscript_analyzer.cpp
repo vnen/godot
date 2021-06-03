@@ -3251,7 +3251,9 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::CallNode *p_source
 
 		for (const List<MethodInfo>::Element *E = methods.front(); E != nullptr; E = E->next()) {
 			if (E->get().name == p_function) {
-				return function_signature_from_info(E->get(), r_return_type, r_par_types, r_default_arg_count, r_static, r_vararg);
+				function_signature_from_info(E->get(), r_return_type, r_par_types, r_default_arg_count, r_static, r_vararg);
+				r_static = Variant::is_builtin_method_static(p_base_type.builtin_type, function_name);
+				return true;
 			}
 		}
 
