@@ -250,7 +250,7 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 			// Try members.
 			if (!codegen.function_node || !codegen.function_node->is_static) {
 				// Try member variables.
-				if (codegen.script->member_indices.has(identifier) && !is_category_or_group(codegen.script->member_info[identifier])) {
+				if (codegen.script->member_indices.has(identifier) && (!codegen.script->member_info.has(identifier) || !is_category_or_group(codegen.script->member_info[identifier]))) {
 					if (codegen.script->member_indices[identifier].getter != StringName() && codegen.script->member_indices[identifier].getter != codegen.function_name) {
 						// Perform getter.
 						GDScriptCodeGenerator::Address temp = codegen.add_temporary(codegen.script->member_indices[identifier].data_type);
@@ -2308,6 +2308,7 @@ Error GDScriptCompiler::_populate_class_members(GDScript *p_script, const GDScri
 
 			p_script->base = base;
 			p_script->_base = base.ptr();
+			p_script->member_info = base->member_info;
 			p_script->member_indices = base->member_indices;
 		} break;
 		default: {
