@@ -1,7 +1,9 @@
 import methods
 import os
 import sys
+import platform
 from platform_methods import detect_arch
+from SCons.Script import Tool
 
 from typing import TYPE_CHECKING
 
@@ -18,29 +20,23 @@ def get_name():
 
 
 def can_build():
-    if os.name == "nt":
-        # building natively on windows!
-        if os.getenv("VSINSTALLDIR"):
-
-            if os.getenv("ANGLE_SRC_PATH") is None:
-                return False
-
-            return True
-    return False
+    return platform.system() == "Windows"
 
 
 def get_opts():
-    return [
-        ("msvc_version", "MSVC version to use (ignored if the VCINSTALLDIR environment variable is set)", None),
-    ]
+    return []
 
 
 def get_flags():
     return [
         ("arch", detect_arch()),
-        ("tools", False),
         ("xaudio2", True),
         ("builtin_pcre2_with_jit", False),
+        ("d3d12", True),
+        ("vulkan", False),
+        ("opengl3", False),
+        ("module_glslang_enabled", False),
+        ("module_raycast_enabled", False),  # For Embree
     ]
 
 
@@ -56,133 +52,105 @@ def configure(env: "Environment"):
 
     env.msvc = True
 
+    # env["MSVC_SCRIPT_ARGS"] = "store"
+    # env["TARGET_ARCH"] = env["arch"]
+    # Tool("msvc")(env)
+
+    # env = env.Clone(MSVC_SCRIPT_ARGS=['store'])
+
     ## Build type
 
-    if env["target"] == "release":
+    if env["target"] == "template_release":
         env.Append(CCFLAGS=["/MD"])
         env.Append(LINKFLAGS=["/SUBSYSTEM:WINDOWS"])
         if env["optimize"] != "none":
             env.Append(CCFLAGS=["/O2", "/GL"])
             env.Append(LINKFLAGS=["/LTCG"])
 
-    elif env["target"] == "release_debug":
-        env.Append(CCFLAGS=["/MD"])
+    elif env["target"] == "template_debug":
+        env.Append(CCFLAGS=["/MDd"])
+        # env.Append(LINKFLAGS=["/SUBSYSTEM:WINDOWS"])
         env.Append(LINKFLAGS=["/SUBSYSTEM:CONSOLE"])
-        env.AppendUnique(CPPDEFINES=["WINDOWS_SUBSYSTEM_CONSOLE"])
+        # env.AppendUnique(CPPDEFINES=["WINDOWS_SUBSYSTEM_CONSOLE"])
         if env["optimize"] != "none":
             env.Append(CCFLAGS=["/O2", "/Zi"])
+        else:
+            env.Append(LINKFLAGS=["/DEBUG"])
 
-    elif env["target"] == "debug":
-        env.Append(CCFLAGS=["/Zi"])
+    elif env["target"] == "editor":
+        env.Append(CCFLAGS=["/Zi", "/FS"])
         env.Append(CCFLAGS=["/MDd"])
+        # env.Append(LINKFLAGS=["/SUBSYSTEM:WINDOWS"])
         env.Append(LINKFLAGS=["/SUBSYSTEM:CONSOLE"])
-        env.AppendUnique(CPPDEFINES=["WINDOWS_SUBSYSTEM_CONSOLE"])
+        # env.AppendUnique(CPPDEFINES=["WINDOWS_SUBSYSTEM_CONSOLE"])
         env.Append(LINKFLAGS=["/DEBUG"])
-
-    ## Compiler configuration
-
-    env["ENV"] = os.environ
-    vc_base_path = os.environ["VCTOOLSINSTALLDIR"] if "VCTOOLSINSTALLDIR" in os.environ else os.environ["VCINSTALLDIR"]
 
     # Force to use Unicode encoding
     env.AppendUnique(CCFLAGS=["/utf-8"])
 
-    # ANGLE
-    angle_root = os.environ["ANGLE_SRC_PATH"]
-    env.Prepend(CPPPATH=[angle_root + "/include"])
-    jobs = str(env.GetOption("num_jobs"))
-    angle_build_cmd = (
-        "msbuild.exe "
-        + angle_root
-        + "/winrt/10/src/angle.sln /nologo /v:m /m:"
-        + jobs
-        + " /p:Configuration=Release /p:Platform="
-    )
-
-    if os.path.isfile(f"{angle_root}/winrt/10/src/angle.sln"):
-        env["build_angle"] = True
-
     ## Architecture
 
-    arch = ""
-    if str(os.getenv("Platform")).lower() == "arm":
-        print("Compiled program architecture will be an ARM executable (forcing arch=arm32).")
+    arch = env["arch"]
+    if arch == "auto":
+        if str(os.getenv("Platform")).lower() == "arm":
+            print("Compiled program architecture will be an ARM executable (forcing arch=arm32).")
 
-        arch = "arm"
-        env["arch"] = "arm32"
+            arch = "arm"
+            env["arch"] = "arm32"
+
+        else:
+            compiler_version_str = methods.detect_visual_c_compiler_version(env["ENV"])
+
+            if compiler_version_str == "amd64" or compiler_version_str == "x86_amd64":
+                env["arch"] = "x86_64"
+                print("Compiled program architecture will be a x64 executable (forcing arch=x86_64).")
+            elif compiler_version_str == "x86" or compiler_version_str == "amd64_x86":
+                env["arch"] = "x86_32"
+                print("Compiled program architecture will be a x86 executable (forcing arch=x86_32).")
+            else:
+                print(
+                    "Failed to detect MSVC compiler architecture version... Defaulting to x86 32-bit executable settings"
+                    " (forcing arch=x86_32). Compilation attempt will continue, but SCons can not detect for what architecture"
+                    " this build is compiled for. You should check your settings/compilation setup."
+                )
+                env["arch"] = "x86_32"
+
+    if arch == "x86_32":
+        env.Append(LINKFLAGS=["/MACHINE:X86"])
+    elif arch == "x86_64":
+        env.Append(LINKFLAGS=["/MACHINE:X64"])
+    elif arch == "arm32":
         env.Append(LINKFLAGS=["/MACHINE:ARM"])
-        env.Append(LIBPATH=[vc_base_path + "lib/store/arm"])
-
-        angle_build_cmd += "ARM"
-
-        env.Append(LIBPATH=[angle_root + "/winrt/10/src/Release_ARM/lib"])
-
-    else:
-        compiler_version_str = methods.detect_visual_c_compiler_version(env["ENV"])
-
-        if compiler_version_str == "amd64" or compiler_version_str == "x86_amd64":
-            env["arch"] = "x86_64"
-            print("Compiled program architecture will be a x64 executable (forcing arch=x86_64).")
-        elif compiler_version_str == "x86" or compiler_version_str == "amd64_x86":
-            env["arch"] = "x86_32"
-            print("Compiled program architecture will be a x86 executable (forcing arch=x86_32).")
-        else:
-            print(
-                "Failed to detect MSVC compiler architecture version... Defaulting to x86 32-bit executable settings"
-                " (forcing arch=x86_32). Compilation attempt will continue, but SCons can not detect for what architecture"
-                " this build is compiled for. You should check your settings/compilation setup."
-            )
-            env["arch"] = "x86_32"
-
-        if env["arch"] == "x86_32":
-            arch = "x86"
-
-            angle_build_cmd += "Win32"
-
-            env.Append(LINKFLAGS=["/MACHINE:X86"])
-            env.Append(LIBPATH=[vc_base_path + "lib/store"])
-            env.Append(LIBPATH=[angle_root + "/winrt/10/src/Release_Win32/lib"])
-
-        else:
-            arch = "x64"
-
-            angle_build_cmd += "x64"
-
-            env.Append(LINKFLAGS=["/MACHINE:X64"])
-            env.Append(LIBPATH=[os.environ["VCINSTALLDIR"] + "lib/store/amd64"])
-            env.Append(LIBPATH=[angle_root + "/winrt/10/src/Release_x64/lib"])
-
-    env["PROGSUFFIX"] = "." + arch + env["PROGSUFFIX"]
-    env["OBJSUFFIX"] = "." + arch + env["OBJSUFFIX"]
-    env["LIBSUFFIX"] = "." + arch + env["LIBSUFFIX"]
 
     ## Compile flags
 
+    if env["builtin_icu4c"]:
+        env.Append(CPPDEFINES=["U_PLATFORM_HAS_WINUWP_API"])
+
     env.Prepend(CPPPATH=["#platform/uwp", "#drivers/windows"])
-    env.Append(CPPDEFINES=["UWP_ENABLED", "WINDOWS_ENABLED", "TYPED_METHOD_BIND"])
-    env.Append(CPPDEFINES=["GLES_ENABLED", "GL_GLEXT_PROTOTYPES", "EGL_EGLEXT_PROTOTYPES", "ANGLE_ENABLED"])
-    winver = "0x0602"  # Windows 8 is the minimum target for UWP build
+    env.Append(CPPDEFINES=["UWP_ENABLED", "TYPED_METHOD_BIND"])
+    env.Append(CPPDEFINES=[("PNG_ABORT", "abort")])
+    winver = "0x0A00"  # Windows 10 is the minimum target for UWP build
     env.Append(CPPDEFINES=[("WINVER", winver), ("_WIN32_WINNT", winver), "WIN32"])
-
-    env.Append(CPPDEFINES=["__WRL_NO_DEFAULT_LIB__", ("PNG_ABORT", "abort")])
-
-    env.Append(CPPFLAGS=["/AI", vc_base_path + "lib/store/references"])
-    env.Append(CPPFLAGS=["/AI", vc_base_path + "lib/x86/store/references"])
-
     env.Append(
-        CCFLAGS=(
-            '/FS /MP /GS /wd"4453" /wd"28204" /wd"4291" /Zc:wchar_t /Gm- /fp:precise /errorReport:prompt /WX-'
-            " /Zc:forScope /Gd /EHsc /nologo".split()
-        )
+        CPPDEFINES=[
+            # "_UNICODE",
+            # "UNICODE",
+            ("WINAPI_FAMILY", "WINAPI_FAMILY_APP"),
+            # 'WIN32_LEAN_AND_MEAN',
+            "WINRT_LEAN_AND_MEAN",
+            "__WRL_NO_DEFAULT_LIB__",
+        ]
     )
-    env.Append(CPPDEFINES=["_UNICODE", "UNICODE", ("WINAPI_FAMILY", "WINAPI_FAMILY_APP")])
-    env.Append(CXXFLAGS=["/ZW"])
+    env.Append(
+        CXXFLAGS=[
+            "/ZW:nostdlib",
+            "/FUplatform.winmd",
+        ]
+    )
     env.Append(
         CCFLAGS=[
-            "/AI",
-            vc_base_path + "\\vcpackages",
-            "/AI",
-            os.environ["WINDOWSSDKDIR"] + "\\References\\CommonConfiguration\\Neutral",
+            "/FIplatform/uwp/shim.h",
         ]
     )
 
@@ -195,9 +163,7 @@ def configure(env: "Environment"):
             "/DYNAMICBASE",
             "/WINMD",
             "/APPCONTAINER",
-            "/ERRORREPORT:PROMPT",
             "/NOLOGO",
-            "/TLBID:1",
             '/NODEFAULTLIB:"kernel32.lib"',
             '/NODEFAULTLIB:"ole32.lib"',
         ]
@@ -205,17 +171,14 @@ def configure(env: "Environment"):
 
     LIBS = [
         "WindowsApp",
-        "mincore",
-        "ws2_32",
-        "libANGLE",
-        "libEGL",
-        "libGLESv2",
-        "bcrypt",
+        # "mincore",
+        # "ws2_32",
+        # "bcrypt",
     ]
-    env.Append(LINKFLAGS=[p + ".lib" for p in LIBS])
+    env.Prepend(LINKFLAGS=[p + ".lib" for p in LIBS])
 
     # Incremental linking fix
     env["BUILDERS"]["ProgramOriginal"] = env["BUILDERS"]["Program"]
     env["BUILDERS"]["Program"] = methods.precious_program
 
-    env.Append(BUILDERS={"ANGLE": env.Builder(action=angle_build_cmd)})
+    # Export("env")

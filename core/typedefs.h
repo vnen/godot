@@ -83,7 +83,7 @@
 #endif
 
 // Windows badly defines a lot of stuff we'll never use. Undefine it.
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__cplusplus_winrt)
 #undef min // override standard definition
 #undef max // override standard definition
 #undef ERROR // override (really stupid) wingdi.h standard definition

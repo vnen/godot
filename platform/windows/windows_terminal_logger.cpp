@@ -30,7 +30,7 @@
 
 #include "windows_terminal_logger.h"
 
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 
 #include <stdio.h>
 #define WIN32_LEAN_AND_MEAN

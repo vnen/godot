@@ -37,7 +37,9 @@
 #include "servers/audio_server.h"
 
 #include <mmsystem.h>
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <wrl/client.h>
 #include <xaudio2.h>

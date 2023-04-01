@@ -101,6 +101,7 @@ for x in sorted(glob.glob("platform/*")):
 methods.save_active_platforms(active_platforms, active_platform_ids)
 
 custom_tools = ["default"]
+msvc_script_args = []
 
 platform_arg = ARGUMENTS.get("platform", ARGUMENTS.get("p", False))
 
@@ -112,10 +113,13 @@ elif platform_arg == "web":
 elif os.name == "nt" and methods.get_cmdline_bool("use_mingw", False):
     custom_tools = ["mingw"]
 
+if platform_arg == "uwp":
+    msvc_script_args = ["store"]
+
 # We let SCons build its default ENV as it includes OS-specific things which we don't
 # want to have to pull in manually.
 # Then we prepend PATH to make it take precedence, while preserving SCons' own entries.
-env_base = Environment(tools=custom_tools)
+env_base = Environment(tools=custom_tools, MSVC_SCRIPT_ARGS=msvc_script_args)
 env_base.PrependENVPath("PATH", os.getenv("PATH"))
 env_base.PrependENVPath("PKG_CONFIG_PATH", os.getenv("PKG_CONFIG_PATH"))
 if "TERM" in os.environ:  # Used for colored output.
