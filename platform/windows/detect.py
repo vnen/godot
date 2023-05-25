@@ -417,6 +417,7 @@ def configure_msvc(env, vcvars_msvc_config):
             LIBS += ["vulkan"]
 
     if env["d3d12"]:
+        print("d3d12 ok!")
         if env["DXC_PATH"] == "":
             print("The Direct3D 12 rendering driver requires DXC_PATH to be set.")
             sys.exit(255)

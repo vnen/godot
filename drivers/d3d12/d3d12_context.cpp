@@ -45,6 +45,10 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
+#ifdef UWP_ENABLED
+using namespace winrt::Windows::UI::Core;
+#endif
+
 void D3D12Context::_debug_message_func(
 		D3D12_MESSAGE_CATEGORY p_category,
 		D3D12_MESSAGE_SEVERITY p_severity,
@@ -282,6 +286,7 @@ Error D3D12Context::_select_adapter(int &r_index) {
 
 	// TODO: Use IDXCoreAdapterList, which gives more comprehensive information.
 	LocalVector<IDXGIAdapter1 *> adapters;
+#if 1
 	while (true) {
 		IDXGIAdapter1 *curr_adapter = nullptr;
 		if (factory6) {
@@ -295,6 +300,13 @@ Error D3D12Context::_select_adapter(int &r_index) {
 		}
 		adapters.push_back(curr_adapter);
 	}
+#else
+	{
+		IDXGIAdapter1 *curr_adapter = nullptr;
+		factory6->EnumWarpAdapter(IID_PPV_ARGS(&curr_adapter));
+		adapters.push_back(curr_adapter);
+	}
+#endif
 
 	ERR_FAIL_COND_V_MSG(adapters.size() == 0, ERR_CANT_CREATE, "Adapters enumeration reported zero accessible devices.");
 
@@ -465,7 +477,7 @@ Error D3D12Context::_create_device() {
 
 		ComPtr<ID3D12InfoQueue1> info_queue_1;
 		device.As(&info_queue_1);
-		if (info_queue_1) {
+		if (false) {
 			// Custom printing supported (added in Windows 10 Release Preview build 20236).
 
 			info_queue_1->SetMuteDebugOutput(TRUE);
@@ -545,11 +557,19 @@ bool D3D12Context::_use_validation_layers() {
 	return Engine::get_singleton()->is_validation_layers_enabled();
 }
 
+#ifndef UWP_ENABLED
 Error D3D12Context::window_create(DisplayServer::WindowID p_window_id, DisplayServer::VSyncMode p_vsync_mode, HWND p_window, HINSTANCE p_instance, int p_width, int p_height) {
+#else
+Error D3D12Context::window_create(DisplayServer::WindowID p_window_id, DisplayServer::VSyncMode p_vsync_mode, CoreWindow p_window, HINSTANCE p_instance, int p_width, int p_height) {
+#endif
 	ERR_FAIL_COND_V(windows.has(p_window_id), ERR_INVALID_PARAMETER);
 
 	Window window;
+#ifndef UWP_ENABLED
 	window.hwnd = p_window;
+#else
+	window.core_window = p_window;
+#endif
 	window.width = p_width;
 	window.height = p_height;
 	window.vsync_mode = p_vsync_mode;
@@ -685,15 +705,21 @@ Error D3D12Context::_update_swap_chain(Window *window) {
 		swapchain_desc.Scaling = DXGI_SCALING_NONE;
 
 		ComPtr<IDXGISwapChain1> swapchain;
+#ifndef UWP_ENABLED
 		HRESULT res = dxgi_factory->CreateSwapChainForHwnd(direct_queue.Get(), window->hwnd, &swapchain_desc, nullptr, nullptr, swapchain.GetAddressOf());
+#else
+		HRESULT res = dxgi_factory->CreateSwapChainForCoreWindow(direct_queue.Get(), winrt::get_unknown(window->core_window), &swapchain_desc, nullptr, swapchain.GetAddressOf());
+#endif
 		ERR_FAIL_COND_V(res, ERR_CANT_CREATE);
 		swapchain.As(&window->swapchain);
 		ERR_FAIL_COND_V(!window->swapchain, ERR_CANT_CREATE);
 
 		format = swapchain_desc.Format;
 
+#ifndef UWP_ENABLED
 		res = dxgi_factory->MakeWindowAssociation(window->hwnd, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
 		ERR_FAIL_COND_V(res, ERR_CANT_CREATE);
+#endif
 
 		res = window->swapchain->GetDesc1(&swapchain_desc);
 		ERR_FAIL_COND_V(res, ERR_CANT_CREATE);

@@ -6128,7 +6128,7 @@ void RenderingDeviceD3D12::_save_stages_bytecode(
 
 RID RenderingDeviceD3D12::render_pipeline_create(RID p_shader, FramebufferFormatID p_framebuffer_format, VertexFormatID p_vertex_format, RenderPrimitive p_render_primitive, const PipelineRasterizationState &p_rasterization_state, const PipelineMultisampleState &p_multisample_state, const PipelineDepthStencilState &p_depth_stencil_state, const PipelineColorBlendState &p_blend_state, BitField<PipelineDynamicStateFlags> p_dynamic_state_flags, uint32_t p_for_render_pass, const Vector<PipelineSpecializationConstant> &p_specialization_constants) {
 #ifdef DEV_ENABLED
-//#define DEBUG_CREATE_DEBUG_PSO
+// #define DEBUG_CREATE_DEBUG_PSO
 //#define DEBUG_SAVE_PSO_BLOBS
 //#define DEBUG_SAVE_DXIL_BLOBS
 #endif
@@ -6553,7 +6553,7 @@ bool RenderingDeviceD3D12::render_pipeline_is_valid(RID p_pipeline) {
 
 RID RenderingDeviceD3D12::compute_pipeline_create(RID p_shader, const Vector<PipelineSpecializationConstant> &p_specialization_constants) {
 #ifdef DEV_ENABLED
-//#define DEBUG_CREATE_DEBUG_PSO
+// #define DEBUG_CREATE_DEBUG_PSO
 //#define DEBUG_SAVE_PSO_BLOBS
 //#define DEBUG_SAVE_DXIL_BLOBS
 #endif

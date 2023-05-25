@@ -31,7 +31,7 @@
 #ifndef FILE_ACCESS_WINDOWS_H
 #define FILE_ACCESS_WINDOWS_H
 
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 
 #include "core/io/file_access.h"
 #include "core/os/memory.h"

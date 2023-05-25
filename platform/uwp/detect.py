@@ -24,7 +24,13 @@ def can_build():
 
 
 def get_opts():
-    return []
+    from SCons.Variables import BoolVariable
+
+    return [
+        ("DXC_PATH", "Path to the DirectX Shader Compiler distribution (required for D3D12)", ""),
+        ("PIX_PATH", "Path to the PIX runtime distribution (optional for D3D12)", ""),
+        BoolVariable("is_xbox", "Whether this build is targeted to Xbox deployment.", False),
+    ]
 
 
 def get_flags():
@@ -35,7 +41,7 @@ def get_flags():
         ("d3d12", True),
         ("vulkan", False),
         ("opengl3", False),
-        ("module_glslang_enabled", False),
+        ("module_glslang_enabled", True),
         ("module_raycast_enabled", False),  # For Embree
     ]
 
@@ -65,7 +71,7 @@ def configure(env: "Environment"):
         env.Append(LINKFLAGS=["/SUBSYSTEM:WINDOWS"])
         if env["optimize"] != "none":
             env.Append(CCFLAGS=["/O2", "/GL"])
-            env.Append(LINKFLAGS=["/LTCG"])
+            # env.Append(LINKFLAGS=["/LTCG"])
 
     elif env["target"] == "template_debug":
         env.Append(CCFLAGS=["/MDd"])
@@ -124,8 +130,43 @@ def configure(env: "Environment"):
 
     ## Compile flags
 
+    LIBS = [
+        "WindowsApp",
+        # "mincore",
+        "ws2_32",
+        "bcrypt",
+    ]
+
     if env["builtin_icu4c"]:
         env.Append(CPPDEFINES=["U_PLATFORM_HAS_WINUWP_API"])
+
+    if env["d3d12"]:
+        print("d3d12 ok!")
+        if env["DXC_PATH"] == "":
+            print("The Direct3D 12 rendering driver requires DXC_PATH to be set.")
+            sys.exit(255)
+
+        env.AppendUnique(CPPDEFINES=["D3D12_ENABLED"])
+        LIBS += ["d3d12", "dxgi", "dxguid"]
+        LIBS += ["version"]  # Mesa dependency.
+
+        # Needed for avoiding C1128.
+        if env["target"] == "template_release":
+            env.Append(CXXFLAGS=["/bigobj"])
+
+        arch_subdir = "arm64" if env["arch"] == "arm64" else "x64"
+
+        # PIX
+        if env["PIX_PATH"] != "" and env["target"] != "release":
+            env.AppendUnique(CPPDEFINES=["PIX_ENABLED"])
+            env.Append(CPPPATH=[env["PIX_PATH"] + "/Include"])
+            env.Append(LIBPATH=[env["PIX_PATH"] + "/bin/" + arch_subdir])
+            LIBS += ["WinPixEventRuntime"]
+
+    if env["is_xbox"]:
+        env.extra_suffix += ".xbox"
+        # env.Append(CPPDEFINES=["_GAMING_XBOX_SCARLETT"])
+        # env.Append(CPPDEFINES=["_GAMING_XBOX"])
 
     env.Prepend(CPPPATH=["#platform/uwp", "#drivers/windows"])
     env.Append(CPPDEFINES=["UWP_ENABLED", "TYPED_METHOD_BIND"])
@@ -134,12 +175,13 @@ def configure(env: "Environment"):
     env.Append(CPPDEFINES=[("WINVER", winver), ("_WIN32_WINNT", winver), "WIN32"])
     env.Append(
         CPPDEFINES=[
-            # "_UNICODE",
+            "_UNICODE",
             # "UNICODE",
             ("WINAPI_FAMILY", "WINAPI_FAMILY_APP"),
-            # 'WIN32_LEAN_AND_MEAN',
+            # "WIN32_LEAN_AND_MEAN",
             "WINRT_LEAN_AND_MEAN",
             "__WRL_NO_DEFAULT_LIB__",
+            "NOMINMAX",
         ]
     )
     env.Append(
@@ -169,12 +211,6 @@ def configure(env: "Environment"):
         ]
     )
 
-    LIBS = [
-        "WindowsApp",
-        # "mincore",
-        # "ws2_32",
-        # "bcrypt",
-    ]
     env.Prepend(LINKFLAGS=[p + ".lib" for p in LIBS])
 
     # Incremental linking fix

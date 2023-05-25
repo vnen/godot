@@ -28,7 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#if defined(WINDOWS_ENABLED)
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 
 #include "dir_access_windows.h"
 
@@ -39,6 +39,13 @@
 #include <wchar.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#ifdef UWP_ENABLED
+#include "platform/uwp/os_uwp.h"
+
+#include <winrt/windows.applicationmodel.core.h>
+#include <winrt/windows.storage.h>
+#endif
 
 /*
 
@@ -356,9 +363,8 @@ DirAccessWindows::DirAccessWindows() {
 	current_dir = ".";
 
 #ifdef UWP_ENABLED
-	Windows::Storage::StorageFolder ^ install_folder = Windows::ApplicationModel::Package::Current->InstalledLocation;
-	change_dir(install_folder->Path->Data());
-
+	OS_UWP *os = static_cast<OS_UWP *>(OS::get_singleton());
+	change_dir(os->get_cwd());
 #else
 
 	DWORD mask = GetLogicalDrives();

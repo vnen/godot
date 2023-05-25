@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  ip_unix.h                                                             */
+/*  joypad_uwp.h                                                          */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -28,27 +28,55 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef IP_UNIX_H
-#define IP_UNIX_H
+#ifndef JOYPAD_UWP_H
+#define JOYPAD_UWP_H
 
-#include "core/io/ip.h"
+#include "core/input/input.h"
+#include "core/input/input_enums.h"
 
-#if defined(UNIX_ENABLED) || defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
+#include <winrt/windows.foundation.h>
+#include <winrt/windows.gaming.input.h>
 
-class IPUnix : public IP {
-	GDCLASS(IPUnix, IP);
+class JoypadUWP {
+	Input *input = nullptr;
 
-	virtual void _resolve_hostname(List<IPAddress> &r_addresses, const String &p_hostname, Type p_type = TYPE_ANY) const override;
+	enum {
+		MAX_CONTROLLERS = 4,
+	};
 
-	static IP *_create_unix();
+	enum ControllerType {
+		GAMEPAD_CONTROLLER,
+		ARCADE_STICK_CONTROLLER,
+		RACING_WHEEL_CONTROLLER,
+	};
+
+	struct ControllerDevice {
+		winrt::Windows::Gaming::Input::IGameController controller_reference;
+
+		int id = -1;
+		bool connected = false;
+		ControllerType type = ControllerType::GAMEPAD_CONTROLLER;
+		float ff_timestamp = 0;
+		float ff_end_timestamp = 0;
+		bool vibrating = false;
+	};
+
+	ControllerDevice controllers[MAX_CONTROLLERS];
+
+	void OnGamepadAdded(winrt::Windows::Foundation::IInspectable sender, winrt::Windows::Gaming::Input::Gamepad value);
+	void OnGamepadRemoved(winrt::Windows::Foundation::IInspectable sender, winrt::Windows::Gaming::Input::Gamepad value);
+
+	JoyButton gamepad_button_to_joy_button(winrt::Windows::Gaming::Input::GamepadButtons p_button);
+
+	float axis_correct(double p_val, bool p_negate = false, bool p_trigger = false) const;
+	void joypad_vibration_start(int p_device, float p_weak_magnitude, float p_strong_magnitude, float p_duration, uint64_t p_timestamp);
+	void joypad_vibration_stop(int p_device, uint64_t p_timestamp);
 
 public:
-	virtual void get_local_interfaces(HashMap<String, Interface_Info> *r_interfaces) const override;
+	void register_events();
+	void process_controllers();
 
-	static void make_default();
-	IPUnix();
+	JoypadUWP();
 };
 
-#endif
-
-#endif // IP_UNIX_H
+#endif // JOYPAD_UWP_H

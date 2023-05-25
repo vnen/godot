@@ -31,7 +31,7 @@
 #ifndef DIR_ACCESS_WINDOWS_H
 #define DIR_ACCESS_WINDOWS_H
 
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 
 #include "core/io/dir_access.h"
 

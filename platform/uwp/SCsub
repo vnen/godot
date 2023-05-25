@@ -6,6 +6,8 @@ files = [
     # "#platform/windows/key_mapping_windows.cpp",
     # "#platform/windows/windows_terminal_logger.cpp",
     "app_uwp.cpp",
+    "display_server_uwp.cpp",
+    "joypad_uwp.cpp",
     "os_uwp.cpp",
 ]
 

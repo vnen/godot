@@ -106,6 +106,9 @@ if not env["vulkan"]:
     # Some Mesa file needs to use Vulkan includes.
     env_thirdparty_mesa.Append(CPPPATH="#thirdparty/vulkan/include")
 
+# if env["is_xbox"]:
+#     env_thirdparty_mesa.Append(CPPDEFINES=["_GAMING_XBOX_SCARLETT"])
+
 mesa_sources += [v for v in list(Path(mesa_absdir).rglob("*.c"))]
 mesa_sources += [v for v in list(Path(mesa_absdir).rglob("*.cpp"))]
 mesa_sources = [str(v).replace(mesa_absdir, mesa_dir) for v in mesa_sources]

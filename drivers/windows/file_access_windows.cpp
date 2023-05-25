@@ -28,7 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 
 #include "file_access_windows.h"
 

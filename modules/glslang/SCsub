@@ -54,7 +54,7 @@ if env["builtin_glslang"]:
         "SPIRV/SpvTools.cpp",
     ]
 
-    if env["platform"] == "windows":
+    if env["platform"] == "windows" or env["platform"] == "uwp":
         thirdparty_sources.append("glslang/OSDependent/Windows/ossource.cpp")
     else:
         thirdparty_sources.append("glslang/OSDependent/Unix/ossource.cpp")

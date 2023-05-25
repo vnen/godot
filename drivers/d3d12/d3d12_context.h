@@ -44,6 +44,11 @@
 #define D3D12MA_D3D12_HEADERS_ALREADY_INCLUDED
 #include "D3D12MemAlloc.h"
 
+#ifdef UWP_ENABLED
+#include <winrt/base.h>
+#include <winrt/windows.ui.core.h>
+#endif
+
 #include <wrl/client.h>
 using Microsoft::WRL::ComPtr;
 
@@ -129,7 +134,11 @@ private:
 	UINT64 aux_fence_value = 0;
 
 	struct Window {
+#ifndef UWP_ENABLED
 		HWND hwnd = nullptr;
+#else
+		winrt::Windows::UI::Core::CoreWindow core_window = nullptr;
+#endif
 		ComPtr<IDXGISwapChain3> swapchain;
 		UINT sync_interval = 1;
 		UINT present_flags = 0;
@@ -195,7 +204,11 @@ public:
 	ComPtr<IDXGIAdapter> get_adapter();
 	D3D12MA::Allocator *get_allocator();
 	int get_swapchain_image_count() const;
+#ifndef UWP_ENABLED
 	Error window_create(DisplayServer::WindowID p_window_id, DisplayServer::VSyncMode p_vsync_mode, HWND p_window, HINSTANCE p_instance, int p_width, int p_height);
+#else
+	Error window_create(DisplayServer::WindowID p_window_id, DisplayServer::VSyncMode p_vsync_mode, winrt::Windows::UI::Core::CoreWindow p_window, HINSTANCE p_instance, int p_width, int p_height);
+#endif
 	void window_resize(DisplayServer::WindowID p_window_id, int p_width, int p_height);
 	int window_get_width(DisplayServer::WindowID p_window = 0);
 	int window_get_height(DisplayServer::WindowID p_window = 0);

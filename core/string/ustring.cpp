@@ -349,7 +349,7 @@ void String::copy_from(const char *p_cstr, const int p_clip_to) {
 }
 
 void String::copy_from(const wchar_t *p_cstr) {
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit, parse as UTF-16
 	parse_utf16((const char16_t *)p_cstr);
 #else
@@ -359,7 +359,7 @@ void String::copy_from(const wchar_t *p_cstr) {
 }
 
 void String::copy_from(const wchar_t *p_cstr, const int p_clip_to) {
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit, parse as UTF-16
 	parse_utf16((const char16_t *)p_cstr, p_clip_to);
 #else
@@ -483,7 +483,7 @@ String operator+(const char *p_chr, const String &p_str) {
 }
 
 String operator+(const wchar_t *p_chr, const String &p_str) {
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit
 	String tmp = String::utf16((const char16_t *)p_chr);
 #else
@@ -548,7 +548,7 @@ String &String::operator+=(const char *p_str) {
 }
 
 String &String::operator+=(const wchar_t *p_str) {
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit
 	*this += String::utf16((const char16_t *)p_str);
 #else
@@ -615,7 +615,7 @@ bool String::operator==(const char *p_str) const {
 }
 
 bool String::operator==(const wchar_t *p_str) const {
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit, parse as UTF-16
 	return *this == String::utf16((const char16_t *)p_str);
 #else
@@ -704,7 +704,7 @@ bool operator==(const char *p_chr, const String &p_str) {
 }
 
 bool operator==(const wchar_t *p_chr, const String &p_str) {
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit
 	return p_str == String::utf16((const char16_t *)p_chr);
 #else
@@ -718,7 +718,7 @@ bool operator!=(const char *p_chr, const String &p_str) {
 }
 
 bool operator!=(const wchar_t *p_chr, const String &p_str) {
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit
 	return !(p_str == String::utf16((const char16_t *)p_chr));
 #else
@@ -773,7 +773,7 @@ bool String::operator<(const wchar_t *p_str) const {
 		return true;
 	}
 
-#ifdef WINDOWS_ENABLED
+#if defined(WINDOWS_ENABLED) || defined(UWP_ENABLED)
 	// wchar_t is 16-bit
 	return is_str_less(get_data(), String::utf16((const char16_t *)p_str).get_data());
 #else
